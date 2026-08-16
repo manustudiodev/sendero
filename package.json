@@ -1,0 +1,20 @@
+{
+  "name": "sendero",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first travel planner with personalized itineraries, weather, events, reservations, and daily routes.",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node server/http.mjs",
+    "test": "node --test server/server.test.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "hono": "^4.13.2",
+    "zod": "^4.4.3"
+  }
+}

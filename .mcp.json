@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "sendero": {
+      "command": "node",
+      "args": ["./server/stdio.mjs"],
+      "cwd": "."
+    }
+  }
+}
