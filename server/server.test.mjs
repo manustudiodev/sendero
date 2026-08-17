@@ -101,7 +101,16 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const tools = await client.listTools();
   assert.deepEqual(
     tools.tools.map((tool) => tool.name).sort(),
-    ["prepare_trip_brief", "render_itinerary", "validate_itinerary"],
+    [
+      "get_itinerary",
+      "list_itineraries",
+      "prepare_trip_brief",
+      "render_itinerary",
+      "restore_itinerary_version",
+      "save_itinerary",
+      "share_itinerary",
+      "validate_itinerary",
+    ],
   );
 
   const result = await client.callTool({
@@ -115,6 +124,89 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(resource.contents[0].mimeType, "text/html;profile=mcp-app");
   assert.match(resource.contents[0].text, /Calendario/);
   assert.match(resource.contents[0].text, /Mapa/);
+
+  await client.close();
+  await server.close();
+});
+
+test("saves, lists, opens, shares, and restores trips through the persistence boundary", async () => {
+  const calls = [];
+  const persistence = {
+    async list() {
+      calls.push(["list"]);
+      return [
+        {
+          id: "trip_123",
+          title: itinerary.title,
+          destination: itinerary.destination,
+          startDate: itinerary.startDate,
+          endDate: itinerary.endDate,
+          currentVersion: 2,
+          role: "owner",
+          updatedAt: 1786900000000,
+        },
+      ];
+    },
+    async get(tripId) {
+      calls.push(["get", tripId]);
+      return {
+        id: tripId,
+        role: "owner",
+        version: 2,
+        itinerary,
+        revisions: [{ version: 1, reason: "Trip created", createdAt: 1786800000000 }],
+      };
+    },
+    async save(input) {
+      calls.push(["save", input]);
+      return { tripId: input.tripId || "trip_123", version: input.tripId ? 2 : 1, role: "owner" };
+    },
+    async share(input) {
+      calls.push(["share", input]);
+      return { collaboratorId: "collab_123", role: input.role, status: "pending" };
+    },
+    async restore(input) {
+      calls.push(["restore", input]);
+      return { tripId: input.tripId, version: 3, restoredFrom: input.version, role: "owner" };
+    },
+  };
+
+  const server = createTripPlannerServer({ persistence });
+  const client = new Client({ name: "sendero-persistence-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const listed = await client.callTool({ name: "list_itineraries", arguments: {} });
+  assert.equal(listed.structuredContent.trips[0].id, "trip_123");
+
+  const opened = await client.callTool({
+    name: "get_itinerary",
+    arguments: { tripId: "trip_123" },
+  });
+  assert.equal(opened.structuredContent.itinerary.title, itinerary.title);
+
+  const saved = await client.callTool({
+    name: "save_itinerary",
+    arguments: { itinerary, reason: "Initial plan" },
+  });
+  assert.equal(saved.structuredContent.version, 1);
+
+  const shared = await client.callTool({
+    name: "share_itinerary",
+    arguments: { tripId: "trip_123", email: "friend@example.com", role: "editor" },
+  });
+  assert.equal(shared.structuredContent.status, "pending");
+
+  const restored = await client.callTool({
+    name: "restore_itinerary_version",
+    arguments: { tripId: "trip_123", version: 1 },
+  });
+  assert.equal(restored.structuredContent.version, 3);
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    ["list", "get", "save", "share", "restore"],
+  );
 
   await client.close();
   await server.close();

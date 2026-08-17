@@ -1,0 +1,76 @@
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
+
+const listMine = makeFunctionReference("trips:listMine");
+const getTrip = makeFunctionReference("trips:get");
+const saveTrip = makeFunctionReference("trips:save");
+const shareTrip = makeFunctionReference("trips:share");
+const restoreTripRevision = makeFunctionReference("trips:restoreRevision");
+
+function requireValue(value, message) {
+  if (!value) throw new Error(message);
+  return value;
+}
+
+export function createConvexPersistence({ convexUrl, authToken } = {}) {
+  function client() {
+    const url = requireValue(
+      convexUrl,
+      "Sendero storage is not configured. Set CONVEX_URL before using saved trips.",
+    );
+    const token = requireValue(
+      authToken,
+      "Sign in before accessing saved Sendero trips.",
+    );
+    const convex = new ConvexHttpClient(url);
+    convex.setAuth(token);
+    return convex;
+  }
+
+  return {
+    async list() {
+      const trips = await client().query(listMine, {});
+      return trips.map((trip) => ({
+        id: trip._id,
+        title: trip.title,
+        destination: trip.destination,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        currentVersion: trip.currentVersion,
+        role: trip.role,
+        updatedAt: trip.updatedAt,
+      }));
+    },
+
+    async get(tripId) {
+      const trip = await client().query(getTrip, { tripId });
+      return {
+        id: trip._id,
+        role: trip.role,
+        version: trip.currentVersion,
+        itinerary: trip.snapshot,
+        revisions: trip.revisions.map((revision) => ({
+          version: revision.version,
+          reason: revision.reason,
+          createdAt: revision.createdAt,
+        })),
+      };
+    },
+
+    async save({ tripId, itinerary, reason }) {
+      return client().mutation(saveTrip, {
+        ...(tripId ? { tripId } : {}),
+        itinerary,
+        ...(reason ? { reason } : {}),
+      });
+    },
+
+    async share({ tripId, email, role }) {
+      return client().mutation(shareTrip, { tripId, email, role });
+    },
+
+    async restore({ tripId, version }) {
+      return client().mutation(restoreTripRevision, { tripId, version });
+    },
+  };
+}

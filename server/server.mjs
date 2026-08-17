@@ -145,6 +145,23 @@ const validationSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+const collaboratorRoleSchema = z.enum(["owner", "editor", "viewer"]);
+const tripSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  destination: z.string(),
+  startDate: isoDate,
+  endDate: isoDate,
+  currentVersion: z.number().int().positive(),
+  role: collaboratorRoleSchema,
+  updatedAt: z.number(),
+});
+const revisionSummarySchema = z.object({
+  version: z.number().int().positive(),
+  reason: z.string().optional(),
+  createdAt: z.number(),
+});
+
 function minutes(time) {
   const [hours, mins] = time.split(":").map(Number);
   return hours * 60 + mins;
@@ -514,12 +531,19 @@ const widgetHtml = String.raw`<!doctype html>
   </body>
 </html>`;
 
-export function createTripPlannerServer() {
+export function createTripPlannerServer({ persistence } = {}) {
+  function storage() {
+    if (!persistence) {
+      throw new Error("Sendero storage is unavailable in this environment.");
+    }
+    return persistence;
+  }
+
   const server = new McpServer(
     { name: "sendero", version: "0.1.0" },
     {
       instructions:
-        "Use prepare_trip_brief before planning, validate_itinerary before presenting, and render_itinerary once with the final snapshot. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source.",
+        "Use prepare_trip_brief before planning, validate_itinerary before saving or presenting, and render_itinerary once with the final snapshot. Use the saved-trip tools when the user asks to keep, reopen, share, or restore a plan. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source.",
     },
   );
 
@@ -616,6 +640,160 @@ export function createTripPlannerServer() {
           {
             type: "text",
             text: `Showing ${normalized.days.length} itinerary day(s) for ${normalized.destination}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "list_itineraries",
+    {
+      title: "List saved itineraries",
+      description:
+        "List the authenticated user's active Sendero trips, including trips shared as editor or viewer.",
+      inputSchema: {},
+      outputSchema: { trips: z.array(tripSummarySchema) },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async () => {
+      const trips = await storage().list();
+      return {
+        structuredContent: { trips },
+        content: [{ type: "text", text: `Found ${trips.length} saved trip(s).` }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "get_itinerary",
+    {
+      title: "Open saved itinerary",
+      description:
+        "Load one saved itinerary and its version history after checking the authenticated user's access.",
+      inputSchema: { tripId: z.string().min(1) },
+      outputSchema: {
+        id: z.string(),
+        role: collaboratorRoleSchema,
+        version: z.number().int().positive(),
+        itinerary: itinerarySchema,
+        revisions: z.array(revisionSummarySchema),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ tripId }) => {
+      const result = await storage().get(tripId);
+      const itinerary = normalizeItinerary(itinerarySchema.parse(result.itinerary));
+      return {
+        structuredContent: { ...result, itinerary },
+        content: [
+          {
+            type: "text",
+            text: `Opened ${itinerary.title}, version ${result.version}, with ${result.role} access.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "save_itinerary",
+    {
+      title: "Save itinerary",
+      description:
+        "Create a saved Sendero trip or add a new version to an existing trip. Validate the full itinerary first.",
+      inputSchema: {
+        tripId: z.string().min(1).optional(),
+        itinerary: itinerarySchema,
+        reason: z.string().min(1).optional(),
+      },
+      outputSchema: {
+        tripId: z.string(),
+        version: z.number().int().positive(),
+        role: z.enum(["owner", "editor"]),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ tripId, itinerary, reason }) => {
+      const normalized = normalizeItinerary(itinerary);
+      const validation = validateItinerary(normalized);
+      if (!validation.valid) {
+        throw new Error(`Itinerary cannot be saved: ${validation.errors.join(" ")}`);
+      }
+      const result = await storage().save({ tripId, itinerary: normalized, reason });
+      return {
+        structuredContent: result,
+        content: [
+          {
+            type: "text",
+            text: `${tripId ? "Saved a new version" : "Created the trip"} successfully as version ${result.version}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "share_itinerary",
+    {
+      title: "Share itinerary",
+      description:
+        "Invite a friend to a saved trip as an editor or viewer. Only the trip owner can manage access.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        email: z.string().email(),
+        role: z.enum(["editor", "viewer"]),
+      },
+      outputSchema: {
+        collaboratorId: z.string(),
+        role: z.enum(["editor", "viewer"]),
+        status: z.enum(["pending", "accepted"]),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ tripId, email, role }) => {
+      const result = await storage().share({ tripId, email, role });
+      return {
+        structuredContent: result,
+        content: [
+          {
+            type: "text",
+            text:
+              result.status === "accepted"
+                ? `${email} can now access this trip as ${role}.`
+                : `${email} has a pending ${role} invitation.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "restore_itinerary_version",
+    {
+      title: "Restore itinerary version",
+      description:
+        "Restore a previous itinerary snapshot as a new version, preserving the complete history.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        version: z.number().int().positive(),
+      },
+      outputSchema: {
+        tripId: z.string(),
+        version: z.number().int().positive(),
+        restoredFrom: z.number().int().positive(),
+        role: z.enum(["owner", "editor"]),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ tripId, version }) => {
+      const result = await storage().restore({ tripId, version });
+      return {
+        structuredContent: result,
+        content: [
+          {
+            type: "text",
+            text: `Restored version ${version} as the new version ${result.version}.`,
           },
         ],
       };
