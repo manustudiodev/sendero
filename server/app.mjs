@@ -10,8 +10,7 @@ function bearerToken(request) {
   return match?.[1];
 }
 
-export function createApp({ convexUrl = process.env.CONVEX_URL } = {}) {
-  const app = new Hono();
+export function createApp({ convexUrl = process.env.CONVEX_URL, app = new Hono() } = {}) {
   app.use(
     "*",
     cors({
