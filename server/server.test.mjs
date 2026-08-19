@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { AUTH_SCOPES } from "./auth.mjs";
 import {
   ITINERARY_UI_URI,
   buildDailyRouteUrl,
@@ -112,6 +113,12 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
       "validate_itinerary",
     ],
   );
+  const publicTool = tools.tools.find((tool) => tool.name === "render_itinerary");
+  const protectedTool = tools.tools.find((tool) => tool.name === "save_itinerary");
+  assert.deepEqual(publicTool._meta.securitySchemes, [{ type: "noauth" }]);
+  assert.deepEqual(protectedTool._meta.securitySchemes, [
+    { type: "oauth2", scopes: [AUTH_SCOPES.write] },
+  ]);
 
   const result = await client.callTool({
     name: "render_itinerary",
@@ -124,6 +131,37 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(resource.contents[0].mimeType, "text/html;profile=mcp-app");
   assert.match(resource.contents[0].text, /Calendario/);
   assert.match(resource.contents[0].text, /Mapa/);
+
+  await client.close();
+  await server.close();
+});
+
+test("returns an OAuth challenge before a protected tool touches storage", async () => {
+  let storageCalled = false;
+  const server = createTripPlannerServer({
+    persistence: {
+      async list() {
+        storageCalled = true;
+        return [];
+      },
+    },
+    auth: {
+      authenticated: false,
+      scopes: [],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-auth-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const result = await client.callTool({ name: "list_itineraries", arguments: {} });
+  assert.equal(result.isError, true);
+  assert.equal(storageCalled, false);
+  assert.match(result._meta["mcp/www_authenticate"][0], /error="invalid_token"/);
+  assert.match(result._meta["mcp/www_authenticate"][0], /scope="trips:read"/);
 
   await client.close();
   await server.close();
@@ -171,7 +209,15 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
     },
   };
 
-  const server = createTripPlannerServer({ persistence });
+  const server = createTripPlannerServer({
+    persistence,
+    auth: {
+      authenticated: true,
+      scopes: Object.values(AUTH_SCOPES),
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
   const client = new Client({ name: "sendero-persistence-test", version: "0.1.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

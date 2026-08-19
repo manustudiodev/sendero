@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { AUTH_SCOPES, authorizeTool, toolSecuritySchemes } from "./auth.mjs";
 
 export const ITINERARY_UI_URI = "ui://sendero/itinerary-v1.html";
 
@@ -531,7 +532,7 @@ const widgetHtml = String.raw`<!doctype html>
   </body>
 </html>`;
 
-export function createTripPlannerServer({ persistence } = {}) {
+export function createTripPlannerServer({ persistence, auth } = {}) {
   function storage() {
     if (!persistence) {
       throw new Error("Sendero storage is unavailable in this environment.");
@@ -572,6 +573,7 @@ export function createTripPlannerServer({ persistence } = {}) {
         brief: tripBriefSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes() },
     },
     async ({ brief }) => {
       const result = prepareTripBrief(brief);
@@ -598,6 +600,7 @@ export function createTripPlannerServer({ persistence } = {}) {
       inputSchema: { itinerary: itinerarySchema },
       outputSchema: { itinerary: itinerarySchema, validation: validationSchema },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes() },
     },
     async ({ itinerary }) => {
       const validation = validateItinerary(itinerary);
@@ -626,6 +629,7 @@ export function createTripPlannerServer({ persistence } = {}) {
       outputSchema: { itinerary: itinerarySchema, validation: validationSchema },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: {
+        securitySchemes: toolSecuritySchemes(),
         ui: { resourceUri: ITINERARY_UI_URI },
         "openai/toolInvocation/invoking": "Preparing itinerary…",
         "openai/toolInvocation/invoked": "Itinerary ready.",
@@ -655,8 +659,11 @@ export function createTripPlannerServer({ persistence } = {}) {
       inputSchema: {},
       outputSchema: { trips: z.array(tripSummarySchema) },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]) },
     },
     async () => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
+      if (denied) return denied;
       const trips = await storage().list();
       return {
         structuredContent: { trips },
@@ -680,8 +687,11 @@ export function createTripPlannerServer({ persistence } = {}) {
         revisions: z.array(revisionSummarySchema),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]) },
     },
     async ({ tripId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
+      if (denied) return denied;
       const result = await storage().get(tripId);
       const itinerary = normalizeItinerary(itinerarySchema.parse(result.itinerary));
       return {
@@ -713,8 +723,11 @@ export function createTripPlannerServer({ persistence } = {}) {
         role: z.enum(["owner", "editor"]),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]) },
     },
     async ({ tripId, itinerary, reason }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
+      if (denied) return denied;
       const normalized = normalizeItinerary(itinerary);
       const validation = validateItinerary(normalized);
       if (!validation.valid) {
@@ -750,8 +763,11 @@ export function createTripPlannerServer({ persistence } = {}) {
         status: z.enum(["pending", "accepted"]),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
     },
     async ({ tripId, email, role }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
       const result = await storage().share({ tripId, email, role });
       return {
         structuredContent: result,
@@ -785,8 +801,11 @@ export function createTripPlannerServer({ persistence } = {}) {
         role: z.enum(["owner", "editor"]),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]) },
     },
     async ({ tripId, version }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
+      if (denied) return denied;
       const result = await storage().restore({ tripId, version });
       return {
         structuredContent: result,

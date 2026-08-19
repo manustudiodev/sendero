@@ -11,6 +11,15 @@ function cleanEmail(value: string | undefined) {
   return value?.trim().toLowerCase() || undefined;
 }
 
+function customIdentityValue(
+  identity: Record<string, unknown>,
+  field: "email" | "name",
+) {
+  const namespace = process.env.AUTH0_CLAIMS_NAMESPACE?.replace(/\/$/, "");
+  const value = namespace ? identity[`${namespace}/${field}`] : undefined;
+  return typeof value === "string" ? value : undefined;
+}
+
 async function identity(ctx: ReadContext) {
   const value = await ctx.auth.getUserIdentity();
   if (!value) throw new Error("Unauthenticated");
@@ -31,8 +40,13 @@ async function findCurrentUser(ctx: ReadContext) {
 async function ensureCurrentUser(ctx: MutationCtx) {
   const { currentIdentity, user } = await findCurrentUser(ctx);
   const now = Date.now();
-  const email = cleanEmail(currentIdentity.email);
-  const name = currentIdentity.name?.trim() || undefined;
+  const identityClaims = currentIdentity as unknown as Record<string, unknown>;
+  const email = cleanEmail(
+    currentIdentity.email || customIdentityValue(identityClaims, "email"),
+  );
+  const name =
+    (currentIdentity.name || customIdentityValue(identityClaims, "name"))?.trim() ||
+    undefined;
 
   let userId = user?._id;
   if (!userId) {
