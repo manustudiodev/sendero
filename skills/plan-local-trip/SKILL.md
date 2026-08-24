@@ -18,7 +18,7 @@ Collect or infer:
 - Preferred transport modes, driving-license status, willingness to rent a car, accessibility needs, and walking tolerance.
 - Must-do items, unwanted activities, dietary needs, existing reservations, fixed commitments, and intentionally free time.
 
-Ask no more than three concise questions at once. Do not block when a safe provisional assumption can be labeled clearly. Before planning, call `prepare_trip_brief` to expose critical missing fields and incompatible transport choices.
+When critical details are missing and component UI is available, call `render_trip_intake` once instead of asking several setup questions in plain text. Otherwise ask no more than three concise questions at once. Do not block when a safe provisional assumption can be labeled clearly; a neighborhood or clearly identified central base is enough until the exact lodging is known. Before planning, call `prepare_trip_brief` to expose critical missing fields, assumptions, and incompatible transport choices.
 
 ### 2. Research current conditions
 

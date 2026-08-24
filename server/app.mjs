@@ -24,6 +24,15 @@ function defaultResourceServerUrl() {
   return vercelHost ? `https://${vercelHost}/mcp` : "http://localhost:8788/mcp";
 }
 
+function authFailureDetails(error, authConfig) {
+  return {
+    code: typeof error?.code === "string" ? error.code : "token_verification_failed",
+    claim: typeof error?.claim === "string" ? error.claim : undefined,
+    issuer: authConfig.issuer,
+    audience: authConfig.audience,
+  };
+}
+
 export function createApp({
   convexUrl = process.env.CONVEX_URL,
   authConfig = createAuthConfig({
@@ -32,6 +41,7 @@ export function createApp({
     resourceServerUrl: defaultResourceServerUrl(),
   }),
   verifyAccessToken = verifyJwtAccessToken,
+  logger = console,
   app = new Hono(),
 } = {}) {
   app.use(
@@ -88,7 +98,8 @@ export function createApp({
           ...(await verifyAccessToken(authorization.token, authConfig)),
           resourceMetadataUrl: authConfig.resourceMetadataUrl,
         };
-      } catch {
+      } catch (error) {
+        logger.warn?.("[sendero.auth] access token rejected", authFailureDetails(error, authConfig));
         context.header(
           "WWW-Authenticate",
           bearerChallenge(authConfig, {
@@ -104,7 +115,11 @@ export function createApp({
       convexUrl,
       authToken: authorization.token,
     });
-    const server = createTripPlannerServer({ persistence, auth });
+    const server = createTripPlannerServer({
+      persistence,
+      auth,
+      widgetOrigin: authConfig.resourceServerUrl,
+    });
     const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
     await server.connect(transport);
     return transport.handleRequest(context.req.raw);

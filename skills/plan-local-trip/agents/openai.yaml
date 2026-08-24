@@ -1,4 +1,4 @@
 interface:
-  display_name: "Plan with Sendero"
-  short_description: "Build and adapt practical local-first travel itineraries"
-  default_prompt: "Use $plan-local-trip to create a realistic itinerary from my dates, lodging, transport, interests, weather, events, and reservations."
+  display_name: "Sendero · Nuevo viaje"
+  short_description: "Crea un itinerario local y realista"
+  default_prompt: "Usa $plan-local-trip para crear un nuevo viaje con Sendero a partir de mis fechas, alojamiento, transporte e intereses."

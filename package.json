@@ -1,6 +1,6 @@
 {
   "name": "sendero",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Local-first travel planner with personalized itineraries, weather, events, reservations, and daily routes.",
@@ -8,8 +8,11 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "node server/http.mjs",
-    "test": "node --test server/*.test.mjs",
+    "build": "npm run build:ui",
+    "build:ui": "node web/build.mjs",
+    "dev": "npm run build:ui && node server/http.mjs",
+    "preview:ui": "npm run build:ui && node web/preview.mjs",
+    "test": "npm run build:ui && node --test server/*.test.mjs web/*.test.mjs",
     "convex:dev": "convex dev",
     "convex:check": "convex dev --once"
   },
@@ -20,5 +23,10 @@
     "hono": "^4.13.2",
     "jose": "^6.2.9",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

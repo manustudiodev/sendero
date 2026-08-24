@@ -49,11 +49,16 @@ test("rejects malformed and invalid bearer tokens with an OAuth challenge", asyn
     audience: "https://sendero.example/mcp",
     resourceServerUrl: "https://sendero.example/mcp",
   });
+  const warnings = [];
   const app = createApp({
     authConfig,
     verifyAccessToken: async () => {
-      throw new Error("invalid token");
+      const error = new Error("invalid token");
+      error.code = "ERR_JWT_EXPIRED";
+      error.claim = "exp";
+      throw error;
     },
+    logger: { warn: (...args) => warnings.push(args) },
   });
 
   const malformed = await app.request("/mcp", {
@@ -69,6 +74,15 @@ test("rejects malformed and invalid bearer tokens with an OAuth challenge", asyn
   });
   assert.equal(invalid.status, 401);
   assert.match(invalid.headers.get("www-authenticate"), /error="invalid_token"/);
+  assert.deepEqual(warnings[0], [
+    "[sendero.auth] access token rejected",
+    {
+      code: "ERR_JWT_EXPIRED",
+      claim: "exp",
+      issuer: "https://sendero.us.auth0.com/",
+      audience: "https://sendero.example/mcp",
+    },
+  ]);
 });
 
 test("requires an authenticated token before reading Convex", async () => {

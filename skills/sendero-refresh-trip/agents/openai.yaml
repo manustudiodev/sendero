@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sendero · Actualizar viaje"
+  short_description: "Revisa clima, eventos, cierres y rutas"
+  default_prompt: "Usa $sendero-refresh-trip para actualizar mi itinerario con clima, eventos, cierres, transporte y reservas vigentes."

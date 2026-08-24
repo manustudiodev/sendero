@@ -5,6 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { AUTH_SCOPES } from "./auth.mjs";
 import {
   ITINERARY_UI_URI,
+  TRIP_INTAKE_UI_URI,
   buildDailyRouteUrl,
   createTripPlannerServer,
   normalizeItinerary,
@@ -107,6 +108,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
       "list_itineraries",
       "prepare_trip_brief",
       "render_itinerary",
+      "render_trip_intake",
       "restore_itinerary_version",
       "save_itinerary",
       "share_itinerary",
@@ -114,8 +116,12 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
     ],
   );
   const publicTool = tools.tools.find((tool) => tool.name === "render_itinerary");
+  const intakeTool = tools.tools.find((tool) => tool.name === "render_trip_intake");
   const protectedTool = tools.tools.find((tool) => tool.name === "save_itinerary");
   assert.deepEqual(publicTool._meta.securitySchemes, [{ type: "noauth" }]);
+  assert.equal(publicTool._meta.ui.resourceUri, ITINERARY_UI_URI);
+  assert.equal(publicTool._meta["openai/outputTemplate"], ITINERARY_UI_URI);
+  assert.equal(intakeTool._meta.ui.resourceUri, TRIP_INTAKE_UI_URI);
   assert.deepEqual(protectedTool._meta.securitySchemes, [
     { type: "oauth2", scopes: [AUTH_SCOPES.write] },
   ]);
@@ -130,7 +136,49 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const resource = await client.readResource({ uri: ITINERARY_UI_URI });
   assert.equal(resource.contents[0].mimeType, "text/html;profile=mcp-app");
   assert.match(resource.contents[0].text, /Calendario/);
-  assert.match(resource.contents[0].text, /Mapa/);
+  assert.match(resource.contents[0].text, /Rutas/);
+  assert.match(resource.contents[0].text, /toolOutput/);
+  assert.match(resource.contents[0].text, /ui\/notifications\/tool-result/);
+
+  const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
+  assert.deepEqual(intake.structuredContent.actions, ["new", "open", "adjust", "refresh"]);
+  const intakeResource = await client.readResource({ uri: TRIP_INTAKE_UI_URI });
+  assert.match(intakeResource.contents[0].text, /Nuevo viaje/);
+  assert.match(intakeResource.contents[0].text, /area_only/);
+  assert.match(intakeResource.contents[0].text, /undecided/);
+
+  await client.close();
+  await server.close();
+});
+
+test("accepts a provisional lodging base in a ready trip brief", async () => {
+  const server = createTripPlannerServer();
+  const client = new Client({ name: "sendero-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const result = await client.callTool({
+    name: "prepare_trip_brief",
+    arguments: {
+      brief: {
+        destination: "Sevilla, España",
+        startDate: "2027-03-21",
+        endDate: "2027-03-27",
+        lodging: { status: "area_only", name: "Zona provisional", area: "Prado" },
+        travellers: { adults: 2, children: 0 },
+        transport: {
+          modes: ["walk", "public_transit"],
+          hasLicense: false,
+          wantsCar: false,
+        },
+      },
+    },
+  });
+
+  assert.equal(result.structuredContent.ready, true);
+  assert.deepEqual(result.structuredContent.missing, []);
+  assert.match(result.structuredContent.assumptions[0], /Prado/);
 
   await client.close();
   await server.close();
