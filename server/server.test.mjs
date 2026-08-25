@@ -8,6 +8,7 @@ import { sanitizePublicSnapshot } from "../shared/public-snapshot.mjs";
 import {
   ITINERARY_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -196,12 +197,20 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
   assert.equal(requirementsResource.contents[0].mimeType, "text/html;profile=mcp-app");
   assert.equal(requirementsResource.contents[0]._meta.ui.prefersBorder, false);
+  assert.match(requirementsResource.contents[0].text, /<html class="requirements-document" lang="es">/);
+  assert.match(requirementsResource.contents[0].text, /html\.requirements-document #root \{[\s\S]*background: transparent;/);
+  assert.match(requirementsResource.contents[0].text, /\.app-shell\.requirements-shell:not\(\.compact-shell\) \{ width: 100%; max-width: none;/);
   assert.match(requirementsResource.contents[0].text, /ui\/update-model-context/);
 
   const legacyRequirementsResource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_UI_URI });
   assert.equal(legacyRequirementsResource.contents[0].uri, LEGACY_TRIP_REQUIREMENTS_UI_URI);
   assert.equal(legacyRequirementsResource.contents[0]._meta.ui.prefersBorder, false);
   assert.equal(legacyRequirementsResource.contents[0].text, requirementsResource.contents[0].text);
+
+  const legacyRequirementsV2Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V2_UI_URI });
+  assert.equal(legacyRequirementsV2Resource.contents[0].uri, LEGACY_TRIP_REQUIREMENTS_V2_UI_URI);
+  assert.equal(legacyRequirementsV2Resource.contents[0]._meta.ui.prefersBorder, false);
+  assert.equal(legacyRequirementsV2Resource.contents[0].text, requirementsResource.contents[0].text);
 
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
   assert.equal(publicShareResource.contents[0].mimeType, "text/html;profile=mcp-app");

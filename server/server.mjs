@@ -4,6 +4,7 @@ import { AUTH_SCOPES, authorizeTool, toolSecuritySchemes } from "./auth.mjs";
 import {
   ITINERARY_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -25,6 +26,7 @@ import {
 export {
   ITINERARY_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -630,7 +632,7 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.4.1" },
+    { name: "sendero", version: "0.4.2" },
     {
       instructions:
         "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief so every currently known critical gap is requested together in one component; never ask those fields one at a time in text. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use validate_itinerary before saving or presenting and render_itinerary once with the final snapshot. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
@@ -651,6 +653,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("trip-requirements-ui-v1", LEGACY_TRIP_REQUIREMENTS_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_UI_URI),
+  );
+  server.registerResource("trip-requirements-ui-v2", LEGACY_TRIP_REQUIREMENTS_V2_UI_URI, {}, async () =>
+    tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V2_UI_URI),
   );
   server.registerResource("public-share-ui", PUBLIC_SHARE_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin),

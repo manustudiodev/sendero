@@ -12,7 +12,11 @@ const widgets = [
   { exportName: "itineraryWidgetHtml", entry: "src/itinerary/index.jsx" },
   { exportName: "tripIntakeWidgetHtml", entry: "src/intake/index.jsx" },
   { exportName: "tripListWidgetHtml", entry: "src/trips/index.jsx" },
-  { exportName: "tripRequirementsWidgetHtml", entry: "src/requirements/index.jsx" },
+  {
+    exportName: "tripRequirementsWidgetHtml",
+    entry: "src/requirements/index.jsx",
+    documentClass: "requirements-document",
+  },
   { exportName: "publicShareControlWidgetHtml", entry: "src/share-control/index.jsx" },
 ];
 
@@ -24,7 +28,7 @@ function safeInlineScript(source) {
   return source.replaceAll("</script", "<\\/script");
 }
 
-async function bundleWidget(entry) {
+async function bundleWidget(entry, documentClass = "") {
   const result = await build({
     entryPoints: [resolve(webRoot, entry)],
     bundle: true,
@@ -37,8 +41,9 @@ async function bundleWidget(entry) {
   });
   const javascript = result.outputFiles.find((file) => file.path.endsWith(".js")) || result.outputFiles[0];
   if (!javascript) throw new Error(`No JavaScript output generated for ${entry}`);
+  const documentClassAttribute = documentClass ? ` class="${documentClass}"` : "";
   return `<!doctype html>
-<html lang="es">
+<html${documentClassAttribute} lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -53,7 +58,7 @@ async function bundleWidget(entry) {
 
 const outputs = [];
 for (const app of [...widgets, ...pages]) {
-  outputs.push({ ...app, html: await bundleWidget(app.entry) });
+  outputs.push({ ...app, html: await bundleWidget(app.entry, app.documentClass) });
 }
 
 const generated = [

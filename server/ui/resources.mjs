@@ -10,7 +10,8 @@ export const ITINERARY_UI_URI = "ui://sendero/itinerary-v2.html";
 export const TRIP_INTAKE_UI_URI = "ui://sendero/trip-intake-v2.html";
 export const TRIP_LIST_UI_URI = "ui://sendero/trip-list-v1.html";
 export const LEGACY_TRIP_REQUIREMENTS_UI_URI = "ui://sendero/trip-requirements-v1.html";
-export const TRIP_REQUIREMENTS_UI_URI = "ui://sendero/trip-requirements-v2.html";
+export const LEGACY_TRIP_REQUIREMENTS_V2_UI_URI = "ui://sendero/trip-requirements-v2.html";
+export const TRIP_REQUIREMENTS_UI_URI = "ui://sendero/trip-requirements-v3.html";
 export const PUBLIC_SHARE_UI_URI = "ui://sendero/public-share-control-v1.html";
 
 function originFrom(value) {
