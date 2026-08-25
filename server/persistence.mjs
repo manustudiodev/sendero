@@ -6,6 +6,13 @@ const getTrip = makeFunctionReference("trips:get");
 const saveTrip = makeFunctionReference("trips:save");
 const shareTrip = makeFunctionReference("trips:share");
 const restoreTripRevision = makeFunctionReference("trips:restoreRevision");
+const previewPublicShare = makeFunctionReference("publicShares:preview");
+const getPublicShareStatus = makeFunctionReference("publicShares:status");
+const publishPublicShare = makeFunctionReference("publicShares:publish");
+const updatePublicShare = makeFunctionReference("publicShares:update");
+const rotatePublicShare = makeFunctionReference("publicShares:rotate");
+const revokePublicShare = makeFunctionReference("publicShares:revoke");
+const resolvePublicShare = makeFunctionReference("publicShareResolver:resolve");
 
 function requireValue(value, message) {
   if (!value) throw new Error(message);
@@ -25,6 +32,14 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
     const convex = new ConvexHttpClient(url);
     convex.setAuth(token);
     return convex;
+  }
+
+  function publicClient() {
+    const url = requireValue(
+      convexUrl,
+      "Sendero storage is not configured. Set CONVEX_URL before opening a public trip.",
+    );
+    return new ConvexHttpClient(url);
   }
 
   return {
@@ -71,6 +86,50 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
 
     async restore({ tripId, version }) {
       return client().mutation(restoreTripRevision, { tripId, version });
+    },
+
+    async publicPreview(tripId) {
+      return client().query(previewPublicShare, { tripId });
+    },
+
+    async publicStatus(tripId) {
+      return client().query(getPublicShareStatus, { tripId });
+    },
+
+    async publishPublic({
+      tripId,
+      expectedVersion,
+      tokenHash,
+      expiresAt,
+      operationId,
+    }) {
+      return client().mutation(publishPublicShare, {
+        tripId,
+        expectedVersion,
+        tokenHash,
+        expiresAt,
+        operationId,
+      });
+    },
+
+    async updatePublic({ tripId, expectedVersion, operationId }) {
+      return client().mutation(updatePublicShare, {
+        tripId,
+        expectedVersion,
+        operationId,
+      });
+    },
+
+    async rotatePublic({ tripId, tokenHash, operationId }) {
+      return client().mutation(rotatePublicShare, { tripId, tokenHash, operationId });
+    },
+
+    async revokePublic({ tripId, operationId }) {
+      return client().mutation(revokePublicShare, { tripId, operationId });
+    },
+
+    async resolvePublic(token) {
+      return publicClient().action(resolvePublicShare, { token });
     },
   };
 }

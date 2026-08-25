@@ -3,16 +3,43 @@ import { z } from "zod";
 import { AUTH_SCOPES, authorizeTool, toolSecuritySchemes } from "./auth.mjs";
 import {
   ITINERARY_UI_URI,
+  PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
+  TRIP_LIST_UI_URI,
+  TRIP_REQUIREMENTS_UI_URI,
   itineraryResource,
+  publicShareResource,
   tripIntakeResource,
+  tripListResource,
+  tripRequirementsResource,
 } from "./ui/resources.mjs";
+import {
+  buildPublicShareUrl,
+  DEFAULT_PUBLIC_SHARE_DAYS,
+  derivePublicShareToken,
+  hashPublicShareToken,
+  publicShareExpiresAt,
+} from "./public-sharing.mjs";
 
-export { ITINERARY_UI_URI, TRIP_INTAKE_UI_URI } from "./ui/resources.mjs";
+export {
+  ITINERARY_UI_URI,
+  PUBLIC_SHARE_UI_URI,
+  TRIP_INTAKE_UI_URI,
+  TRIP_LIST_UI_URI,
+  TRIP_REQUIREMENTS_UI_URI,
+} from "./ui/resources.mjs";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 const isoTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM");
+const checkedAt = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z)?$/,
+    "Use an ISO date or UTC timestamp",
+  )
+  .refine((value) => !Number.isNaN(Date.parse(value)), "Use a valid date");
 const url = z.string().url();
+const httpUrl = url.refine((value) => /^https?:\/\//i.test(value), "Use an HTTP(S) URL");
 
 const transportMode = z.enum([
   "walk",
@@ -60,7 +87,7 @@ const activitySchema = z.object({
   category: z.string().optional(),
   locked: z.boolean().optional(),
   location: locationSchema.optional(),
-  sourceUrl: url.optional(),
+  sourceUrl: httpUrl.optional(),
   reservation: reservationSchema.optional(),
   travelToNext: z
     .object({
@@ -121,6 +148,73 @@ export const itinerarySchema = z.object({
     .optional(),
 });
 
+const publicActivitySchema = z.object({
+  startTime: isoTime,
+  endTime: isoTime.optional(),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  location: z
+    .object({
+      name: z.string().min(1),
+      address: z.string().min(1).optional(),
+    })
+    .optional(),
+  sourceUrl: httpUrl.optional(),
+  travelToNext: z
+    .object({
+      mode: transportMode,
+      durationMinutes: z.number().int().nonnegative(),
+      summary: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const publicItinerarySchema = z.object({
+  schemaVersion: z.literal(1),
+  title: z.string().min(1),
+  destination: z.string().min(1),
+  startDate: isoDate,
+  endDate: isoDate,
+  baseArea: z.string().min(1).optional(),
+  transport: z.object({ modes: z.array(transportMode).min(1) }),
+  days: z.array(
+    z.object({
+      date: isoDate,
+      title: z.string().min(1),
+      area: z.string().min(1),
+      summary: z.string().optional(),
+      weather: z
+        .object({
+          status: z.enum(["forecast", "seasonal", "unknown"]),
+          summary: z.string().min(1),
+          sourceUrl: httpUrl.optional(),
+          checkedAt: checkedAt.optional(),
+        })
+        .optional(),
+      fallback: z.string().optional(),
+      activities: z.array(publicActivitySchema),
+      route: z
+        .object({
+          origin: z.string().min(1),
+          stops: z.array(z.string().min(1)),
+          returnToLodging: z.boolean(),
+          mapUrl: httpUrl,
+        })
+        .optional(),
+    }),
+  ),
+  sources: z
+    .array(
+      z.object({
+        label: z.string().min(1),
+        url: httpUrl,
+        checkedAt: checkedAt.optional(),
+      }),
+    )
+    .optional(),
+});
+
 const tripBriefSchema = z.object({
   destination: z.string().optional(),
   startDate: isoDate.optional(),
@@ -128,7 +222,7 @@ const tripBriefSchema = z.object({
   lodging: tripBriefLodgingSchema.optional(),
   travellers: z
     .object({
-      adults: z.number().int().positive(),
+      adults: z.number().int().positive().optional(),
       children: z.number().int().nonnegative().optional(),
     })
     .optional(),
@@ -141,9 +235,9 @@ const tripBriefSchema = z.object({
   accessibilityNeeds: z.array(z.string()).optional(),
   transport: z
     .object({
-      modes: z.array(transportMode),
-      hasLicense: z.boolean(),
-      wantsCar: z.boolean(),
+      modes: z.array(transportMode).optional(),
+      hasLicense: z.boolean().optional(),
+      wantsCar: z.boolean().optional(),
     })
     .optional(),
   fixedPlans: z
@@ -160,6 +254,27 @@ const tripBriefSchema = z.object({
   notes: z.string().optional(),
 });
 
+const tripCriticalFieldSchema = z.enum([
+  "destination",
+  "startDate",
+  "endDate",
+  "travellers.adults",
+  "transport.modes",
+]);
+
+const tripCriticalFieldLabels = {
+  destination: "el destino",
+  startDate: "la fecha de llegada",
+  endDate: "la fecha de regreso",
+  "travellers.adults": "la cantidad de adultos",
+  "transport.modes": "cómo quieren moverse",
+};
+
+function humanList(values) {
+  if (values.length < 2) return values[0] || "";
+  return `${values.slice(0, -1).join(", ")} y ${values.at(-1)}`;
+}
+
 const validationSchema = z.object({
   valid: z.boolean(),
   errors: z.array(z.string()),
@@ -167,6 +282,7 @@ const validationSchema = z.object({
 });
 
 const collaboratorRoleSchema = z.enum(["owner", "editor", "viewer"]);
+const tripListPurposeSchema = z.enum(["open", "adjust", "refresh"]);
 const tripSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -182,6 +298,43 @@ const revisionSummarySchema = z.object({
   reason: z.string().optional(),
   createdAt: z.number(),
 });
+const publicShareStateSchema = z.enum([
+  "preview",
+  "published",
+  "updated",
+  "rotated",
+  "active",
+  "not_published",
+  "expired",
+  "revoked",
+]);
+const publicShareActionSchema = z.enum(["publish", "update"]);
+const publicShareSummarySchema = z.object({
+  title: z.string().min(1),
+  destination: z.string().min(1),
+  startDate: isoDate,
+  endDate: isoDate,
+});
+const publicShareOperationIdSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .regex(/^[A-Za-z0-9._:-]+$/, "Use only letters, numbers, dots, underscores, colons, and hyphens");
+const publicShareStatusFields = {
+  state: publicShareStateSchema,
+  tripId: z.string().min(1),
+  title: z.string().min(1).optional(),
+  destination: z.string().min(1).optional(),
+  startDate: isoDate.optional(),
+  endDate: isoDate.optional(),
+  operationId: publicShareOperationIdSchema,
+  currentVersion: z.number().int().positive(),
+  publishedVersion: z.number().int().positive().optional(),
+  isStale: z.boolean(),
+  publishedAt: z.number().optional(),
+  updatedAt: z.number().optional(),
+  expiresAt: z.number().optional(),
+};
 
 function minutes(time) {
   const [hours, mins] = time.split(":").map(Number);
@@ -190,6 +343,24 @@ function minutes(time) {
 
 function dateInRange(date, start, end) {
   return date >= start && date <= end;
+}
+
+function normalizeSearchText(value) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function findTripMatches(trips, query) {
+  const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  return trips.filter((trip) => {
+    const searchable = normalizeSearchText(`${trip.title} ${trip.destination}`);
+    return terms.every((term) => searchable.includes(term));
+  });
 }
 
 function googleTravelMode(mode) {
@@ -342,19 +513,29 @@ export function validateItinerary(itinerary) {
 
 function prepareTripBrief(brief) {
   const missing = [];
+  const criticalFields = [];
   const warnings = [];
   const assumptions = [];
   const blocking = [];
-  if (!brief.destination) missing.push("destination");
-  if (!brief.startDate) missing.push("startDate");
-  if (!brief.endDate) missing.push("endDate");
-  if (!brief.travellers?.adults) missing.push("travellers.adults");
-  if (!brief.transport?.modes?.length) missing.push("transport.modes");
-  if (brief.transport?.wantsCar && !brief.transport.hasLicense) {
+  const requireField = (field) => {
+    missing.push(field);
+    criticalFields.push(field);
+  };
+  if (!brief.destination) requireField("destination");
+  if (!brief.startDate) requireField("startDate");
+  if (!brief.endDate) requireField("endDate");
+  if (!brief.travellers?.adults) requireField("travellers.adults");
+  if (!brief.transport?.modes?.length) requireField("transport.modes");
+  if (
+    (brief.transport?.wantsCar || brief.transport?.modes?.includes("car")) &&
+    !brief.transport?.hasLicense
+  ) {
     blocking.push("A car was requested but no valid driving license is available.");
+    criticalFields.push("transport.modes");
   }
   if (brief.startDate && brief.endDate && brief.startDate > brief.endDate) {
     blocking.push("The start date is after the end date.");
+    criticalFields.push("startDate", "endDate");
   }
   if (!brief.lodging?.address) {
     if (brief.lodging?.area) {
@@ -370,6 +551,7 @@ function prepareTripBrief(brief) {
   return {
     ready: missing.length === 0 && blocking.length === 0,
     missing,
+    criticalFields: [...new Set(criticalFields)],
     warnings,
     assumptions,
     brief: {
@@ -386,7 +568,58 @@ function prepareTripBrief(brief) {
   };
 }
 
-export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}) {
+function newPublicShareOperationId() {
+  return `sendero-share:${crypto.randomUUID()}`;
+}
+
+function publicShareSummary(itinerary) {
+  return {
+    title: itinerary.title,
+    destination: itinerary.destination,
+    startDate: itinerary.startDate,
+    endDate: itinerary.endDate,
+  };
+}
+
+function publicShareStatusOutput({ tripId, itinerary, sharing, operationId, state }) {
+  const summary = itinerary
+    ? publicShareSummary(itinerary)
+    : sharing.summary
+      ? publicShareSummarySchema.parse(sharing.summary)
+      : undefined;
+  return {
+    state: state || sharing.status,
+    tripId,
+    ...(summary || {}),
+    operationId,
+    currentVersion: sharing.currentVersion,
+    ...(sharing.publishedVersion !== undefined
+      ? { publishedVersion: sharing.publishedVersion }
+      : {}),
+    isStale: sharing.isStale,
+    ...(sharing.publishedAt !== undefined ? { publishedAt: sharing.publishedAt } : {}),
+    ...(sharing.updatedAt !== undefined ? { updatedAt: sharing.updatedAt } : {}),
+    ...(sharing.expiresAt !== undefined ? { expiresAt: sharing.expiresAt } : {}),
+  };
+}
+
+function publicShareToolMeta(invoking, invoked) {
+  return {
+    securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]),
+    ui: { resourceUri: PUBLIC_SHARE_UI_URI },
+    "openai/outputTemplate": PUBLIC_SHARE_UI_URI,
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+  };
+}
+
+export function createTripPlannerServer({
+  persistence,
+  auth,
+  widgetOrigin,
+  publicWebUrl = "http://localhost:8788",
+  publicShareSecret,
+} = {}) {
   function storage() {
     if (!persistence) {
       throw new Error("Sendero storage is unavailable in this environment.");
@@ -395,10 +628,10 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.2.0" },
+    { name: "sendero", version: "0.4.0" },
     {
       instructions:
-        "Use render_trip_intake when critical trip details are missing and the host supports UI. Use prepare_trip_brief before planning, validate_itinerary before saving or presenting, and render_itinerary once with the final snapshot. Use the saved-trip tools when the user asks to keep, reopen, share, or restore a plan. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source.",
+        "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief so every currently known critical gap is requested together in one component; never ask those fields one at a time in text. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use validate_itinerary before saving or presenting and render_itinerary once with the final snapshot. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
     },
   );
 
@@ -407,6 +640,15 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
   );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),
+  );
+  server.registerResource("trip-list-ui", TRIP_LIST_UI_URI, {}, async () =>
+    tripListResource(widgetOrigin),
+  );
+  server.registerResource("trip-requirements-ui", TRIP_REQUIREMENTS_UI_URI, {}, async () =>
+    tripRequirementsResource(widgetOrigin),
+  );
+  server.registerResource("public-share-ui", PUBLIC_SHARE_UI_URI, {}, async () =>
+    publicShareResource(widgetOrigin),
   );
 
   server.registerTool(
@@ -419,6 +661,7 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
       outputSchema: {
         ready: z.boolean(),
         missing: z.array(z.string()),
+        criticalFields: z.array(tripCriticalFieldSchema),
         warnings: z.array(z.string()),
         assumptions: z.array(z.string()),
         brief: tripBriefSchema,
@@ -435,7 +678,59 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
             type: "text",
             text: result.ready
               ? "The trip brief is ready for research and planning."
-              : `The trip brief still needs: ${[...result.missing, ...result.warnings].join(", ")}.`,
+              : `Para continuar faltan ${humanList(result.criticalFields.map((field) => tripCriticalFieldLabels[field]))}. Solicita todos estos datos juntos en una sola interacción.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "render_trip_requirements",
+    {
+      title: "Complete essential trip details",
+      description:
+        "Render one compact component containing every critical field that is currently missing or invalid. Call this after prepare_trip_brief with its normalized brief. The server computes the complete field set; do not ask for the same details separately in chat. Do not call when the brief is ready.",
+      inputSchema: {
+        brief: tripBriefSchema,
+        interactionId: z.string().min(1).optional(),
+      },
+      outputSchema: {
+        interactionId: z.string().min(1),
+        brief: tripBriefSchema,
+        fields: z.array(tripCriticalFieldSchema),
+        warnings: z.array(z.string()),
+        ready: z.boolean(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: {
+        securitySchemes: toolSecuritySchemes(),
+        ui: { resourceUri: TRIP_REQUIREMENTS_UI_URI },
+        "openai/outputTemplate": TRIP_REQUIREMENTS_UI_URI,
+        "openai/toolInvocation/invoking": "Preparing the essentials…",
+        "openai/toolInvocation/invoked": "Ready for your details.",
+      },
+    },
+    async ({ brief, interactionId }) => {
+      const prepared = prepareTripBrief(brief);
+      const id = interactionId || `trip-requirements-${crypto.randomUUID()}`;
+      const missingCopy = humanList(
+        prepared.criticalFields.map((field) => tripCriticalFieldLabels[field]),
+      );
+      return {
+        structuredContent: {
+          interactionId: id,
+          brief: prepared.brief,
+          fields: prepared.criticalFields,
+          warnings: prepared.warnings,
+          ready: prepared.ready,
+        },
+        content: [
+          {
+            type: "text",
+            text: prepared.ready
+              ? "The essential trip details are already complete. Continue planning."
+              : `Faltan ${missingCopy}. Reúne todos esos datos en una sola respuesta antes de continuar con el itinerario.`,
           },
         ],
       };
@@ -445,12 +740,16 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
   server.registerTool(
     "render_trip_intake",
     {
-      title: "Open Sendero trip planner",
+      title: "Start a Sendero trip",
       description:
-        "Render Sendero's interactive launcher and trip-intake form. Use this instead of asking several trip setup questions in plain text when the user is starting a trip or critical brief details are missing.",
-      inputSchema: { brief: tripBriefSchema.optional() },
+        "Render Sendero's optional guided intake. Use mode new only when the user asks for a guided form or invokes the New trip shortcut; ordinary natural-language creation should extract known details, prepare the brief, and request only grouped critical gaps. Use mode menu only when the user asks for Sendero's options or their intent is genuinely ambiguous. Do not restate form fields in plain text after rendering.",
+      inputSchema: {
+        brief: tripBriefSchema.optional(),
+        mode: z.enum(["new", "menu"]).optional(),
+      },
       outputSchema: {
         brief: tripBriefSchema,
+        mode: z.enum(["new", "menu"]),
         actions: z.array(z.enum(["new", "open", "adjust", "refresh"])),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
@@ -462,15 +761,16 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
         "openai/toolInvocation/invoked": "Sendero is ready.",
       },
     },
-    async ({ brief = {} }) => ({
+    async ({ brief = {}, mode = "new" }) => ({
       structuredContent: {
         brief,
-        actions: ["new", "open", "adjust", "refresh"],
+        mode,
+        actions: mode === "menu" ? ["new", "open", "adjust", "refresh"] : [],
       },
       content: [
         {
           type: "text",
-          text: "Sendero's trip form is ready. The user can provide dates, travellers, lodging status, transport, pace, and interests in the component.",
+          text: mode === "new" ? "The Sendero trip form is ready." : "Sendero's available actions are ready.",
         },
       ],
     }),
@@ -537,23 +837,71 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
   );
 
   server.registerTool(
-    "list_itineraries",
+    "find_itineraries",
     {
-      title: "List saved itineraries",
+      title: "Find a saved itinerary",
       description:
-        "List the authenticated user's active Sendero trips, including trips shared as editor or viewer.",
-      inputSchema: {},
+        "Search saved Sendero trips when the user naturally names a specific trip or destination. If exactly one match is returned, continue directly from its stable ID without showing a picker. If the reference remains ambiguous, render clickable cards instead. Never expose the stable ID to the user.",
+      inputSchema: { query: z.string().min(1) },
       outputSchema: { trips: z.array(tripSummarySchema) },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]) },
     },
-    async () => {
+    async ({ query }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
+      if (denied) return denied;
+      const trips = await storage().list();
+      const matches = findTripMatches(trips, query);
+      return {
+        structuredContent: { trips: matches },
+        content: [
+          {
+            type: "text",
+            text:
+              matches.length === 1
+                ? "One saved trip matches the user's reference. Continue with it directly."
+                : matches.length > 1
+                  ? "Several saved trips match. Let the user choose from clickable cards."
+                  : "No saved trip matches that reference.",
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "list_itineraries",
+    {
+      title: "List saved itineraries",
+      description:
+        "Render the authenticated user's active Sendero trips as clickable cards, including trips shared as editor or viewer. Set purpose to match the requested next step. Do not reproduce results as a text list, suggest a typed command, or ask the user to type a trip name; wait for the component selection.",
+      inputSchema: { purpose: tripListPurposeSchema.optional() },
+      outputSchema: { trips: z.array(tripSummarySchema), purpose: tripListPurposeSchema },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: {
+        securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]),
+        ui: { resourceUri: TRIP_LIST_UI_URI },
+        "openai/outputTemplate": TRIP_LIST_UI_URI,
+        "openai/toolInvocation/invoking": "Loading saved trips…",
+        "openai/toolInvocation/invoked": "Saved trips ready.",
+      },
+    },
+    async ({ purpose = "open" }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
       if (denied) return denied;
       const trips = await storage().list();
       return {
-        structuredContent: { trips },
-        content: [{ type: "text", text: `Found ${trips.length} saved trip(s).` }],
+        structuredContent: { trips, purpose },
+        content: [
+          {
+            type: "text",
+            text: trips.length
+              ? `Encontré ${trips.length} viaje${trips.length === 1 ? "" : "s"} guardado${trips.length === 1 ? "" : "s"}: ${trips
+                  .map((trip) => `“${trip.title}” en ${trip.destination}, del ${trip.startDate} al ${trip.endDate}`)
+                  .join("; ")}. Si no ves las tarjetas, dime cuál quieres abrir.`
+              : "Todavía no hay viajes guardados. Puedes contarme el destino y las fechas para empezar uno.",
+          },
+        ],
       };
     },
   );
@@ -635,9 +983,9 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
   server.registerTool(
     "share_itinerary",
     {
-      title: "Share itinerary",
+      title: "Invite a trip collaborator",
       description:
-        "Invite a friend to a saved trip as an editor or viewer. Only the trip owner can manage access.",
+        "Invite a specific person by email to collaborate on a saved trip as an editor or viewer. This is not the public read-only link. Only the trip owner can manage access.",
       inputSchema: {
         tripId: z.string().min(1),
         email: z.string().email(),
@@ -662,8 +1010,297 @@ export function createTripPlannerServer({ persistence, auth, widgetOrigin } = {}
             type: "text",
             text:
               result.status === "accepted"
-                ? `${email} can now access this trip as ${role}.`
-                : `${email} has a pending ${role} invitation.`,
+                ? `${email} ya puede colaborar en el viaje con permiso ${role}.`
+                : `La invitación para ${email} quedó pendiente con permiso ${role}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "preview_public_share",
+    {
+      title: "Preview a public trip",
+      description:
+        "Show the owner the exact sanitized, version-specific itinerary that a public read-only link would expose. Always use this before first publication or before updating an existing publication, then wait for explicit confirmation in the component.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        expiresInDays: z.number().int().min(1).max(365).optional(),
+      },
+      outputSchema: {
+        ...publicShareStatusFields,
+        state: z.literal("preview"),
+        action: publicShareActionSchema,
+        itinerary: publicItinerarySchema,
+        expectedVersion: z.number().int().positive(),
+        expiresInDays: z.number().int().min(1).max(365),
+        proposedExpiresAt: z.number().int().positive(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: publicShareToolMeta("Preparing the public preview…", "Public preview ready."),
+    },
+    async ({ tripId, expiresInDays = DEFAULT_PUBLIC_SHARE_DAYS }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const preview = await storage().publicPreview(tripId);
+      const itinerary = publicItinerarySchema.parse(preview.itinerary);
+      const action = preview.sharing.status === "active" ? "update" : "publish";
+      const operationId = newPublicShareOperationId();
+      const proposedExpiresAt = publicShareExpiresAt(expiresInDays);
+      return {
+        structuredContent: {
+          ...publicShareStatusOutput({
+            tripId,
+            itinerary,
+            sharing: preview.sharing,
+            operationId,
+            state: "preview",
+          }),
+          action,
+          itinerary,
+          expectedVersion: preview.version,
+          expiresInDays,
+          proposedExpiresAt,
+        },
+        content: [
+          {
+            type: "text",
+            text:
+              action === "update"
+                ? "Esta es la versión pública exacta que reemplazaría el contenido actual. Confirma en la vista previa si quieres actualizarla."
+                : "Esta es la versión pública exacta que verán quienes tengan el enlace. Confirma en la vista previa si quieres publicarla.",
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "get_public_share_status",
+    {
+      title: "Check public link",
+      description:
+        "Show the owner whether a trip has an active, stale, expired, revoked, or not-yet-created public read-only publication.",
+      inputSchema: { tripId: z.string().min(1) },
+      outputSchema: publicShareStatusFields,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: publicShareToolMeta("Checking the public link…", "Public link status ready."),
+    },
+    async ({ tripId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const sharing = await storage().publicStatus(tripId);
+      const operationId = newPublicShareOperationId();
+      const output = publicShareStatusOutput({
+        tripId,
+        sharing,
+        operationId,
+      });
+      const descriptions = {
+        active: output.isStale
+          ? "El enlace sigue activo, pero el viaje privado tiene cambios que todavía no se publicaron."
+          : "El enlace público está activo y muestra la versión publicada más reciente.",
+        expired: "El enlace público venció y ya no abre el viaje.",
+        revoked: "El enlace público fue revocado y ya no abre el viaje.",
+        not_published: "Este viaje todavía no tiene un enlace público.",
+      };
+      return {
+        structuredContent: output,
+        content: [{ type: "text", text: descriptions[output.state] }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "publish_public_share",
+    {
+      title: "Create a public trip link",
+      description:
+        "After the owner confirms the exact preview, publish that trip version as a frozen, sanitized, read-only page. Recreates expired or revoked publications with a new link.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        expectedVersion: z.number().int().positive(),
+        proposedExpiresAt: z.number().int().positive(),
+        operationId: publicShareOperationIdSchema,
+      },
+      outputSchema: {
+        ...publicShareStatusFields,
+        state: z.literal("published"),
+        publicUrl: url,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      _meta: publicShareToolMeta("Creating the public link…", "Public link created."),
+    },
+    async ({ tripId, expectedVersion, proposedExpiresAt, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const token = derivePublicShareToken({
+        secret: publicShareSecret,
+        purpose: "publish",
+        tripId,
+        operationId,
+      });
+      const result = await storage().publishPublic({
+        tripId,
+        expectedVersion,
+        tokenHash: hashPublicShareToken(token),
+        expiresAt: proposedExpiresAt,
+        operationId,
+      });
+      const publicUrl = buildPublicShareUrl({ baseUrl: publicWebUrl, token });
+      const output = {
+        ...publicShareStatusOutput({
+          tripId,
+          sharing: result,
+          operationId,
+          state: "published",
+        }),
+        publicUrl,
+      };
+      return {
+        structuredContent: output,
+        content: [
+          {
+            type: "text",
+            text: `El enlace público de solo lectura ya está listo: ${publicUrl}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "update_public_share",
+    {
+      title: "Update a public trip",
+      description:
+        "After the owner confirms the exact preview, replace an active public snapshot with the current private trip version while preserving the same link.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        expectedVersion: z.number().int().positive(),
+        operationId: publicShareOperationIdSchema,
+      },
+      outputSchema: {
+        ...publicShareStatusFields,
+        state: z.literal("updated"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      _meta: publicShareToolMeta("Updating the public trip…", "Public trip updated."),
+    },
+    async ({ tripId, expectedVersion, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const result = await storage().updatePublic({ tripId, expectedVersion, operationId });
+      const output = publicShareStatusOutput({
+        tripId,
+        sharing: result,
+        operationId,
+        state: "updated",
+      });
+      return {
+        structuredContent: output,
+        content: [
+          {
+            type: "text",
+            text: "La vista pública ahora refleja la versión que acabas de revisar. El enlace sigue siendo el mismo.",
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "rotate_public_share",
+    {
+      title: "Replace a public trip link",
+      description:
+        "Create a new URL for an active public publication and immediately invalidate the previous URL. Use only after the owner explicitly asks to replace the link, with the fresh operation ID returned by the latest public-link status.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        operationId: publicShareOperationIdSchema,
+      },
+      outputSchema: {
+        ...publicShareStatusFields,
+        state: z.literal("rotated"),
+        publicUrl: url,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      _meta: publicShareToolMeta("Replacing the public link…", "Public link replaced."),
+    },
+    async ({ tripId, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const token = derivePublicShareToken({
+        secret: publicShareSecret,
+        purpose: "rotate",
+        tripId,
+        operationId,
+      });
+      const result = await storage().rotatePublic({
+        tripId,
+        tokenHash: hashPublicShareToken(token),
+        operationId,
+      });
+      const publicUrl = buildPublicShareUrl({ baseUrl: publicWebUrl, token });
+      const output = {
+        ...publicShareStatusOutput({
+          tripId,
+          sharing: result,
+          operationId,
+          state: "rotated",
+        }),
+        publicUrl,
+      };
+      return {
+        structuredContent: output,
+        content: [
+          {
+            type: "text",
+            text: `El enlace anterior dejó de funcionar. Este es el nuevo enlace público: ${publicUrl}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "revoke_public_share",
+    {
+      title: "Revoke a public trip link",
+      description:
+        "Immediately make the current public trip URL unavailable. Use only after the owner explicitly asks to revoke it, with the fresh operation ID returned by the latest public-link status.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        operationId: publicShareOperationIdSchema,
+      },
+      outputSchema: {
+        ...publicShareStatusFields,
+        state: z.union([z.literal("revoked"), z.literal("not_published")]),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      _meta: publicShareToolMeta("Revoking the public link…", "Public link revoked."),
+    },
+    async ({ tripId, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const result = await storage().revokePublic({ tripId, operationId });
+      const state = result.status === "not_published" ? "not_published" : "revoked";
+      const output = publicShareStatusOutput({
+        tripId,
+        sharing: result,
+        operationId,
+        state,
+      });
+      return {
+        structuredContent: output,
+        content: [
+          {
+            type: "text",
+            text:
+              state === "revoked"
+                ? "El enlace público fue revocado y ya no permite abrir el viaje."
+                : "Este viaje no tenía un enlace público activo.",
           },
         ],
       };

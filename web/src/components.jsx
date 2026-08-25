@@ -65,9 +65,24 @@ export function Field({ label, hint, children, className = "" }) {
 }
 
 export function InlineNotice({ tone = "neutral", children }) {
-  return <div className={`notice notice-${tone}`}>{children}</div>;
+  return <div aria-live="polite" className={`notice notice-${tone}`} role={tone === "error" ? "alert" : "status"}>{children}</div>;
 }
 
 export function BrandMark() {
   return <span aria-hidden="true" className="brand-mark">S</span>;
+}
+
+export function SelectionReceipt({ eyebrow = "Selección confirmada", title, description, status, children }) {
+  return (
+    <section aria-live="polite" className="selection-receipt">
+      <span aria-hidden="true" className="selection-check">✓</span>
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+        {description ? <p>{description}</p> : null}
+        {status ? <small>{status}</small> : null}
+        {children ? <div className="receipt-actions">{children}</div> : null}
+      </div>
+    </section>
+  );
 }

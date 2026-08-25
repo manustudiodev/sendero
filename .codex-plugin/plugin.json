@@ -1,6 +1,6 @@
 {
   "name": "sendero",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Create and adapt local-first travel itineraries with live context, realistic routes, and reservation planning.",
   "author": {
     "name": "Manuel Pacheco"
@@ -25,7 +25,8 @@
       "Create a new local-first trip with Sendero.",
       "Open one of my saved Sendero trips.",
       "Adjust my itinerary without losing reservations or fixed plans.",
-      "Refresh my trip using current weather, events, closures, and routes."
+      "Refresh my trip using current weather, events, closures, and routes.",
+      "Share a read-only version of my trip with a secure public link."
     ],
     "brandColor": "#2383E2"
   },

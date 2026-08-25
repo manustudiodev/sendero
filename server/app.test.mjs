@@ -13,10 +13,19 @@ test("reports whether Convex storage is configured", async () => {
     service: "sendero",
     storage: "configured",
     authentication: "not_configured",
+    publicSharing: "not_configured",
   });
 
   const unconfigured = createApp({ convexUrl: "" });
   assert.equal((await (await unconfigured.request("/health")).json()).storage, "not_configured");
+
+  const sharingConfigured = createApp({
+    publicShareSecret: "sendero-health-check-secret-with-at-least-thirty-two-bytes",
+  });
+  assert.equal(
+    (await (await sharingConfigured.request("/health")).json()).publicSharing,
+    "configured",
+  );
 });
 
 test("publishes OAuth protected-resource metadata for ChatGPT and MCP clients", async () => {
@@ -90,4 +99,154 @@ test("requires an authenticated token before reading Convex", async () => {
     convexUrl: "https://example.convex.cloud",
   });
   await assert.rejects(() => persistence.list(), /Sign in before accessing/);
+});
+
+test("serves the public read-only shell without authentication or cross-origin access", async () => {
+  const app = createApp({ convexUrl: "https://example.convex.cloud" });
+  const response = await app.request("/share");
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/html/);
+  assert.match(await response.text(), /api\/public-shares\/resolve/);
+  assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
+  assert.equal(response.headers.get("access-control-allow-origin"), null);
+  assert.equal(response.headers.get("www-authenticate"), null);
+});
+
+test("resolves an active public snapshot without Auth0 and returns no private envelope", async () => {
+  const calls = [];
+  const safePublicItinerary = {
+    schemaVersion: 1,
+    title: "Lisboa a pie",
+    destination: "Lisboa, Portugal",
+    startDate: "2027-05-01",
+    endDate: "2027-05-02",
+    transport: { modes: ["walk"] },
+    days: [
+      {
+        date: "2027-05-01",
+        title: "Lisboa a pie",
+        area: "Baixa",
+        activities: [{ startTime: "10:00", title: "Paseo por la Baixa" }],
+      },
+    ],
+  };
+  const resolverItinerary = {
+    ...safePublicItinerary,
+    privateEnvelope: "PRIVATE",
+    days: [
+      {
+        ...safePublicItinerary.days[0],
+        activities: [
+          {
+            ...safePublicItinerary.days[0].activities[0],
+            locked: true,
+            reservation: { status: "confirmed", note: "PRIVATE" },
+          },
+        ],
+      },
+    ],
+  };
+  const app = createApp({
+    convexUrl: "https://example.convex.cloud",
+    persistenceFactory: (options) => ({
+      async resolvePublic(token) {
+        calls.push({ options, token });
+        return {
+          status: "active",
+          itinerary: resolverItinerary,
+          publishedAt: 1788200000000,
+          updatedAt: 1788300000000,
+          expiresAt: 1790800000000,
+        };
+      },
+    }),
+  });
+
+  const response = await app.request("/api/public-shares/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "x".repeat(43) }),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    share: {
+      itinerary: safePublicItinerary,
+      publishedAt: 1788200000000,
+      updatedAt: 1788300000000,
+      expiresAt: 1790800000000,
+    },
+  });
+  assert.deepEqual(calls, [
+    {
+      options: { convexUrl: "https://example.convex.cloud" },
+      token: "x".repeat(43),
+    },
+  ]);
+  assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+  assert.equal(response.headers.get("www-authenticate"), null);
+});
+
+test("uses one generic response for invalid, expired, revoked, and malformed public links", async () => {
+  const app = createApp({
+    persistenceFactory: () => ({
+      async resolvePublic(token) {
+        return {
+          status: token.startsWith("e")
+            ? "expired"
+            : token.startsWith("r")
+              ? "unavailable"
+              : "not_found",
+        };
+      },
+    }),
+  });
+  const requests = [
+    { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: "m".repeat(43) }) },
+    { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: "e".repeat(43) }) },
+    { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: "r".repeat(43) }) },
+    { headers: { "Content-Type": "application/json" }, body: "{" },
+    { headers: { "Content-Type": "text/plain" }, body: "missing" },
+    { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: "short" }) },
+  ];
+
+  const bodies = [];
+  for (const request of requests) {
+    const response = await app.request("/api/public-shares/resolve", {
+      method: "POST",
+      ...request,
+    });
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("www-authenticate"), null);
+    bodies.push(await response.text());
+  }
+  assert.equal(new Set(bodies).size, 1);
+});
+
+test("does not log a public bearer token when the resolver is unavailable", async () => {
+  const warnings = [];
+  const token = "s".repeat(43);
+  const app = createApp({
+    persistenceFactory: () => ({
+      async resolvePublic() {
+        const error = new Error(`Do not log ${token}`);
+        error.code = `PRIVATE_${token}`;
+        throw error;
+      },
+    }),
+    logger: { warn: (...args) => warnings.push(args) },
+  });
+  const response = await app.request("/api/public-shares/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(JSON.stringify(warnings).includes(token), false);
+  assert.deepEqual(warnings, [
+    ["[sendero.public-share] resolver unavailable", { code: "resolver_failed" }],
+  ]);
 });

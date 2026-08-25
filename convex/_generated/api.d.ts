@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as publicShareResolver from "../publicShareResolver.js";
+import type * as publicShares from "../publicShares.js";
 import type * as trips from "../trips.js";
 
 import type {
@@ -17,6 +19,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  publicShareResolver: typeof publicShareResolver;
+  publicShares: typeof publicShares;
   trips: typeof trips;
 }>;
 

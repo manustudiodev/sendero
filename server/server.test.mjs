@@ -3,9 +3,14 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { AUTH_SCOPES } from "./auth.mjs";
+import { hashPublicShareToken } from "./public-sharing.mjs";
+import { sanitizePublicSnapshot } from "../shared/public-snapshot.mjs";
 import {
   ITINERARY_UI_URI,
+  PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
+  TRIP_LIST_UI_URI,
+  TRIP_REQUIREMENTS_UI_URI,
   buildDailyRouteUrl,
   createTripPlannerServer,
   normalizeItinerary,
@@ -104,24 +109,56 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.deepEqual(
     tools.tools.map((tool) => tool.name).sort(),
     [
+      "find_itineraries",
       "get_itinerary",
+      "get_public_share_status",
       "list_itineraries",
       "prepare_trip_brief",
+      "preview_public_share",
+      "publish_public_share",
       "render_itinerary",
       "render_trip_intake",
+      "render_trip_requirements",
       "restore_itinerary_version",
+      "revoke_public_share",
+      "rotate_public_share",
       "save_itinerary",
       "share_itinerary",
+      "update_public_share",
       "validate_itinerary",
     ],
   );
   const publicTool = tools.tools.find((tool) => tool.name === "render_itinerary");
+  const findTool = tools.tools.find((tool) => tool.name === "find_itineraries");
   const intakeTool = tools.tools.find((tool) => tool.name === "render_trip_intake");
+  const tripListTool = tools.tools.find((tool) => tool.name === "list_itineraries");
+  const requirementsTool = tools.tools.find((tool) => tool.name === "render_trip_requirements");
+  const publicShareTool = tools.tools.find((tool) => tool.name === "preview_public_share");
+  const publicShareMutationTools = [
+    "publish_public_share",
+    "update_public_share",
+    "rotate_public_share",
+    "revoke_public_share",
+  ].map((name) => tools.tools.find((tool) => tool.name === name));
   const protectedTool = tools.tools.find((tool) => tool.name === "save_itinerary");
   assert.deepEqual(publicTool._meta.securitySchemes, [{ type: "noauth" }]);
+  assert.equal(findTool._meta.ui, undefined);
   assert.equal(publicTool._meta.ui.resourceUri, ITINERARY_UI_URI);
   assert.equal(publicTool._meta["openai/outputTemplate"], ITINERARY_UI_URI);
   assert.equal(intakeTool._meta.ui.resourceUri, TRIP_INTAKE_UI_URI);
+  assert.equal(tripListTool._meta.ui.resourceUri, TRIP_LIST_UI_URI);
+  assert.equal(tripListTool._meta["openai/outputTemplate"], TRIP_LIST_UI_URI);
+  assert.equal(requirementsTool._meta.ui.resourceUri, TRIP_REQUIREMENTS_UI_URI);
+  assert.equal(requirementsTool._meta["openai/outputTemplate"], TRIP_REQUIREMENTS_UI_URI);
+  assert.equal(publicShareTool._meta.ui.resourceUri, PUBLIC_SHARE_UI_URI);
+  assert.deepEqual(publicShareTool._meta.securitySchemes, [
+    { type: "oauth2", scopes: [AUTH_SCOPES.share] },
+  ]);
+  for (const tool of publicShareMutationTools) {
+    assert.equal(tool.annotations.openWorldHint, true);
+    assert.equal(tool.inputSchema.properties.operationId.maxLength, 128);
+    assert.equal(tool.inputSchema.properties.operationId.pattern, "^[A-Za-z0-9._:-]+$");
+  }
   assert.deepEqual(protectedTool._meta.securitySchemes, [
     { type: "oauth2", scopes: [AUTH_SCOPES.write] },
   ]);
@@ -141,11 +178,30 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.match(resource.contents[0].text, /ui\/notifications\/tool-result/);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
-  assert.deepEqual(intake.structuredContent.actions, ["new", "open", "adjust", "refresh"]);
+  assert.equal(intake.structuredContent.mode, "new");
+  assert.deepEqual(intake.structuredContent.actions, []);
+  const menu = await client.callTool({ name: "render_trip_intake", arguments: { mode: "menu" } });
+  assert.equal(menu.structuredContent.mode, "menu");
+  assert.deepEqual(menu.structuredContent.actions, ["new", "open", "adjust", "refresh"]);
   const intakeResource = await client.readResource({ uri: TRIP_INTAKE_UI_URI });
   assert.match(intakeResource.contents[0].text, /Nuevo viaje/);
   assert.match(intakeResource.contents[0].text, /area_only/);
   assert.match(intakeResource.contents[0].text, /undecided/);
+
+  const tripListResource = await client.readResource({ uri: TRIP_LIST_UI_URI });
+  assert.match(tripListResource.contents[0].text, /Viaje elegido/);
+  assert.match(tripListResource.contents[0].text, /selectedTrip/);
+
+  const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
+  assert.equal(requirementsResource.contents[0].mimeType, "text/html;profile=mcp-app");
+  assert.match(requirementsResource.contents[0].text, /ui\/update-model-context/);
+
+  const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
+  assert.equal(publicShareResource.contents[0].mimeType, "text/html;profile=mcp-app");
+  assert.match(publicShareResource.contents[0].text, /share-exact-preview/);
+  assert.match(publicShareResource.contents[0].text, /publish_public_share/);
+  assert.match(publicShareResource.contents[0].text, /proposedExpiresAt/);
+  assert.match(publicShareResource.contents[0].text, /Reemplazar enlace/);
 
   await client.close();
   await server.close();
@@ -179,6 +235,121 @@ test("accepts a provisional lodging base in a ready trip brief", async () => {
   assert.equal(result.structuredContent.ready, true);
   assert.deepEqual(result.structuredContent.missing, []);
   assert.match(result.structuredContent.assumptions[0], /Prado/);
+
+  await client.close();
+  await server.close();
+});
+
+test("groups every known critical trip gap into one requirements component", async () => {
+  const server = createTripPlannerServer();
+  const client = new Client({ name: "sendero-requirements-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const prepared = await client.callTool({
+    name: "prepare_trip_brief",
+    arguments: { brief: {} },
+  });
+  assert.equal(prepared.structuredContent.ready, false);
+  assert.deepEqual(prepared.structuredContent.criticalFields, [
+    "destination",
+    "startDate",
+    "endDate",
+    "travellers.adults",
+    "transport.modes",
+  ]);
+  assert.match(prepared.content[0].text, /destino/);
+  assert.match(prepared.content[0].text, /fecha de llegada/);
+  assert.match(prepared.content[0].text, /fecha de regreso/);
+  assert.match(prepared.content[0].text, /cantidad de adultos/);
+  assert.match(prepared.content[0].text, /cómo quieren moverse/);
+  assert.doesNotMatch(prepared.content[0].text, /criticalFields|component above|render_/);
+
+  const partiallyKnown = await client.callTool({
+    name: "prepare_trip_brief",
+    arguments: {
+      brief: {
+        destination: "Sevilla, España",
+        travellers: { adults: 2 },
+      },
+    },
+  });
+  assert.deepEqual(partiallyKnown.structuredContent.criticalFields, [
+    "startDate",
+    "endDate",
+    "transport.modes",
+  ]);
+
+  const requirements = await client.callTool({
+    name: "render_trip_requirements",
+    arguments: {
+      interactionId: "conversation-step-1",
+      brief: { destination: "Buenos Aires, Argentina" },
+    },
+  });
+  assert.equal(requirements.structuredContent.interactionId, "conversation-step-1");
+  assert.deepEqual(requirements.structuredContent.fields, [
+    "startDate",
+    "endDate",
+    "travellers.adults",
+    "transport.modes",
+  ]);
+  assert.equal(requirements.structuredContent.brief.destination, "Buenos Aires, Argentina");
+  assert.match(requirements.content[0].text, /fecha de llegada/);
+  assert.match(requirements.content[0].text, /fecha de regreso/);
+  assert.match(requirements.content[0].text, /cantidad de adultos/);
+  assert.match(requirements.content[0].text, /cómo quieren moverse/);
+  assert.doesNotMatch(requirements.content[0].text, /render_|prepare_|tripId|\{\s*"/);
+
+  const readyWithoutOptionalDetails = await client.callTool({
+    name: "prepare_trip_brief",
+    arguments: {
+      brief: {
+        destination: "Montevideo, Uruguay",
+        startDate: "2027-02-10",
+        endDate: "2027-02-14",
+        travellers: { adults: 2 },
+        transport: { modes: ["walk", "public_transit"], wantsCar: false },
+      },
+    },
+  });
+  assert.equal(readyWithoutOptionalDetails.structuredContent.ready, true);
+  assert.deepEqual(readyWithoutOptionalDetails.structuredContent.criticalFields, []);
+  assert.ok(readyWithoutOptionalDetails.structuredContent.assumptions.length > 0);
+
+  const carWithoutLicense = await client.callTool({
+    name: "prepare_trip_brief",
+    arguments: {
+      brief: {
+        destination: "Mendoza, Argentina",
+        startDate: "2027-04-02",
+        endDate: "2027-04-06",
+        travellers: { adults: 2 },
+        transport: { modes: ["car"], wantsCar: true, hasLicense: false },
+      },
+    },
+  });
+  assert.equal(carWithoutLicense.structuredContent.ready, false);
+  assert.deepEqual(carWithoutLicense.structuredContent.missing, []);
+  assert.deepEqual(carWithoutLicense.structuredContent.criticalFields, ["transport.modes"]);
+  assert.equal(carWithoutLicense.structuredContent.warnings.length, 1);
+
+  const invalidDates = await client.callTool({
+    name: "prepare_trip_brief",
+    arguments: {
+      brief: {
+        destination: "Buenos Aires, Argentina",
+        startDate: "2027-08-26",
+        endDate: "2027-08-13",
+        travellers: { adults: 3 },
+        transport: { modes: ["public_transit"], wantsCar: false },
+      },
+    },
+  });
+  assert.equal(invalidDates.structuredContent.ready, false);
+  assert.deepEqual(invalidDates.structuredContent.missing, []);
+  assert.deepEqual(invalidDates.structuredContent.criticalFields, ["startDate", "endDate"]);
 
   await client.close();
   await server.close();
@@ -271,8 +442,18 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   await server.connect(serverTransport);
   await client.connect(clientTransport);
 
-  const listed = await client.callTool({ name: "list_itineraries", arguments: {} });
+  const found = await client.callTool({
+    name: "find_itineraries",
+    arguments: { query: "LISBOA CLASICOS" },
+  });
+  assert.equal(found.structuredContent.trips.length, 1);
+  assert.equal(found.structuredContent.trips[0].id, "trip_123");
+
+  const listed = await client.callTool({ name: "list_itineraries", arguments: { purpose: "adjust" } });
   assert.equal(listed.structuredContent.trips[0].id, "trip_123");
+  assert.equal(listed.structuredContent.purpose, "adjust");
+  assert.match(listed.content[0].text, /Lisboa entre clásicos y barrios/);
+  assert.doesNotMatch(listed.content[0].text, /trip_123|tripId|list_|get_|render_|\{\s*"/);
 
   const opened = await client.callTool({
     name: "get_itinerary",
@@ -299,7 +480,191 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   assert.equal(restored.structuredContent.version, 3);
   assert.deepEqual(
     calls.map(([name]) => name),
-    ["list", "get", "save", "share", "restore"],
+    ["list", "list", "get", "save", "share", "restore"],
+  );
+
+  await client.close();
+  await server.close();
+});
+
+test("previews, publishes, updates, rotates, and revokes a public snapshot without leaking token internals", async () => {
+  const calls = [];
+  const publicItinerary = sanitizePublicSnapshot(itinerary);
+  let currentVersion = 2;
+  let publishedVersion;
+  let status = "not_published";
+  let publishedAt;
+  let updatedAt;
+  let expiresAt;
+  const summary = {
+    title: publicItinerary.title,
+    destination: publicItinerary.destination,
+    startDate: publicItinerary.startDate,
+    endDate: publicItinerary.endDate,
+  };
+
+  function sharing() {
+    return {
+      status,
+      currentVersion,
+      ...(publishedVersion ? { publishedVersion } : {}),
+      isStale: Boolean(publishedVersion && publishedVersion !== currentVersion),
+      ...(publishedAt ? { publishedAt } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(publishedVersion ? { summary } : {}),
+    };
+  }
+
+  const persistence = {
+    async publicPreview(tripId) {
+      calls.push(["preview", tripId]);
+      return { itinerary: publicItinerary, version: currentVersion, sharing: sharing() };
+    },
+    async publicStatus(tripId) {
+      calls.push(["status", tripId]);
+      return sharing();
+    },
+    async publishPublic(input) {
+      calls.push(["publish", input]);
+      assert.equal(input.expectedVersion, currentVersion);
+      status = "active";
+      publishedVersion = currentVersion;
+      publishedAt ||= 1_800_000_000_000;
+      updatedAt = publishedAt;
+      expiresAt = input.expiresAt;
+      return sharing();
+    },
+    async updatePublic(input) {
+      calls.push(["update", input]);
+      publishedVersion = input.expectedVersion;
+      updatedAt = 1_800_000_100_000;
+      return sharing();
+    },
+    async rotatePublic(input) {
+      calls.push(["rotate", input]);
+      updatedAt = 1_800_000_200_000;
+      return sharing();
+    },
+    async revokePublic(input) {
+      calls.push(["revoke", input]);
+      status = "revoked";
+      updatedAt = 1_800_000_300_000;
+      return sharing();
+    },
+  };
+  const secret = "sendero-test-public-share-secret-with-at-least-32-bytes";
+  const server = createTripPlannerServer({
+    persistence,
+    publicWebUrl: "https://sendero.example",
+    publicShareSecret: secret,
+    auth: {
+      authenticated: true,
+      scopes: Object.values(AUTH_SCOPES),
+      resourceMetadataUrl: "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-public-share-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const preview = await client.callTool({
+    name: "preview_public_share",
+    arguments: { tripId: "trip_public", expiresInDays: 14 },
+  });
+  assert.equal(preview.structuredContent.state, "preview");
+  assert.equal(preview.structuredContent.action, "publish");
+  assert.equal(preview.structuredContent.expectedVersion, 2);
+  assert.equal(preview.structuredContent.itinerary.lodging, undefined);
+  assert.doesNotMatch(JSON.stringify(preview.structuredContent), /Bairro Alto|Reserva existente/);
+
+  const publishArguments = {
+    tripId: "trip_public",
+    expectedVersion: 2,
+    proposedExpiresAt: preview.structuredContent.proposedExpiresAt,
+    operationId: preview.structuredContent.operationId,
+  };
+  const published = await client.callTool({
+    name: "publish_public_share",
+    arguments: publishArguments,
+  });
+  assert.equal(published.structuredContent.state, "published");
+  const firstUrl = new URL(published.structuredContent.publicUrl);
+  const firstToken = firstUrl.hash.slice(1);
+  assert.equal(firstUrl.pathname, "/share");
+  assert.equal(firstToken.length, 43);
+  const publishCall = calls.find(([name]) => name === "publish")[1];
+  assert.equal(publishCall.expiresAt, preview.structuredContent.proposedExpiresAt);
+  assert.equal(publishCall.tokenHash, hashPublicShareToken(firstToken));
+  assert.equal(JSON.stringify(publishCall).includes(firstToken), false);
+  assert.doesNotMatch(JSON.stringify(published.structuredContent), /tokenHash/);
+
+  const publishedRetry = await client.callTool({
+    name: "publish_public_share",
+    arguments: publishArguments,
+  });
+  assert.equal(publishedRetry.structuredContent.publicUrl, published.structuredContent.publicUrl);
+  assert.equal(calls.filter(([name]) => name === "preview").length, 1);
+
+  currentVersion = 3;
+  const stale = await client.callTool({
+    name: "get_public_share_status",
+    arguments: { tripId: "trip_public" },
+  });
+  assert.equal(stale.structuredContent.state, "active");
+  assert.equal(stale.structuredContent.isStale, true);
+  assert.equal(stale.structuredContent.publicUrl, undefined);
+  assert.equal(calls.at(-1)[0], "status");
+
+  const updatePreview = await client.callTool({
+    name: "preview_public_share",
+    arguments: { tripId: "trip_public" },
+  });
+  assert.equal(updatePreview.structuredContent.action, "update");
+  assert.equal(updatePreview.structuredContent.expectedVersion, 3);
+  const updated = await client.callTool({
+    name: "update_public_share",
+    arguments: {
+      tripId: "trip_public",
+      expectedVersion: 3,
+      operationId: updatePreview.structuredContent.operationId,
+    },
+  });
+  assert.equal(updated.structuredContent.state, "updated");
+  assert.equal(updated.structuredContent.isStale, false);
+  assert.equal(updated.structuredContent.publicUrl, undefined);
+  assert.equal(calls.filter(([name]) => name === "preview").length, 2);
+
+  const rotateArguments = {
+    tripId: "trip_public",
+    operationId: "rotate-operation-123",
+  };
+  const rotated = await client.callTool({
+    name: "rotate_public_share",
+    arguments: rotateArguments,
+  });
+  const rotatedRetry = await client.callTool({
+    name: "rotate_public_share",
+    arguments: rotateArguments,
+  });
+  assert.equal(rotated.structuredContent.state, "rotated");
+  assert.notEqual(rotated.structuredContent.publicUrl, published.structuredContent.publicUrl);
+  assert.equal(rotatedRetry.structuredContent.publicUrl, rotated.structuredContent.publicUrl);
+
+  const revoked = await client.callTool({
+    name: "revoke_public_share",
+    arguments: { tripId: "trip_public", operationId: "revoke-operation-123" },
+  });
+  assert.equal(revoked.structuredContent.state, "revoked");
+  assert.equal(revoked.structuredContent.publicUrl, undefined);
+  assert.equal(calls.filter(([name]) => name === "preview").length, 2);
+  assert.doesNotMatch(
+    [preview, published, stale, updated, rotated, revoked]
+      .flatMap((result) => result.content || [])
+      .map((content) => content.text || "")
+      .join(" "),
+    /trip_public|tokenHash|operationId|preview_public_share|publish_public_share/,
   );
 
   await client.close();

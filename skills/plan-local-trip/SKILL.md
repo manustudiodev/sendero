@@ -1,24 +1,37 @@
 ---
 name: plan-local-trip
-description: Create, research, validate, visualize, and reorganize local-first travel itineraries. Use when a user wants a trip plan, day-by-day schedule, local or alternative experiences, weather-aware planning, event discovery, transport and driving constraints, reservation tracking, lodging-based travel times, daily routes, or changes to an existing itinerary.
+description: Create, research, validate, and visualize a new local-first travel itinerary. Use when a user wants a new trip plan, day-by-day schedule, local or alternative experiences, weather-aware planning, event discovery, transport and driving constraints, reservation planning, lodging-based travel times, or daily routes. Use the specialized Sendero adjustment or refresh skill for changes to an existing saved itinerary.
 ---
 
-# Plan Local Trip
+# Plan a New Local Trip
 
-Create practical plans that balance essential sights with neighborhood life, independent culture, alternative venues, and realistic travel time. Treat the itinerary as a living plan rather than a one-time answer.
+Create practical plans that balance essential sights with neighborhood life, independent culture, alternative venues, and realistic travel time.
 
 ## Workflow
 
 ### 1. Capture the trip brief
 
-Collect or infer:
+Start from the user's natural-language request. Extract every supplied fact before opening a component or asking a question. Collect or infer:
 
 - Destination, dates, party size, ages when relevant, budget, pace, and interests.
 - Lodging name or address. Use it as the origin and default end point of each day.
 - Preferred transport modes, driving-license status, willingness to rent a car, accessibility needs, and walking tolerance.
 - Must-do items, unwanted activities, dietary needs, existing reservations, fixed commitments, and intentionally free time.
 
-When critical details are missing and component UI is available, call `render_trip_intake` once instead of asking several setup questions in plain text. Otherwise ask no more than three concise questions at once. Do not block when a safe provisional assumption can be labeled clearly; a neighborhood or clearly identified central base is enough until the exact lodging is known. Before planning, call `prepare_trip_brief` to expose critical missing fields, assumptions, and incompatible transport choices.
+Pass the extracted values to `prepare_trip_brief` before deciding what to ask next. Then follow its complete critical-missing-field result:
+
+- If no critical fields are missing, continue directly to research and planning. Do not open an intake form merely because the user said “create a trip.”
+- If one or several critical fields are missing, call `render_trip_requirements` once with the normalized brief. The server recomputes the complete currently known set and the component presents that full batch in one interaction, preserves known values, and omits fields already answered.
+- If component UI is unavailable, ask for that same complete batch in one concise message. Do not split destination, dates, party size, transport, or other already-known blockers into successive turns.
+- Defer a question only when whether it is needed depends on an answer that is not known yet. For example, ask about a driving licence in the same component when car travel is already selected; otherwise wait until the user chooses a car before asking it.
+
+After the user submits the grouped requirements or the guided intake, disable duplicate submission immediately and replace the editable controls with a compact, inert receipt of what was provided before sending exactly one continuation.
+
+Use `render_trip_intake` with `mode: "new"` only when the user deliberately selects the optional guided **Nuevo viaje** shortcut or explicitly asks for the full setup form. Use `mode: "menu"` only when the user asks what Sendero can do or their intent remains genuinely ambiguous. After rendering any component, do not repeat its fields or controls in text.
+
+Do not block when a safe provisional assumption can be labeled clearly; a neighborhood or clearly identified central base is enough until the exact lodging is known.
+
+Component continuations must carry structured context internally. In visible prose, respond naturally; never show tool names, stable IDs, serialized payloads, JSON, or instructions to type a pseudo-command.
 
 ### 2. Research current conditions
 
@@ -50,18 +63,9 @@ For every reservable item, include status, official URL, recommended deadline, c
 
 Do not purchase, book, cancel, or send personal information without explicit confirmation immediately before the external action. A recommendation or draft itinerary is not permission to transact.
 
-### 5. Reorganize without losing intent
+### 5. Hand off later changes
 
-When weather, availability, delays, or user preferences change:
-
-1. Identify the affected dates and locked items.
-2. Preserve confirmed reservations unless the user explicitly permits moving them.
-3. Recluster only the affected activities by area and opening hours.
-4. Recalculate transfers and daily routes from the lodging.
-5. Revalidate operational facts that may have changed.
-6. Explain the material differences briefly and render the updated snapshot.
-
-Never silently drop a requested activity. Move it, replace it with an agreed alternative, or list it as unresolved.
+If the user moves, adds, removes, replaces, or reschedules activities in an existing saved trip, continue with `sendero-adjust-trip`. If the request is primarily to recheck unstable facts such as weather, events, closures, schedules, transport, or availability, continue with `sendero-refresh-trip`. Do not keep this creation workflow active after that handoff.
 
 ## Quality bar
 

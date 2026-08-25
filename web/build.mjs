@@ -11,6 +11,13 @@ const styles = await readFile(resolve(webRoot, "src/styles.css"), "utf8");
 const widgets = [
   { exportName: "itineraryWidgetHtml", entry: "src/itinerary/index.jsx" },
   { exportName: "tripIntakeWidgetHtml", entry: "src/intake/index.jsx" },
+  { exportName: "tripListWidgetHtml", entry: "src/trips/index.jsx" },
+  { exportName: "tripRequirementsWidgetHtml", entry: "src/requirements/index.jsx" },
+  { exportName: "publicShareControlWidgetHtml", entry: "src/share-control/index.jsx" },
+];
+
+const pages = [
+  { exportName: "publicSharePageHtml", entry: "src/share/index.jsx" },
 ];
 
 function safeInlineScript(source) {
@@ -45,8 +52,8 @@ async function bundleWidget(entry) {
 }
 
 const outputs = [];
-for (const widget of widgets) {
-  outputs.push({ ...widget, html: await bundleWidget(widget.entry) });
+for (const app of [...widgets, ...pages]) {
+  outputs.push({ ...app, html: await bundleWidget(app.entry) });
 }
 
 const generated = [
@@ -57,4 +64,4 @@ const generated = [
 
 await mkdir(dirname(generatedPath), { recursive: true });
 await writeFile(generatedPath, generated);
-console.log(`Built ${outputs.length} Sendero UI components.`);
+console.log(`Built ${widgets.length} Sendero UI components and ${pages.length} public page.`);

@@ -83,8 +83,19 @@ export async function sendFollowUpMessage(prompt) {
   }
   return request("ui/message", {
     role: "user",
-    content: [{ type: "text", text: prompt }],
+    content: { type: "text", text: prompt },
   });
+}
+
+export async function updateModelContext({ content, structuredContent }) {
+  const params = {
+    ...(content ? { content } : {}),
+    ...(structuredContent ? { structuredContent } : {}),
+  };
+  if (window.openai?.updateModelContext) {
+    return window.openai.updateModelContext(params);
+  }
+  return request("ui/update-model-context", params, 4000);
 }
 
 export async function callTool(name, args) {

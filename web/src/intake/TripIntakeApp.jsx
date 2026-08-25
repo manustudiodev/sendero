@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { BrandMark, Button, ChoiceChips, Field, InlineNotice, SegmentedControl } from "../components.jsx";
-import { sendFollowUpMessage, setWidgetState, useToolOutput, widgetState } from "../bridge.js";
+import { useEffect, useRef, useState } from "react";
+import { BrandMark, Button, ChoiceChips, Field, InlineNotice, SegmentedControl, SelectionReceipt } from "../components.jsx";
+import { sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
+import { tripIntakeContinuation } from "../conversation.js";
 
 const launcherActions = [
   { id: "new", title: "Nuevo viaje", description: "Fechas, gustos y logística" },
@@ -66,17 +67,23 @@ function toBrief(draft) {
 export function TripIntakeApp() {
   const { output } = useToolOutput();
   const saved = widgetState();
-  const [activeAction, setActiveAction] = useState(saved.activeAction || "new");
+  const pendingRef = useRef(false);
+  const [view, setView] = useState(saved.view || output?.mode || "new");
+  const [completedAction, setCompletedAction] = useState(saved.completedAction || null);
   const [draft, setDraft] = useState(() => saved.draft || draftFromBrief(output?.brief));
-  const [status, setStatus] = useState({ state: "idle", message: "" });
+  const [status, setStatus] = useState(saved.status || { state: "idle", message: "" });
 
   useEffect(() => {
     if (output?.brief && !saved.draft) setDraft(draftFromBrief(output.brief));
   }, [output]);
 
   useEffect(() => {
-    setWidgetState({ activeAction, draft });
-  }, [activeAction, draft]);
+    if (output?.mode && !saved.view) setView(output.mode);
+  }, [output?.mode]);
+
+  useEffect(() => {
+    setWidgetState({ view, draft, completedAction, status });
+  }, [view, draft, completedAction, status]);
 
   function update(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -84,24 +91,41 @@ export function TripIntakeApp() {
   }
 
   async function sendAction(action) {
-    setActiveAction(action);
-    if (action === "new") return;
-    const prompts = {
-      open: "Usa Sendero para listar mis viajes guardados. Muéstrame opciones para abrir uno.",
-      adjust: "Quiero ajustar un viaje guardado en Sendero. Pregúntame cuál y qué necesito cambiar, preservando reservas confirmadas y actividades fijas.",
-      refresh: "Quiero actualizar un viaje guardado en Sendero con clima, eventos, cierres, reservas y transporte vigentes. Pregúntame cuál viaje debo actualizar.",
+    if (pendingRef.current) return;
+    if (action === "new") {
+      setView("new");
+      setWidgetState({ view: "new", draft, completedAction: null });
+      return;
+    }
+    const selected = launcherActions.find((item) => item.id === action);
+    const receipt = {
+      id: action,
+      title: selected.title,
+      description: selected.description,
     };
-    setStatus({ state: "sending", message: "Enviando a ChatGPT…" });
+    setCompletedAction(receipt);
+    setView("complete");
+    setWidgetState({ view: "complete", draft, completedAction: receipt });
+    const prompts = {
+      open: "Muéstrame mis viajes guardados como opciones para elegir.",
+      adjust: "Quiero elegir uno de mis viajes guardados para ajustarlo sin perder reservas confirmadas ni actividades fijas.",
+      refresh: "Quiero elegir uno de mis viajes guardados para actualizar su clima, eventos, cierres, transporte y reservas vigentes.",
+    };
+    pendingRef.current = true;
+    setStatus({ state: "sending", message: "Continuando en la conversación…" });
     try {
       await sendFollowUpMessage(prompts[action]);
-      setStatus({ state: "sent", message: "Listo. Sendero continuará en la conversación." });
-    } catch (error) {
-      setStatus({ state: "error", message: error.message || "No se pudo continuar en ChatGPT." });
+      setStatus({ state: "sent", message: "Selección enviada." });
+    } catch {
+      setStatus({ state: "error", message: "No pudimos continuar todavía. Inténtalo de nuevo." });
+    } finally {
+      pendingRef.current = false;
     }
   }
 
   async function submit(event) {
     event.preventDefault();
+    if (pendingRef.current) return;
     if (!draft.destination || !draft.startDate || !draft.endDate || !draft.transportModes.length) {
       setStatus({ state: "error", message: "Completa destino, fechas y al menos un medio de transporte." });
       return;
@@ -120,34 +144,69 @@ export function TripIntakeApp() {
     }
 
     const brief = toBrief(draft);
-    const prompt = `Quiero crear un nuevo viaje con Sendero. Usa prepare_trip_brief con estos datos, investiga información vigente, crea un itinerario local-first, valídalo y muéstralo con el componente de Sendero. Si el alojamiento no está decidido, usa una base provisional claramente indicada.\n\n${JSON.stringify(brief, null, 2)}`;
-    setStatus({ state: "sending", message: "Enviando tu viaje a ChatGPT…" });
+    const receipt = {
+      id: "new",
+      title: draft.destination.trim(),
+      description: `${draft.startDate} — ${draft.endDate} · ${Number(draft.adults) + Number(draft.children)} viajero${Number(draft.adults) + Number(draft.children) === 1 ? "" : "s"}`,
+    };
+    setCompletedAction(receipt);
+    setView("complete");
+    setWidgetState({ view: "complete", draft, completedAction: receipt });
+    pendingRef.current = true;
+    setStatus({ state: "sending", message: "Preparando el itinerario…" });
+    const continuation = tripIntakeContinuation(brief);
     try {
-      await sendFollowUpMessage(prompt);
-      setStatus({ state: "sent", message: "Listo. Sendero ya está preparando el itinerario." });
-    } catch (error) {
-      setStatus({ state: "error", message: error.message || "No se pudo iniciar el viaje." });
+      let contextUpdated = false;
+      try {
+        await updateModelContext(continuation.context);
+        contextUpdated = true;
+      } catch {
+        // Fall back to a readable message when the host cannot update model context.
+      }
+      await sendFollowUpMessage(contextUpdated
+        ? continuation.visibleMessage
+        : continuation.fallbackMessage);
+      setStatus({ state: "sent", message: "Datos enviados. Sendero continúa en la conversación." });
+    } catch {
+      setStatus({ state: "error", message: "No pudimos iniciar el viaje todavía. Inténtalo de nuevo." });
+    } finally {
+      pendingRef.current = false;
     }
+  }
+
+  if (view === "complete" && completedAction) {
+    return (
+      <main className="app-shell intake-shell compact-shell">
+        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
+        <SelectionReceipt
+          description={completedAction.description}
+          eyebrow={completedAction.id === "new" ? "Viaje solicitado" : "Opción elegida"}
+          status={status.message}
+          title={completedAction.title}
+        />
+      </main>
+    );
   }
 
   return (
     <main className="app-shell intake-shell">
       <div className="brand-line"><BrandMark /><span>Sendero</span></div>
-      <header className="app-header">
-        <div className="header-copy"><p className="eyebrow">Planifica a tu manera</p><h1>¿Qué quieres hacer?</h1><p className="meta">Organiza viajes reales con contexto local, rutas y reservas.</p></div>
-      </header>
-
-      <nav aria-label="Acciones de Sendero" className="launcher-grid">
-        {launcherActions.map((action) => (
-          <button className={`launcher-card ${activeAction === action.id ? "is-active" : ""}`} key={action.id} onClick={() => sendAction(action.id)} type="button">
-            <strong>{action.title}</strong><span>{action.description}</span>
-          </button>
-        ))}
-      </nav>
-
-      {activeAction === "new" ? (
+      {view === "menu" ? (
+        <>
+          <header className="app-header">
+            <div className="header-copy"><p className="eyebrow">Planifica a tu manera</p><h1>¿Qué quieres hacer?</h1><p className="meta">Organiza viajes reales con contexto local, rutas y reservas.</p></div>
+          </header>
+          <nav aria-label="Acciones de Sendero" className="launcher-grid">
+            {launcherActions.map((action) => (
+              <button className="launcher-card" key={action.id} onClick={() => sendAction(action.id)} type="button">
+                <strong>{action.title}</strong><span>{action.description}</span>
+              </button>
+            ))}
+          </nav>
+        </>
+      ) : (
         <form className="form-card" onSubmit={submit}>
-          <div className="form-heading"><div><h2>Cuéntanos lo esencial</h2><p>Puedes completar el resto conversando después.</p></div></div>
+          <div className="form-heading"><div><p className="eyebrow">Nuevo viaje</p><h1>Cuéntanos lo esencial</h1><p>Puedes completar el resto conversando después.</p></div></div>
           <div className="form-grid">
             <Field label="Destino"><input onChange={(event) => update("destination", event.target.value)} placeholder="Sevilla, España" required value={draft.destination} /></Field>
             <div className="number-row">
@@ -170,7 +229,7 @@ export function TripIntakeApp() {
           {status.message ? <InlineNotice tone={status.state === "error" ? "error" : "neutral"}>{status.message}</InlineNotice> : null}
           <footer className="form-footer"><p>Ninguna reserva se realizará sin tu confirmación.</p><Button disabled={status.state === "sending"} variant="primary" type="submit">{status.state === "sending" ? "Preparando…" : "Crear itinerario"}</Button></footer>
         </form>
-      ) : status.message ? <InlineNotice tone={status.state === "error" ? "error" : "neutral"}>{status.message}</InlineNotice> : null}
+      )}
     </main>
   );
 }
