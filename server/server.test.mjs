@@ -7,8 +7,13 @@ import { hashPublicShareToken } from "./public-sharing.mjs";
 import { sanitizePublicSnapshot } from "../shared/public-snapshot.mjs";
 import {
   ITINERARY_UI_URI,
+  LEGACY_ITINERARY_UI_URI,
+  LEGACY_PUBLIC_SHARE_UI_URI,
+  LEGACY_TRIP_INTAKE_UI_URI,
+  LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -18,6 +23,19 @@ import {
   normalizeItinerary,
   validateItinerary,
 } from "./server.mjs";
+
+function assertInlineWidgetResource(resource, expectedUri) {
+  const content = resource.contents[0];
+  assert.equal(content.uri, expectedUri);
+  assert.equal(content.mimeType, "text/html;profile=mcp-app");
+  assert.equal(content._meta.ui.prefersBorder, false);
+  assert.match(content.text, /<html class="widget-document" lang="es">/);
+  assert.match(content.text, /html\.widget-document #root \{[\s\S]*background: transparent;/);
+  assert.match(content.text, /html\.widget-document \.app-shell \{[\s\S]*width: 100%;[\s\S]*max-width: none;[\s\S]*padding: 0;/);
+  assert.match(content.text, /notifyIntrinsicHeight/);
+  assert.match(content.text, /ui\/notifications\/size-changed/);
+  assert.doesNotMatch(content.text, /brand-line/);
+}
 
 const itinerary = {
   title: "Lisboa entre clásicos y barrios",
@@ -134,6 +152,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const findTool = tools.tools.find((tool) => tool.name === "find_itineraries");
   const intakeTool = tools.tools.find((tool) => tool.name === "render_trip_intake");
   const tripListTool = tools.tools.find((tool) => tool.name === "list_itineraries");
+  const prepareTool = tools.tools.find((tool) => tool.name === "prepare_trip_brief");
   const requirementsTool = tools.tools.find((tool) => tool.name === "render_trip_requirements");
   const publicShareTool = tools.tools.find((tool) => tool.name === "preview_public_share");
   const publicShareMutationTools = [
@@ -150,6 +169,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(intakeTool._meta.ui.resourceUri, TRIP_INTAKE_UI_URI);
   assert.equal(tripListTool._meta.ui.resourceUri, TRIP_LIST_UI_URI);
   assert.equal(tripListTool._meta["openai/outputTemplate"], TRIP_LIST_UI_URI);
+  assert.deepEqual(prepareTool._meta.ui.visibility, ["model", "app"]);
+  assert.equal(prepareTool._meta["openai/widgetAccessible"], true);
+  assert.equal(prepareTool.annotations.readOnlyHint, true);
   assert.equal(requirementsTool._meta.ui.resourceUri, TRIP_REQUIREMENTS_UI_URI);
   assert.equal(requirementsTool._meta["openai/outputTemplate"], TRIP_REQUIREMENTS_UI_URI);
   assert.equal(publicShareTool._meta.ui.resourceUri, PUBLIC_SHARE_UI_URI);
@@ -173,11 +195,15 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(result.structuredContent.validation.valid, true);
 
   const resource = await client.readResource({ uri: ITINERARY_UI_URI });
-  assert.equal(resource.contents[0].mimeType, "text/html;profile=mcp-app");
+  assertInlineWidgetResource(resource, ITINERARY_UI_URI);
   assert.match(resource.contents[0].text, /Calendario/);
   assert.match(resource.contents[0].text, /Rutas/);
   assert.match(resource.contents[0].text, /toolOutput/);
   assert.match(resource.contents[0].text, /ui\/notifications\/tool-result/);
+
+  const legacyItineraryResource = await client.readResource({ uri: LEGACY_ITINERARY_UI_URI });
+  assertInlineWidgetResource(legacyItineraryResource, LEGACY_ITINERARY_UI_URI);
+  assert.equal(legacyItineraryResource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");
@@ -186,21 +212,29 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(menu.structuredContent.mode, "menu");
   assert.deepEqual(menu.structuredContent.actions, ["new", "open", "adjust", "refresh"]);
   const intakeResource = await client.readResource({ uri: TRIP_INTAKE_UI_URI });
+  assertInlineWidgetResource(intakeResource, TRIP_INTAKE_UI_URI);
   assert.match(intakeResource.contents[0].text, /Nuevo viaje/);
   assert.match(intakeResource.contents[0].text, /area_only/);
   assert.match(intakeResource.contents[0].text, /undecided/);
 
+  const legacyIntakeResource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_UI_URI });
+  assertInlineWidgetResource(legacyIntakeResource, LEGACY_TRIP_INTAKE_UI_URI);
+  assert.equal(legacyIntakeResource.contents[0].text, intakeResource.contents[0].text);
+
   const tripListResource = await client.readResource({ uri: TRIP_LIST_UI_URI });
+  assertInlineWidgetResource(tripListResource, TRIP_LIST_UI_URI);
   assert.match(tripListResource.contents[0].text, /Viaje elegido/);
   assert.match(tripListResource.contents[0].text, /selectedTrip/);
 
+  const legacyTripListResource = await client.readResource({ uri: LEGACY_TRIP_LIST_UI_URI });
+  assertInlineWidgetResource(legacyTripListResource, LEGACY_TRIP_LIST_UI_URI);
+  assert.equal(legacyTripListResource.contents[0].text, tripListResource.contents[0].text);
+
   const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
-  assert.equal(requirementsResource.contents[0].mimeType, "text/html;profile=mcp-app");
-  assert.equal(requirementsResource.contents[0]._meta.ui.prefersBorder, false);
-  assert.match(requirementsResource.contents[0].text, /<html class="requirements-document" lang="es">/);
-  assert.match(requirementsResource.contents[0].text, /html\.requirements-document #root \{[\s\S]*background: transparent;/);
-  assert.match(requirementsResource.contents[0].text, /\.app-shell\.requirements-shell:not\(\.compact-shell\) \{ width: 100%; max-width: none;/);
+  assertInlineWidgetResource(requirementsResource, TRIP_REQUIREMENTS_UI_URI);
   assert.match(requirementsResource.contents[0].text, /ui\/update-model-context/);
+  assert.match(requirementsResource.contents[0].text, /prepare_trip_brief/);
+  assert.match(requirementsResource.contents[0].text, /brief_ready/);
 
   const legacyRequirementsResource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_UI_URI });
   assert.equal(legacyRequirementsResource.contents[0].uri, LEGACY_TRIP_REQUIREMENTS_UI_URI);
@@ -212,12 +246,20 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(legacyRequirementsV2Resource.contents[0]._meta.ui.prefersBorder, false);
   assert.equal(legacyRequirementsV2Resource.contents[0].text, requirementsResource.contents[0].text);
 
+  const legacyRequirementsV3Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V3_UI_URI });
+  assertInlineWidgetResource(legacyRequirementsV3Resource, LEGACY_TRIP_REQUIREMENTS_V3_UI_URI);
+  assert.equal(legacyRequirementsV3Resource.contents[0].text, requirementsResource.contents[0].text);
+
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
-  assert.equal(publicShareResource.contents[0].mimeType, "text/html;profile=mcp-app");
+  assertInlineWidgetResource(publicShareResource, PUBLIC_SHARE_UI_URI);
   assert.match(publicShareResource.contents[0].text, /share-exact-preview/);
   assert.match(publicShareResource.contents[0].text, /publish_public_share/);
   assert.match(publicShareResource.contents[0].text, /proposedExpiresAt/);
   assert.match(publicShareResource.contents[0].text, /Reemplazar enlace/);
+
+  const legacyPublicShareResource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_UI_URI });
+  assertInlineWidgetResource(legacyPublicShareResource, LEGACY_PUBLIC_SHARE_UI_URI);
+  assert.equal(legacyPublicShareResource.contents[0].text, publicShareResource.contents[0].text);
 
   await client.close();
   await server.close();

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, ChoiceChips, Field, InlineNotice, SelectionReceipt } from "../components.jsx";
-import { sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
+import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { briefReceiptSummary, tripRequirementsContinuation } from "../conversation.js";
-
-const criticalFields = ["destination", "startDate", "endDate", "travellers.adults", "transport.modes"];
+import { normalizeToolOutput } from "../tool-output.js";
+import { draftFromBrief, initialRequirementsStatus, mergeBrief, requestedFields } from "./state.js";
 
 const transportOptions = [
   { value: "walk", label: "A pie" },
@@ -13,75 +13,43 @@ const transportOptions = [
   { value: "car", label: "Auto" },
 ];
 
-function requestedFields(output) {
-  const values = output?.fields || output?.criticalMissing || output?.missing || [];
-  const requested = new Set(Array.isArray(values) ? values : []);
-  return criticalFields.filter((field) => requested.has(field));
-}
-
-function draftFromBrief(brief = {}) {
-  return {
-    destination: brief.destination || "",
-    startDate: brief.startDate || "",
-    endDate: brief.endDate || "",
-    adults: brief.travellers?.adults ?? "",
-    transportModes: Array.isArray(brief.transport?.modes) ? brief.transport.modes : [],
-    hasLicense: Boolean(brief.transport?.hasLicense),
-  };
-}
-
-function mergeBrief(brief = {}, draft) {
-  return {
-    ...brief,
-    destination: draft.destination.trim(),
-    startDate: draft.startDate,
-    endDate: draft.endDate,
-    travellers: {
-      ...(brief.travellers || {}),
-      adults: Number(draft.adults),
-    },
-    transport: {
-      ...(brief.transport || {}),
-      modes: draft.transportModes,
-      wantsCar: draft.transportModes.includes("car"),
-      hasLicense: draft.transportModes.includes("car") ? Boolean(draft.hasLicense) : false,
-    },
-  };
-}
-
-function initialStatus(saved) {
-  if (saved.status?.state === "loading") {
-    return { state: "error", message: "La continuación quedó pendiente. Puedes intentarlo otra vez." };
-  }
-  return saved.status || { state: "idle", message: "" };
-}
-
 export function TripRequirementsApp() {
   const { output } = useToolOutput();
-  const saved = useMemo(() => widgetState(), []);
+  const saved = useRef(widgetState()).current;
   const pendingRef = useRef(false);
+  const interactionIdRef = useRef(saved.interactionId || output?.interactionId);
+  const outputHydratedRef = useRef(Boolean(output?.brief));
+  const draftTouchedRef = useRef(false);
   const [fields, setFields] = useState(() => saved.fields || requestedFields(output));
+  const [baseBrief, setBaseBrief] = useState(() => saved.baseBrief || output?.brief || null);
   const [draft, setDraft] = useState(() => saved.draft || draftFromBrief(output?.brief));
   const [completed, setCompleted] = useState(saved.completed || null);
-  const [status, setStatus] = useState(() => initialStatus(saved));
+  const [continuation, setContinuation] = useState(saved.continuation || null);
+  const [status, setStatus] = useState(() => initialRequirementsStatus(saved));
 
   useEffect(() => {
-    if (!output) return;
+    if (!output?.brief || outputHydratedRef.current) return;
+    outputHydratedRef.current = true;
+    if (!interactionIdRef.current && output.interactionId) interactionIdRef.current = output.interactionId;
     if (!saved.fields?.length) setFields(requestedFields(output));
-    if (!saved.draft) setDraft(draftFromBrief(output.brief));
-  }, [output, saved.draft, saved.fields]);
+    if (!saved.baseBrief && output.brief) setBaseBrief(output.brief);
+    if (!saved.draft && !draftTouchedRef.current) setDraft(draftFromBrief(output.brief));
+  }, [output, saved.baseBrief, saved.draft, saved.fields]);
 
   useEffect(() => {
     setWidgetState({
-      interactionId: output?.interactionId || saved.interactionId,
+      interactionId: interactionIdRef.current,
       fields,
+      baseBrief,
       draft,
       completed,
+      continuation,
       status,
     });
-  }, [completed, draft, fields, output?.interactionId, saved.interactionId, status]);
+  }, [baseBrief, completed, continuation, draft, fields, status]);
 
   function update(field, value) {
+    draftTouchedRef.current = true;
     setDraft((current) => ({ ...current, [field]: value }));
     setStatus({ state: "idle", message: "" });
   }
@@ -97,29 +65,131 @@ export function TripRequirementsApp() {
     return "";
   }
 
-  async function continueConversation(brief) {
+  async function deliverContinuation(nextContinuation, receipt) {
+    const dispatching = { ...nextContinuation, phase: "dispatching" };
+    const sending = { state: "loading", message: "Continuando con tu viaje…" };
+    setContinuation(dispatching);
+    setStatus(sending);
+    await Promise.resolve(setWidgetState({
+      interactionId: interactionIdRef.current,
+      fields,
+      baseBrief: nextContinuation.brief,
+      draft,
+      completed: receipt,
+      continuation: dispatching,
+      status: sending,
+    }));
+
+    const next = tripRequirementsContinuation({
+      brief: nextContinuation.brief,
+      fields: nextContinuation.fields,
+      interactionId: interactionIdRef.current,
+    });
+    try {
+      try {
+        await updateModelContext(next.context);
+      } catch {
+        // The self-contained follow-up below carries the same critical details.
+      }
+      await sendFollowUpMessage(next.visibleMessage);
+      const success = { state: "success", message: "Listo. Sendero continúa en la conversación." };
+      const sent = { ...dispatching, phase: "sent" };
+      setContinuation(sent);
+      setStatus(success);
+      try {
+        await Promise.resolve(setWidgetState({
+          interactionId: interactionIdRef.current,
+          fields,
+          baseBrief: nextContinuation.brief,
+          draft,
+          completed: receipt,
+          continuation: sent,
+          status: success,
+        }));
+      } catch {
+        // The message was already acknowledged; never downgrade to a retryable state.
+      }
+    } catch {
+      const uncertainStatus = {
+        state: "error",
+        message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+      };
+      const uncertain = { ...dispatching, phase: "uncertain" };
+      setContinuation(uncertain);
+      setStatus(uncertainStatus);
+      try {
+        await Promise.resolve(setWidgetState({
+          interactionId: interactionIdRef.current,
+          fields,
+          baseBrief: nextContinuation.brief,
+          draft,
+          completed: receipt,
+          continuation: uncertain,
+          status: uncertainStatus,
+        }));
+      } catch {
+        // Keep the local receipt uncertain; the persisted dispatching phase is also non-retryable.
+      }
+    }
+  }
+
+  async function continueConversation(candidateBrief) {
     if (pendingRef.current) return;
     pendingRef.current = true;
-    setStatus({ state: "loading", message: "Continuando con tu viaje…" });
-    const continuation = tripRequirementsContinuation({ brief, fields, interactionId: output?.interactionId });
+    const validating = { state: "loading", message: "Validando tus datos…" };
+    setStatus(validating);
     try {
-      let contextUpdated = false;
-      try {
-        await updateModelContext(continuation.context);
-        contextUpdated = true;
-      } catch {
-        // The natural-language message below carries the same context on hosts
-        // that do not yet implement ui/update-model-context.
+      const prepared = normalizeToolOutput(await callTool("prepare_trip_brief", { brief: candidateBrief }));
+      if (!prepared?.brief || prepared.ready !== true || prepared.criticalFields?.length) {
+        const nextFields = requestedFields({ fields: prepared?.criticalFields || [] });
+        const normalizedBrief = prepared?.brief || candidateBrief;
+        const nextDraft = draftFromBrief(normalizedBrief);
+        const failure = {
+          state: "error",
+          message: "Todavía falta corregir algún dato esencial. Revísalo y vuelve a continuar.",
+        };
+        setFields(nextFields);
+        setBaseBrief(normalizedBrief);
+        setDraft(nextDraft);
+        setCompleted(null);
+        setContinuation(null);
+        setStatus(failure);
+        await Promise.resolve(setWidgetState({
+          interactionId: interactionIdRef.current,
+          fields: nextFields,
+          baseBrief: normalizedBrief,
+          draft: nextDraft,
+          completed: null,
+          continuation: null,
+          status: failure,
+        }));
+        return;
       }
-      await sendFollowUpMessage(contextUpdated
-        ? continuation.visibleMessage
-        : continuation.fallbackMessage);
-      setStatus({ state: "success", message: "Listo. Sendero continúa en la conversación." });
+
+      const brief = prepared.brief;
+      const receipt = { brief, description: briefReceiptSummary(brief) };
+      const nextContinuation = { brief, fields, phase: "validated" };
+      setBaseBrief(brief);
+      setCompleted(receipt);
+      setContinuation(nextContinuation);
+      await deliverContinuation(nextContinuation, receipt);
     } catch {
-      setStatus({
+      const failure = {
         state: "error",
-        message: "No pudimos continuar todavía. Tus respuestas siguen aquí; inténtalo de nuevo.",
-      });
+        message: "No pudimos validar tus datos todavía. Tus respuestas siguen aquí; inténtalo de nuevo.",
+      };
+      setCompleted(null);
+      setContinuation(null);
+      setStatus(failure);
+      await Promise.resolve(setWidgetState({
+        interactionId: interactionIdRef.current,
+        fields,
+        baseBrief,
+        draft,
+        completed: null,
+        continuation: null,
+        status: failure,
+      }));
     } finally {
       pendingRef.current = false;
     }
@@ -133,11 +203,11 @@ export function TripRequirementsApp() {
       setStatus({ state: "error", message: error });
       return;
     }
-    const brief = mergeBrief(output?.brief, draft);
-    const receipt = { brief, description: briefReceiptSummary(brief) };
-    setCompleted(receipt);
-    setWidgetState({ interactionId: output?.interactionId, fields, draft, completed: receipt, status: { state: "loading", message: "Continuando con tu viaje…" } });
-    await continueConversation(brief);
+    if (!baseBrief) {
+      setStatus({ state: "error", message: "Estamos recuperando el contexto del viaje. Inténtalo de nuevo en un momento." });
+      return;
+    }
+    await continueConversation(mergeBrief(baseBrief, draft));
   }
 
   if (completed) {
@@ -148,9 +218,7 @@ export function TripRequirementsApp() {
           eyebrow="Datos del viaje completados"
           status={status.message}
           title="Ya tenemos lo esencial"
-        >
-          {status.state === "error" ? <Button disabled={pendingRef.current} onClick={() => continueConversation(completed.brief)} variant="secondary">Reintentar</Button> : null}
-        </SelectionReceipt>
+        />
       </main>
     );
   }

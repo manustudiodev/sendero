@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { BrandMark, Button, InlineNotice, SelectionReceipt } from "../components.jsx";
+import { Button, InlineNotice, SelectionReceipt } from "../components.jsx";
 import { openExternal, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { ItineraryViewer, formatItineraryDate } from "../itinerary/ItineraryViewer.jsx";
 import {
@@ -119,7 +119,6 @@ export function PublicShareControlApp() {
   if (selectedAction) {
     return (
       <main className="app-shell share-control-shell compact-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <SelectionReceipt
           description={summary.description}
           eyebrow="Solicitud recibida"
@@ -139,7 +138,6 @@ export function PublicShareControlApp() {
       : "";
     return (
       <main className="app-shell share-control-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <section className="share-control-card">
           <p className="eyebrow">Vista previa</p>
           <h2>Esto es exactamente lo que verán</h2>
@@ -166,7 +164,6 @@ export function PublicShareControlApp() {
   if (state === "updated" && !publicUrl) {
     return (
       <main className="app-shell share-control-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <section aria-live="polite" className="share-control-card">
           <p className="eyebrow">Enlace actualizado</p>
           <h1>La vista pública está al día</h1>
@@ -181,7 +178,6 @@ export function PublicShareControlApp() {
     const copy = stateCopy[state];
     return (
       <main className="app-shell share-control-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <section aria-live="polite" className="share-control-card">
           <p className="eyebrow">{copy.eyebrow}</p>
           <h1>{copy.title}</h1>
@@ -201,7 +197,6 @@ export function PublicShareControlApp() {
     const primaryAction = activeShareAction(output);
     return (
       <main className="app-shell share-control-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <section className="share-control-card">
           <p className="eyebrow">Enlace activo</p>
           <h1>{output?.isStale ? "Hay cambios sin publicar" : "La vista pública está al día"}</h1>
@@ -220,7 +215,6 @@ export function PublicShareControlApp() {
   const revoked = state === "revoked";
   return (
     <main className="app-shell share-control-shell">
-      <div className="brand-line"><BrandMark /><span>Sendero</span></div>
       <section className="share-control-card">
         <p className="eyebrow">{expired ? "Enlace vencido" : revoked ? "Enlace revocado" : "Compartir viaje"}</p>
         <h1>{expired ? "Este enlace ya venció" : revoked ? "El viaje ya no es público" : "Todavía no hay un enlace público"}</h1>

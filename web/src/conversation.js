@@ -29,20 +29,23 @@ export function tripRequirementsContinuation({ brief, fields, interactionId }) {
   const license = brief.transport?.modes?.includes("car")
     ? ` ${brief.transport.hasLicense ? "Hay" : "No hay"} una persona con licencia válida.`
     : "";
+  const message = `Listo: destino ${brief.destination}; del ${brief.startDate} al ${brief.endDate}; ${brief.travellers.adults} ${brief.travellers.adults === 1 ? "adulto" : "adultos"}; transporte: ${transportSummary(brief)}.${license} Continúa directamente con mi itinerario usando también las demás preferencias que ya definí; no vuelvas a pedirme estos datos.`;
   return {
     context: {
-      content: [{ type: "text", text: `La persona completó los datos críticos de su viaje en Sendero: ${briefReceiptSummary(brief)}. Esta interacción no guardó ni reservó nada.` }],
+      content: [{ type: "text", text: `Sendero validó el brief completado: ${briefReceiptSummary(brief)}. Este brief sustituye el resultado anterior de campos faltantes para la misma interacción. No vuelvas a pedir esos datos; continúa con la planificación. Esta interacción no guardó ni reservó nada.` }],
       structuredContent: {
         sendero: {
           intent: "create_trip",
+          stage: "brief_ready",
           ...(interactionId ? { interactionId } : {}),
-          collectedFields: fields,
+          completedFields: fields,
+          validation: { ready: true, criticalFields: [] },
           brief,
         },
       },
     },
-    visibleMessage: "Ya completé los datos que faltaban. Continúa con mi itinerario.",
-    fallbackMessage: `Ya completé los datos que faltaban: destino ${brief.destination}; del ${brief.startDate} al ${brief.endDate}; ${brief.travellers.adults} ${brief.travellers.adults === 1 ? "adulto" : "adultos"}; transporte: ${transportSummary(brief)}.${license} Continúa con mi itinerario.`,
+    visibleMessage: message,
+    fallbackMessage: message,
   };
 }
 
@@ -53,13 +56,21 @@ export function tripIntakeContinuation(brief) {
       ? `Zona provisional: ${brief.lodging.area}.`
       : "Todavía no elegí alojamiento; usa una base provisional claramente indicada.";
   const interests = brief.interests.length ? ` Intereses: ${brief.interests.join(", ")}.` : "";
+  const message = `Listo: quiero crear un viaje a ${brief.destination}, del ${brief.startDate} al ${brief.endDate}, para ${brief.travellers.adults} ${brief.travellers.adults === 1 ? "adulto" : "adultos"}${brief.travellers.children ? ` y ${brief.travellers.children} ${brief.travellers.children === 1 ? "niño" : "niños"}` : ""}. Nos moveremos en ${transportSummary(brief)}. ${lodging}${interests} Continúa directamente con mi itinerario y no vuelvas a pedirme estos datos.`;
   return {
     context: {
       content: [{ type: "text", text: `La persona completó el formulario guiado de Sendero para ${brief.destination}, del ${brief.startDate} al ${brief.endDate}. Esta interacción no guardó ni reservó nada.` }],
-      structuredContent: { sendero: { intent: "create_trip", brief } },
+      structuredContent: {
+        sendero: {
+          intent: "create_trip",
+          stage: "brief_ready",
+          validation: { ready: true, criticalFields: [] },
+          brief,
+        },
+      },
     },
-    visibleMessage: "Ya completé los datos del viaje. Continúa con mi itinerario.",
-    fallbackMessage: `Quiero crear un viaje a ${brief.destination}, del ${brief.startDate} al ${brief.endDate}, para ${brief.travellers.adults} ${brief.travellers.adults === 1 ? "adulto" : "adultos"}${brief.travellers.children ? ` y ${brief.travellers.children} ${brief.travellers.children === 1 ? "niño" : "niños"}` : ""}. Nos moveremos en ${transportSummary(brief)}. ${lodging}${interests} Continúa con mi itinerario.`,
+    visibleMessage: message,
+    fallbackMessage: message,
   };
 }
 

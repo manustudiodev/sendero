@@ -3,8 +3,13 @@ import { z } from "zod";
 import { AUTH_SCOPES, authorizeTool, toolSecuritySchemes } from "./auth.mjs";
 import {
   ITINERARY_UI_URI,
+  LEGACY_ITINERARY_UI_URI,
+  LEGACY_PUBLIC_SHARE_UI_URI,
+  LEGACY_TRIP_INTAKE_UI_URI,
+  LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -25,8 +30,13 @@ import {
 
 export {
   ITINERARY_UI_URI,
+  LEGACY_ITINERARY_UI_URI,
+  LEGACY_PUBLIC_SHARE_UI_URI,
+  LEGACY_TRIP_INTAKE_UI_URI,
+  LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -632,21 +642,30 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.4.2" },
+    { name: "sendero", version: "0.4.3" },
     {
       instructions:
-        "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief so every currently known critical gap is requested together in one component; never ask those fields one at a time in text. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use validate_itinerary before saving or presenting and render_itinerary once with the final snapshot. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
+        "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief so every currently known critical gap is requested together in one component; never ask those fields one at a time in text. When a Sendero component continues with sendero.stage brief_ready, its validated brief replaces the earlier missing-fields result for the same interactionId: continue planning from that brief and never ask for or render those fields again unless a fresh prepare_trip_brief call on that exact brief still returns criticalFields. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use validate_itinerary before saving or presenting and render_itinerary once with the final snapshot. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
     },
   );
 
   server.registerResource("itinerary-ui", ITINERARY_UI_URI, {}, async () =>
     itineraryResource(widgetOrigin),
   );
+  server.registerResource("itinerary-ui-v2", LEGACY_ITINERARY_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_UI_URI),
+  );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),
   );
+  server.registerResource("trip-intake-ui-v2", LEGACY_TRIP_INTAKE_UI_URI, {}, async () =>
+    tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_UI_URI),
+  );
   server.registerResource("trip-list-ui", TRIP_LIST_UI_URI, {}, async () =>
     tripListResource(widgetOrigin),
+  );
+  server.registerResource("trip-list-ui-v1", LEGACY_TRIP_LIST_UI_URI, {}, async () =>
+    tripListResource(widgetOrigin, LEGACY_TRIP_LIST_UI_URI),
   );
   server.registerResource("trip-requirements-ui", TRIP_REQUIREMENTS_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin),
@@ -657,8 +676,14 @@ export function createTripPlannerServer({
   server.registerResource("trip-requirements-ui-v2", LEGACY_TRIP_REQUIREMENTS_V2_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V2_UI_URI),
   );
+  server.registerResource("trip-requirements-ui-v3", LEGACY_TRIP_REQUIREMENTS_V3_UI_URI, {}, async () =>
+    tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V3_UI_URI),
+  );
   server.registerResource("public-share-ui", PUBLIC_SHARE_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin),
+  );
+  server.registerResource("public-share-ui-v1", LEGACY_PUBLIC_SHARE_UI_URI, {}, async () =>
+    publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_UI_URI),
   );
 
   server.registerTool(
@@ -666,7 +691,7 @@ export function createTripPlannerServer({
     {
       title: "Prepare trip brief",
       description:
-        "Normalize the user's travel requirements and identify critical missing details before researching or scheduling the trip.",
+        "Normalize the user's travel requirements and identify critical missing details before researching or scheduling the trip. A requirements component also calls this tool after submission; when it returns ready with no criticalFields, continue from that validated brief and do not request those fields again.",
       inputSchema: { brief: tripBriefSchema },
       outputSchema: {
         ready: z.boolean(),
@@ -677,7 +702,11 @@ export function createTripPlannerServer({
         brief: tripBriefSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-      _meta: { securitySchemes: toolSecuritySchemes() },
+      _meta: {
+        securitySchemes: toolSecuritySchemes(),
+        ui: { visibility: ["model", "app"] },
+        "openai/widgetAccessible": true,
+      },
     },
     async ({ brief }) => {
       const result = prepareTripBrief(brief);
@@ -700,7 +729,7 @@ export function createTripPlannerServer({
     {
       title: "Complete essential trip details",
       description:
-        "Render one compact component containing every critical field that is currently missing or invalid. Call this after prepare_trip_brief with its normalized brief. The server computes the complete field set; do not ask for the same details separately in chat. Do not call when the brief is ready.",
+        "Render one compact component containing every critical field that is currently missing or invalid. Call this after prepare_trip_brief with its normalized brief. The server computes the complete field set; do not ask for the same details separately in chat. Do not call when the brief is ready or after the same interaction has returned a validated sendero.stage brief_ready continuation.",
       inputSchema: {
         brief: tripBriefSchema,
         interactionId: z.string().min(1).optional(),

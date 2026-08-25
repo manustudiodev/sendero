@@ -56,12 +56,64 @@ const proposedExpiresAt = Date.UTC(2026, 8, 24);
 
 function withBridge(html, toolOutput) {
   const safeOutput = (JSON.stringify(toolOutput) ?? "undefined").replaceAll("<", "\\u003c");
-  const bridge = `<script>window.openai={toolOutput:${safeOutput},widgetState:{},setWidgetState:function(value){this.widgetState=value},updateModelContext:async function(value){this.modelContext=value;return {}},sendFollowUpMessage:async function(value){this.followUp=value;return {ok:true}},openExternal:function(){}};</script>`;
+  const bridge = `<script>{
+    const initialToolOutput = ${safeOutput};
+    const persistWidgetState = new URLSearchParams(location.search).has("persist");
+    const widgetStateKey = "sendero-preview:" + location.pathname;
+    let initialWidgetState = {};
+    if (persistWidgetState) {
+      try { initialWidgetState = JSON.parse(sessionStorage.getItem(widgetStateKey)) || {}; } catch {}
+    }
+    window.openai = {
+      toolOutput: initialToolOutput,
+      widgetState: initialWidgetState,
+      calls: [],
+      heightNotifications: [],
+      setWidgetState: function(value) {
+        this.widgetState = value;
+        if (persistWidgetState) sessionStorage.setItem(widgetStateKey, JSON.stringify(value));
+        this.calls.push({ method: "setWidgetState", value });
+        queueMicrotask(() => window.dispatchEvent(new CustomEvent("openai:set_globals", {
+          detail: { globals: { toolOutput: structuredClone(initialToolOutput), widgetState: value } },
+        })));
+      },
+      updateModelContext: async function(value) {
+        this.modelContext = value;
+        this.calls.push({ method: "updateModelContext", value });
+        return { ok: true };
+      },
+      sendFollowUpMessage: async function(value) {
+        this.followUp = value;
+        this.calls.push({ method: "sendFollowUpMessage", value });
+        return { ok: true };
+      },
+      callTool: async function(name, args) {
+        this.calls.push({ method: "callTool", name, args });
+        if (name !== "prepare_trip_brief") throw new Error("Unsupported preview tool");
+        return {
+          structuredContent: {
+            ready: true,
+            missing: [],
+            criticalFields: [],
+            warnings: [],
+            assumptions: [],
+            brief: args.brief,
+          },
+        };
+      },
+      notifyIntrinsicHeight: function(height) {
+        this.intrinsicHeight = height;
+        this.heightNotifications.push(height);
+      },
+      openExternal: function() {},
+    };
+  }</script>`;
   return html.replace("<body>", `<body>${bridge}`);
 }
 
 const pages = {
   "/": withBridge(tripIntakeWidgetHtml, { mode: "new", actions: [] }),
+  "/intake-empty": withBridge(tripIntakeWidgetHtml, undefined),
   "/menu": withBridge(tripIntakeWidgetHtml, { mode: "menu", actions: ["new", "open", "adjust", "refresh"] }),
   "/trips": withBridge(tripListWidgetHtml, { purpose: "open", trips: [
     { id: "trip_sevilla", title: "Sevilla histórica y alternativa — Semana Santa 2027", destination: "Sevilla, España", startDate: "2027-03-21", endDate: "2027-03-27", currentVersion: 2, role: "owner", updatedAt: 1786900000000 },

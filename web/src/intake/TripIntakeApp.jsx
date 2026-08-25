@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { BrandMark, Button, ChoiceChips, Field, InlineNotice, SegmentedControl, SelectionReceipt } from "../components.jsx";
-import { sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
+import { Button, ChoiceChips, Field, InlineNotice, SegmentedControl, SelectionReceipt } from "../components.jsx";
+import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { tripIntakeContinuation } from "../conversation.js";
+import { normalizeToolOutput } from "../tool-output.js";
 
 const launcherActions = [
   { id: "new", title: "Nuevo viaje", description: "Fechas, gustos y logística" },
@@ -42,21 +43,27 @@ function draftFromBrief(brief = {}) {
   };
 }
 
-function toBrief(draft) {
+function toBrief(draft, baseBrief = {}) {
   const lodging = draft.lodgingStatus === "confirmed"
     ? { status: "confirmed", name: "Alojamiento", address: draft.lodgingValue.trim() }
     : draft.lodgingStatus === "area_only"
       ? { status: "area_only", name: "Zona provisional", area: draft.lodgingValue.trim() }
       : { status: "undecided", name: "Alojamiento por definir" };
   return {
+    ...baseBrief,
     destination: draft.destination.trim(),
     startDate: draft.startDate,
     endDate: draft.endDate,
     lodging,
-    travellers: { adults: Number(draft.adults), children: Number(draft.children) },
+    travellers: {
+      ...(baseBrief.travellers || {}),
+      adults: Number(draft.adults),
+      children: Number(draft.children),
+    },
     pace: draft.pace,
     interests: draft.interests.split(",").map((value) => value.trim()).filter(Boolean),
     transport: {
+      ...(baseBrief.transport || {}),
       modes: draft.transportModes,
       hasLicense: Boolean(draft.hasLicense),
       wantsCar: draft.transportModes.includes("car"),
@@ -64,28 +71,60 @@ function toBrief(draft) {
   };
 }
 
+function initialStatus(saved) {
+  if (saved.continuation?.phase === "sent") {
+    return { state: "sent", message: "Datos enviados. Sendero continúa en la conversación." };
+  }
+  if (["dispatching", "uncertain", "delivery_failed"].includes(saved.continuation?.phase)) {
+    return {
+      state: "error",
+      message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+    };
+  }
+  if (saved.status?.state === "sending") {
+    return { state: "error", message: "La validación quedó pendiente. Puedes intentarlo otra vez." };
+  }
+  return saved.status || { state: "idle", message: "" };
+}
+
 export function TripIntakeApp() {
   const { output } = useToolOutput();
-  const saved = widgetState();
+  const saved = useRef(widgetState()).current;
   const pendingRef = useRef(false);
+  const outputHydratedRef = useRef(Boolean(output?.brief));
+  const dirtyFieldsRef = useRef(new Set());
   const [view, setView] = useState(saved.view || output?.mode || "new");
   const [completedAction, setCompletedAction] = useState(saved.completedAction || null);
+  const [baseBrief, setBaseBrief] = useState(() => saved.baseBrief || output?.brief || null);
   const [draft, setDraft] = useState(() => saved.draft || draftFromBrief(output?.brief));
-  const [status, setStatus] = useState(saved.status || { state: "idle", message: "" });
+  const [continuation, setContinuation] = useState(saved.continuation || null);
+  const [status, setStatus] = useState(() => initialStatus(saved));
 
   useEffect(() => {
-    if (output?.brief && !saved.draft) setDraft(draftFromBrief(output.brief));
-  }, [output]);
+    if (!output?.brief || outputHydratedRef.current) return;
+    outputHydratedRef.current = true;
+    if (output.brief && !saved.baseBrief) setBaseBrief(output.brief);
+    if (output.brief && !saved.draft) {
+      const hydrated = draftFromBrief(output.brief);
+      setDraft((current) => Object.fromEntries(
+        Object.entries(hydrated).map(([field, value]) => [
+          field,
+          dirtyFieldsRef.current.has(field) ? current[field] : value,
+        ]),
+      ));
+    }
+  }, [output, saved.baseBrief, saved.draft]);
 
   useEffect(() => {
     if (output?.mode && !saved.view) setView(output.mode);
   }, [output?.mode]);
 
   useEffect(() => {
-    setWidgetState({ view, draft, completedAction, status });
-  }, [view, draft, completedAction, status]);
+    setWidgetState({ view, baseBrief, draft, completedAction, continuation, status });
+  }, [baseBrief, completedAction, continuation, draft, status, view]);
 
   function update(field, value) {
+    dirtyFieldsRef.current.add(field);
     setDraft((current) => ({ ...current, [field]: value }));
     setStatus({ state: "idle", message: "" });
   }
@@ -94,7 +133,7 @@ export function TripIntakeApp() {
     if (pendingRef.current) return;
     if (action === "new") {
       setView("new");
-      setWidgetState({ view: "new", draft, completedAction: null });
+      setWidgetState({ view: "new", baseBrief, draft, completedAction: null, continuation: null });
       return;
     }
     const selected = launcherActions.find((item) => item.id === action);
@@ -105,7 +144,7 @@ export function TripIntakeApp() {
     };
     setCompletedAction(receipt);
     setView("complete");
-    setWidgetState({ view: "complete", draft, completedAction: receipt });
+    setWidgetState({ view: "complete", baseBrief, draft, completedAction: receipt, continuation: null });
     const prompts = {
       open: "Muéstrame mis viajes guardados como opciones para elegir.",
       adjust: "Quiero elegir uno de mis viajes guardados para ajustarlo sin perder reservas confirmadas ni actividades fijas.",
@@ -123,11 +162,76 @@ export function TripIntakeApp() {
     }
   }
 
+  async function deliverContinuation(nextContinuation, receipt) {
+    const dispatching = { ...nextContinuation, phase: "dispatching" };
+    const sending = { state: "sending", message: "Preparando el itinerario…" };
+    setContinuation(dispatching);
+    setStatus(sending);
+    await Promise.resolve(setWidgetState({
+      view: "complete",
+      baseBrief: nextContinuation.brief,
+      draft,
+      completedAction: receipt,
+      continuation: dispatching,
+      status: sending,
+    }));
+
+    const next = tripIntakeContinuation(nextContinuation.brief);
+    try {
+      try {
+        await updateModelContext(next.context);
+      } catch {
+        // The self-contained follow-up below carries the same critical details.
+      }
+      await sendFollowUpMessage(next.visibleMessage);
+      const sent = { ...dispatching, phase: "sent" };
+      const success = { state: "sent", message: "Datos enviados. Sendero continúa en la conversación." };
+      setContinuation(sent);
+      setStatus(success);
+      try {
+        await Promise.resolve(setWidgetState({
+          view: "complete",
+          baseBrief: nextContinuation.brief,
+          draft,
+          completedAction: receipt,
+          continuation: sent,
+          status: success,
+        }));
+      } catch {
+        // The message was already acknowledged; never downgrade to a retryable state.
+      }
+    } catch {
+      const uncertain = { ...dispatching, phase: "uncertain" };
+      const uncertainStatus = {
+        state: "error",
+        message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+      };
+      setContinuation(uncertain);
+      setStatus(uncertainStatus);
+      try {
+        await Promise.resolve(setWidgetState({
+          view: "complete",
+          baseBrief: nextContinuation.brief,
+          draft,
+          completedAction: receipt,
+          continuation: uncertain,
+          status: uncertainStatus,
+        }));
+      } catch {
+        // Keep the local receipt uncertain; the persisted dispatching phase is also non-retryable.
+      }
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     if (pendingRef.current) return;
     if (!draft.destination || !draft.startDate || !draft.endDate || !draft.transportModes.length) {
       setStatus({ state: "error", message: "Completa destino, fechas y al menos un medio de transporte." });
+      return;
+    }
+    if (!Number.isInteger(Number(draft.adults)) || Number(draft.adults) < 1 || !Number.isInteger(Number(draft.children)) || Number(draft.children) < 0) {
+      setStatus({ state: "error", message: "Indica una cantidad válida de adultos y niños." });
       return;
     }
     if (draft.startDate > draft.endDate) {
@@ -143,32 +247,58 @@ export function TripIntakeApp() {
       return;
     }
 
-    const brief = toBrief(draft);
-    const receipt = {
-      id: "new",
-      title: draft.destination.trim(),
-      description: `${draft.startDate} — ${draft.endDate} · ${Number(draft.adults) + Number(draft.children)} viajero${Number(draft.adults) + Number(draft.children) === 1 ? "" : "s"}`,
-    };
-    setCompletedAction(receipt);
-    setView("complete");
-    setWidgetState({ view: "complete", draft, completedAction: receipt });
     pendingRef.current = true;
-    setStatus({ state: "sending", message: "Preparando el itinerario…" });
-    const continuation = tripIntakeContinuation(brief);
+    setStatus({ state: "sending", message: "Validando tus datos…" });
     try {
-      let contextUpdated = false;
-      try {
-        await updateModelContext(continuation.context);
-        contextUpdated = true;
-      } catch {
-        // Fall back to a readable message when the host cannot update model context.
+      const prepared = normalizeToolOutput(await callTool("prepare_trip_brief", {
+        brief: toBrief(draft, baseBrief || {}),
+      }));
+      if (!prepared?.brief || prepared.ready !== true || prepared.criticalFields?.length) {
+        const normalizedBrief = prepared?.brief || toBrief(draft, baseBrief || {});
+        const failure = {
+          state: "error",
+          message: "Todavía falta corregir algún dato esencial antes de crear el itinerario.",
+        };
+        setBaseBrief(normalizedBrief);
+        setDraft(draftFromBrief(normalizedBrief));
+        setStatus(failure);
+        await Promise.resolve(setWidgetState({
+          view: "new",
+          baseBrief: normalizedBrief,
+          draft: draftFromBrief(normalizedBrief),
+          completedAction: null,
+          continuation: null,
+          status: failure,
+        }));
+        return;
       }
-      await sendFollowUpMessage(contextUpdated
-        ? continuation.visibleMessage
-        : continuation.fallbackMessage);
-      setStatus({ state: "sent", message: "Datos enviados. Sendero continúa en la conversación." });
+
+      const brief = prepared.brief;
+      const receipt = {
+        id: "new",
+        title: brief.destination,
+        description: `${brief.startDate} — ${brief.endDate} · ${Number(brief.travellers.adults) + Number(brief.travellers.children || 0)} viajero${Number(brief.travellers.adults) + Number(brief.travellers.children || 0) === 1 ? "" : "s"}`,
+      };
+      const nextContinuation = { brief, phase: "validated" };
+      setBaseBrief(brief);
+      setCompletedAction(receipt);
+      setView("complete");
+      setContinuation(nextContinuation);
+      await deliverContinuation(nextContinuation, receipt);
     } catch {
-      setStatus({ state: "error", message: "No pudimos iniciar el viaje todavía. Inténtalo de nuevo." });
+      const failure = { state: "error", message: "No pudimos validar tus datos todavía. Inténtalo de nuevo." };
+      setView("new");
+      setCompletedAction(null);
+      setContinuation(null);
+      setStatus(failure);
+      await Promise.resolve(setWidgetState({
+        view: "new",
+        baseBrief,
+        draft,
+        completedAction: null,
+        continuation: null,
+        status: failure,
+      }));
     } finally {
       pendingRef.current = false;
     }
@@ -177,7 +307,6 @@ export function TripIntakeApp() {
   if (view === "complete" && completedAction) {
     return (
       <main className="app-shell intake-shell compact-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <SelectionReceipt
           description={completedAction.description}
           eyebrow={completedAction.id === "new" ? "Viaje solicitado" : "Opción elegida"}
@@ -190,7 +319,6 @@ export function TripIntakeApp() {
 
   return (
     <main className="app-shell intake-shell">
-      <div className="brand-line"><BrandMark /><span>Sendero</span></div>
       {view === "menu" ? (
         <>
           <header className="app-header">

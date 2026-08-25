@@ -3,6 +3,65 @@ import { initialToolOutput, normalizeToolOutput } from "./tool-output.js";
 
 const pendingRequests = new Map();
 let nextRequestId = 1;
+let resizeAnimationFrame = 0;
+let resizeObserver;
+let lastReportedHeight = 0;
+let lastReportedWidth = 0;
+
+function postSizeChanged(width, height) {
+  window.parent.postMessage({
+    jsonrpc: "2.0",
+    method: "ui/notifications/size-changed",
+    params: { width, height },
+  }, "*");
+}
+
+function reportIntrinsicHeight() {
+  resizeAnimationFrame = 0;
+  const root = document.getElementById("root");
+  if (!root) return;
+  const bounds = root.getBoundingClientRect();
+  const width = Math.ceil(bounds.width);
+  const height = Math.ceil(Math.max(root.scrollHeight, bounds.height));
+  if (width <= 0 || height <= 0 || (width === lastReportedWidth && height === lastReportedHeight)) return;
+  lastReportedWidth = width;
+  lastReportedHeight = height;
+
+  if (window.openai?.notifyIntrinsicHeight) {
+    try {
+      const result = window.openai.notifyIntrinsicHeight(height);
+      if (result?.catch) result.catch(() => postSizeChanged(width, height));
+      return;
+    } catch {
+      // Fall through to the portable MCP Apps notification.
+    }
+  }
+  postSizeChanged(width, height);
+}
+
+function scheduleIntrinsicHeight() {
+  if (resizeAnimationFrame) window.cancelAnimationFrame(resizeAnimationFrame);
+  resizeAnimationFrame = window.requestAnimationFrame(reportIntrinsicHeight);
+}
+
+function installIntrinsicHeightSync() {
+  const start = () => {
+    const root = document.getElementById("root");
+    if (!root || resizeObserver) return;
+    if (typeof ResizeObserver === "function") {
+      resizeObserver = new ResizeObserver(scheduleIntrinsicHeight);
+      resizeObserver.observe(root);
+    }
+    scheduleIntrinsicHeight();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
+  window.addEventListener("load", scheduleIntrinsicHeight, { once: true, passive: true });
+}
 
 function currentToolOutput() {
   return initialToolOutput(window.openai);
@@ -21,6 +80,7 @@ function handleBridgeResponse(event) {
 }
 
 window.addEventListener("message", handleBridgeResponse, { passive: true });
+installIntrinsicHeightSync();
 
 function request(method, params, timeoutMs = 8000) {
   const id = nextRequestId++;
@@ -74,7 +134,7 @@ export function widgetState() {
 }
 
 export function setWidgetState(state) {
-  window.openai?.setWidgetState?.(state);
+  return window.openai?.setWidgetState?.(state);
 }
 
 export async function sendFollowUpMessage(prompt) {

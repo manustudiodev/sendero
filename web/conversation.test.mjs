@@ -31,7 +31,23 @@ test("keeps grouped requirements mechanics out of the visible continuation", () 
 
   assert.doesNotMatch(continuation.visibleMessage, forbiddenVisibleMechanics);
   assert.doesNotMatch(continuation.fallbackMessage, forbiddenVisibleMechanics);
+  assert.equal(continuation.visibleMessage, continuation.fallbackMessage);
+  assert.match(continuation.visibleMessage, /Buenos Aires, Argentina/);
+  assert.match(continuation.visibleMessage, /2027-08-13/);
+  assert.match(continuation.visibleMessage, /2027-08-26/);
+  assert.match(continuation.visibleMessage, /3 adultos/);
+  assert.match(continuation.visibleMessage, /a pie, transporte público, taxi o app/);
+  assert.match(continuation.visibleMessage, /no vuelvas a pedirme estos datos/);
+  assert.equal(continuation.context.structuredContent.sendero.stage, "brief_ready");
   assert.equal(continuation.context.structuredContent.sendero.interactionId, "interaction-secret");
+  assert.deepEqual(
+    continuation.context.structuredContent.sendero.completedFields,
+    ["destination", "startDate", "endDate", "travellers.adults", "transport.modes"],
+  );
+  assert.deepEqual(
+    continuation.context.structuredContent.sendero.validation,
+    { ready: true, criticalFields: [] },
+  );
   assert.deepEqual(continuation.context.structuredContent.sendero.brief, brief);
 });
 
@@ -40,6 +56,15 @@ test("keeps guided intake data natural while preserving the complete brief priva
 
   assert.doesNotMatch(continuation.visibleMessage, forbiddenVisibleMechanics);
   assert.doesNotMatch(continuation.fallbackMessage, forbiddenVisibleMechanics);
+  assert.equal(continuation.visibleMessage, continuation.fallbackMessage);
+  assert.match(continuation.visibleMessage, /Buenos Aires, Argentina/);
+  assert.match(continuation.visibleMessage, /2027-08-13/);
+  assert.match(continuation.visibleMessage, /3 adultos/);
+  assert.equal(continuation.context.structuredContent.sendero.stage, "brief_ready");
+  assert.deepEqual(
+    continuation.context.structuredContent.sendero.validation,
+    { ready: true, criticalFields: [] },
+  );
   assert.deepEqual(continuation.context.structuredContent.sendero.brief, brief);
 });
 

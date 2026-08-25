@@ -9,15 +9,11 @@ const generatedPath = resolve(projectRoot, "server/ui/generated/widgets.mjs");
 const styles = await readFile(resolve(webRoot, "src/styles.css"), "utf8");
 
 const widgets = [
-  { exportName: "itineraryWidgetHtml", entry: "src/itinerary/index.jsx" },
-  { exportName: "tripIntakeWidgetHtml", entry: "src/intake/index.jsx" },
-  { exportName: "tripListWidgetHtml", entry: "src/trips/index.jsx" },
-  {
-    exportName: "tripRequirementsWidgetHtml",
-    entry: "src/requirements/index.jsx",
-    documentClass: "requirements-document",
-  },
-  { exportName: "publicShareControlWidgetHtml", entry: "src/share-control/index.jsx" },
+  { exportName: "itineraryWidgetHtml", entry: "src/itinerary/index.jsx", documentClass: "widget-document" },
+  { exportName: "tripIntakeWidgetHtml", entry: "src/intake/index.jsx", documentClass: "widget-document" },
+  { exportName: "tripListWidgetHtml", entry: "src/trips/index.jsx", documentClass: "widget-document" },
+  { exportName: "tripRequirementsWidgetHtml", entry: "src/requirements/index.jsx", documentClass: "widget-document" },
+  { exportName: "publicShareControlWidgetHtml", entry: "src/share-control/index.jsx", documentClass: "widget-document" },
 ];
 
 const pages = [

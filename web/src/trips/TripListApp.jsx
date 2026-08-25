@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { BrandMark, Button, SelectionReceipt } from "../components.jsx";
+import { Button, SelectionReceipt } from "../components.jsx";
 import { sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { tripSelectionContinuation } from "../conversation.js";
 
@@ -79,7 +79,6 @@ export function TripListApp() {
   if (selectedTrip) {
     return (
       <main className="app-shell trips-shell compact-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <SelectionReceipt
           description={`${selectedTrip.destination} · ${formatDates(selectedTrip.startDate, selectedTrip.endDate)}`}
           eyebrow={copy.selected}
@@ -95,7 +94,6 @@ export function TripListApp() {
   if (!trips.length) {
     return (
       <main className="app-shell trips-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <div className="empty-state"><div><strong>Todavía no tienes viajes guardados</strong><p>Crea uno y Sendero lo dejará listo para retomarlo después.</p><Button disabled={status.state === "loading"} onClick={createTrip} variant="primary">Crear viaje</Button>{status.message ? <p>{status.message}</p> : null}</div></div>
       </main>
     );
@@ -103,7 +101,6 @@ export function TripListApp() {
 
   return (
     <main className="app-shell trips-shell">
-      <div className="brand-line"><BrandMark /><span>Sendero</span></div>
       <header className="trip-list-header">
         <p className="eyebrow">{copy.eyebrow}</p>
         <h1>{copy.title}</h1>

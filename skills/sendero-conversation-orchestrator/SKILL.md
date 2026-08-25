@@ -36,6 +36,7 @@ For trip creation, extract the entire brief already present in the conversation 
 - When a component returns a choice, use its exact action and stable `tripId`; do not infer an ID from the title.
 - Do not ask the user to type “Abrir X,” repeat a trip name, or confirm the same card selection again.
 - Once a choice is made, treat the old component as consumed. Continue the selected path and never reopen its alternatives unless the user explicitly changes intent.
+- When a trip form continues with `sendero.stage: "brief_ready"`, its validated brief supersedes the earlier missing-fields result for that interaction. Continue from it without reopening the form or asking for the same fields; only a fresh validation result may prove that something is still missing.
 - A one-shot form, card selection, or workflow choice must collapse to a compact inert receipt before continuation. Reopening the old message must not expose active alternatives, and repeated clicks must not create a second continuation.
 - If the user changes intent, acknowledge the change briefly and open only the newly relevant surface.
 
