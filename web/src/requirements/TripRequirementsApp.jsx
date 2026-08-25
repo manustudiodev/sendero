@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrandMark, Button, ChoiceChips, Field, InlineNotice, SelectionReceipt } from "../components.jsx";
+import { Button, ChoiceChips, Field, InlineNotice, SelectionReceipt } from "../components.jsx";
 import { sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { briefReceiptSummary, tripRequirementsContinuation } from "../conversation.js";
 
@@ -143,7 +143,6 @@ export function TripRequirementsApp() {
   if (completed) {
     return (
       <main className="app-shell requirements-shell compact-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <SelectionReceipt
           description={completed.description}
           eyebrow="Datos del viaje completados"
@@ -159,7 +158,6 @@ export function TripRequirementsApp() {
   if (!fields.length) {
     return (
       <main className="app-shell requirements-shell compact-shell">
-        <div className="brand-line"><BrandMark /><span>Sendero</span></div>
         <InlineNotice tone="warning">No recibimos los datos que faltan. Puedes continuar describiendo el viaje en el chat.</InlineNotice>
       </main>
     );
@@ -167,7 +165,6 @@ export function TripRequirementsApp() {
 
   return (
     <main className="app-shell requirements-shell">
-      <div className="brand-line"><BrandMark /><span>Sendero</span></div>
       <form className="requirements-card" onSubmit={submit}>
         <header className="requirements-heading">
           <p className="eyebrow">{fields.length === 1 ? "Un dato más" : "Completemos lo esencial"}</p>

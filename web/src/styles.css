@@ -135,7 +135,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .selection-receipt small { display: block; margin-top: 10px; color: var(--muted); font-size: 10px; }
 .receipt-actions { margin-top: 12px; }
 
-.requirements-shell { max-width: 680px; margin: 0 auto; }
+.app-shell.requirements-shell { max-width: 680px; min-height: 0; margin: 0 auto; padding: 0; }
 .requirements-card { border: 1px solid var(--line); border-radius: 15px; padding: 18px; background: #fff; }
 .requirements-heading { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .requirements-heading h1 { font-size: clamp(25px, 5vw, 36px); }
