@@ -115,6 +115,7 @@ CONVEX_SITE_URL=https://hallowed-possum-528.convex.site
 MCP_SERVER_URL=https://your-sendero-domain.example/mcp
 PUBLIC_WEB_URL=https://your-sendero-domain.example
 SENDERO_SHARE_SECRET=
+GOOGLE_MAPS_EMBED_API_KEY=
 AUTH0_ISSUER=https://YOUR_TENANT.REGION.auth0.com/
 AUTH0_AUDIENCE=https://your-sendero-domain.example/mcp
 AUTH0_CLAIMS_NAMESPACE=https://your-sendero-domain.example/claims
@@ -123,6 +124,8 @@ AUTH0_CLAIMS_NAMESPACE=https://your-sendero-domain.example/claims
 Ninguna clave de despliegue debe guardarse en el repositorio. La variable `CONVEX_DEPLOY_KEY`, cuando se configure, debe existir únicamente como secreto del proyecto de Vercel.
 
 `SENDERO_SHARE_SECRET` también es un secreto de servidor y debe tener al menos 32 bytes aleatorios. Puedes generarlo con `openssl rand -base64 48`. Permite derivar el mismo token en un reintento seguro; no se envía a Convex ni al navegador. El valor vacío del ejemplo es intencional para que una configuración incompleta falle en lugar de usar un secreto predecible.
+
+`GOOGLE_MAPS_EMBED_API_KEY` habilita el mapa interactivo de las rutas dentro del componente. Guárdala como secreto de Vercel y restríngela en Google Cloud exclusivamente a **Maps Embed API**. Sendero la inserta en el HTML solo al servir el recurso: no forma parte del bundle versionado ni debe guardarse en Git. Como toda clave usada por Maps Embed, será visible para el navegador en la URL del iframe; la restricción de API es la protección principal.
 
 Para vincular y validar las funciones contra el proyecto de Convex:
 
@@ -182,7 +185,7 @@ El archivo raíz `server.mjs` exporta la aplicación Hono para que Vercel sirva:
 - `GET /share`, página pública de solo lectura
 - `POST /api/public-shares/resolve`, resolución sin Auth0 del token público
 
-Configura `CONVEX_URL`, `CONVEX_SITE_URL`, `MCP_SERVER_URL`, `PUBLIC_WEB_URL`, `SENDERO_SHARE_SECRET`, `AUTH0_ISSUER`, `AUTH0_AUDIENCE` y `AUTH0_CLAIMS_NAMESPACE` en Vercel. El despliegue de funciones Convex puede incorporarse después al proceso de build usando una deploy key protegida.
+Configura `CONVEX_URL`, `CONVEX_SITE_URL`, `MCP_SERVER_URL`, `PUBLIC_WEB_URL`, `SENDERO_SHARE_SECRET`, `GOOGLE_MAPS_EMBED_API_KEY`, `AUTH0_ISSUER`, `AUTH0_AUDIENCE` y `AUTH0_CLAIMS_NAMESPACE` en Vercel. El despliegue de funciones Convex puede incorporarse después al proceso de build usando una deploy key protegida.
 
 ## Operación de producción
 

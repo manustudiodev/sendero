@@ -27,3 +27,16 @@ test("the embedded widget clips its own vertical overflow while ChatGPT resizes 
   const styles = await readFile(stylesUrl, "utf8");
   assert.match(styles, /html\.widget-document body\s*\{?[\s\S]*overflow-y:\s*clip/);
 });
+
+test("the embedded route map clears its fallback timer after a successful load", async () => {
+  const [styles, itinerary] = await Promise.all([
+    readFile(stylesUrl, "utf8"),
+    readFile(itineraryUrl, "utf8"),
+  ]);
+
+  assert.match(itinerary, /timeoutRef\.current = window\.setTimeout/);
+  assert.match(itinerary, /function finish\(nextState\)\s*\{[\s\S]*window\.clearTimeout\(timeoutRef\.current\)/);
+  assert.match(itinerary, /onLoad=\{\(\) => finish\("ready"\)\}/);
+  assert.match(styles, /\.route-map-embed\s*\{[\s\S]*min-height:\s*260px/);
+  assert.match(styles, /\.route-map-embed-ready iframe\s*\{\s*opacity:\s*1/);
+});

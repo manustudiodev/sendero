@@ -69,7 +69,7 @@ const itinerary = {
           description: "Café Tortoni y una caminata por Avenida de Mayo.",
           location: { name: "Café Tortoni", address: "Av. de Mayo 825, Buenos Aires, Argentina", latitude: -34.6087, longitude: -58.3782 },
           sourceUrl: "https://www.cafetortoni.com.ar/",
-          reservation: { status: "suggested", url: "https://www.cafetortoni.com.ar/", note: "Consultar el canal oficial si prefieren evitar la espera." },
+          reservation: { kind: "reservation", requirement: "optional", status: "pending", url: "https://www.cafetortoni.com.ar/", note: "Consultar el canal oficial si prefieren evitar la espera." },
           travelToNext: { durationMinutes: 12, mode: "walk" },
         },
         {
@@ -80,6 +80,8 @@ const itinerary = {
           location: { name: "Teatro Colón", address: "Cerrito 628, Buenos Aires, Argentina", latitude: -34.6011, longitude: -58.383 },
           sourceUrl: "https://teatrocolon.org.ar/es/visitas-guiadas",
           reservation: {
+            kind: "ticket",
+            requirement: "required",
             status: "pending",
             url: "https://teatrocolon.org.ar/es/visitas-guiadas",
             deadline: "Reservar antes del 8 de agosto",
@@ -118,7 +120,7 @@ const itinerary = {
           title: "Museo de Arte Moderno",
           location: { name: "Museo de Arte Moderno de Buenos Aires", address: "Av. San Juan 350, Buenos Aires, Argentina", latitude: -34.622, longitude: -58.3703 },
           sourceUrl: "https://museomoderno.org/",
-          reservation: { status: "confirmed", url: "https://museomoderno.org/", note: "Entrada registrada en Sendero; conservar el comprobante del proveedor." },
+          reservation: { kind: "ticket", requirement: "required", status: "confirmed", url: "https://museomoderno.org/", note: "Entrada registrada en Sendero; conservar el comprobante del proveedor." },
           locked: true,
           travelToNext: { durationMinutes: 18, mode: "taxi" },
         },
@@ -128,7 +130,7 @@ const itinerary = {
           title: "Programación en la Usina del Arte",
           location: { name: "Usina del Arte", address: "Agustín R. Caffarena 1, Buenos Aires, Argentina", latitude: -34.6282, longitude: -58.3578 },
           sourceUrl: "https://usinadelarte.ar/",
-          reservation: { status: "cancelled", url: "https://usinadelarte.ar/", note: "Marcada como cancelada en Sendero; verificar cualquier gestión real con el organizador." },
+          reservation: { kind: "ticket", requirement: "optional", status: "cancelled", url: "https://usinadelarte.ar/", note: "Marcada como cancelada en Sendero; verificar cualquier gestión real con el organizador." },
         },
       ],
       route: {
@@ -159,7 +161,7 @@ const itinerary = {
           title: "Jardín Japonés",
           location: { name: "Jardín Japonés", address: "Av. Casares 3401, Buenos Aires, Argentina", latitude: -34.5753, longitude: -58.4093 },
           sourceUrl: "https://jardinjapones.org.ar/",
-          reservation: { status: "suggested", url: "https://jardinjapones.org.ar/", deadline: "Revisar entradas durante la semana del viaje" },
+          reservation: { kind: "ticket", requirement: "recommended", status: "pending", url: "https://jardinjapones.org.ar/", deadline: "Revisar entradas durante la semana del viaje" },
           travelToNext: { durationMinutes: 18, mode: "taxi" },
         },
         {
@@ -168,7 +170,7 @@ const itinerary = {
           title: "Cena de despedida en Chuí",
           location: { name: "Chuí", address: "Loyola 1250, Buenos Aires, Argentina", latitude: -34.5929, longitude: -58.4432 },
           sourceUrl: "https://www.instagram.com/chui.ba/",
-          reservation: { status: "pending", url: "https://www.instagram.com/chui.ba/", deadline: "Reservar una semana antes", note: "Confirmar el canal de reservas y la política de cancelación con el restaurante." },
+          reservation: { kind: "reservation", requirement: "required", status: "pending", url: "https://www.instagram.com/chui.ba/", deadline: "Reservar una semana antes", note: "Confirmar el canal de reservas y la política de cancelación con el restaurante." },
           locked: true,
         },
       ],
@@ -201,9 +203,11 @@ function withBridge(html, toolOutput, previewWidgetState = {}) {
       : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     const persistWidgetState = new URLSearchParams(location.search).has("persist");
     const widgetStateKey = "sendero-preview:" + location.pathname;
+    const toolOutputStateKey = widgetStateKey + ":tool-output";
     let initialWidgetState = ${safeWidgetState};
     if (persistWidgetState) {
       try { initialWidgetState = JSON.parse(sessionStorage.getItem(widgetStateKey)) || initialWidgetState; } catch {}
+      try { liveToolOutput = JSON.parse(sessionStorage.getItem(toolOutputStateKey)) || liveToolOutput; } catch {}
     }
     window.openai = {
       toolOutput: liveToolOutput,
@@ -231,6 +235,19 @@ function withBridge(html, toolOutput, previewWidgetState = {}) {
       },
       callTool: async function(name, args) {
         this.calls.push({ method: "callTool", name, args });
+        if (name === "get_itinerary") {
+          const version = liveToolOutput.version || liveToolOutput.currentVersion || 1;
+          return {
+            structuredContent: {
+              id: liveToolOutput.tripId || args.tripId,
+              tripId: liveToolOutput.tripId || args.tripId,
+              version,
+              currentVersion: version,
+              role: liveToolOutput.role || "owner",
+              itinerary: structuredClone(liveToolOutput.itinerary),
+            },
+          };
+        }
         if (name === "prepare_trip_brief") {
           return {
             structuredContent: {
@@ -268,6 +285,7 @@ function withBridge(html, toolOutput, previewWidgetState = {}) {
             version,
             currentVersion: version,
           };
+          if (persistWidgetState) sessionStorage.setItem(toolOutputStateKey, JSON.stringify(liveToolOutput));
           this.toolOutput = liveToolOutput;
           return {
             structuredContent: {
@@ -309,6 +327,31 @@ const itineraryOutput = {
   role: "owner",
 };
 
+const longTripStart = new Date("2026-12-20T00:00:00Z");
+const longTripDays = Array.from({ length: 22 }, (_, index) => {
+  const date = new Date(longTripStart);
+  date.setUTCDate(longTripStart.getUTCDate() + index);
+  const dateKey = date.toISOString().slice(0, 10);
+  return {
+    date: dateKey,
+    title: index === 5 ? "Navidad entre barrios" : index === 11 ? "Último día del año, sin carreras" : `Plan local ${index + 1}`,
+    area: index % 2 ? "Roma Norte · Condesa" : "Centro · Juárez",
+    summary: "Un día equilibrado, con tiempo para improvisar.",
+    activities: [{ id: `long-${index + 1}`, startTime: "10:00", title: `Actividad del día ${index + 1}`, category: "walk" }],
+  };
+});
+const longItineraryOutput = {
+  ...itineraryOutput,
+  itinerary: {
+    ...itinerary,
+    title: "Ciudad de México — local, diseño y música",
+    destination: "Ciudad de México, México",
+    startDate: "2026-12-20",
+    endDate: "2027-01-10",
+    days: longTripDays,
+  },
+};
+
 const pages = {
   "/": withBridge(tripIntakeWidgetHtml, { mode: "new", actions: [] }),
   "/intake-empty": withBridge(tripIntakeWidgetHtml, undefined),
@@ -329,6 +372,7 @@ const pages = {
   }),
   "/itinerary": withBridge(itineraryWidgetHtml, itineraryOutput),
   "/itinerary-calendar": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "calendar", selectedCalendarDate: "2026-08-14" }),
+  "/itinerary-calendar-long": withBridge(itineraryWidgetHtml, longItineraryOutput, { activeView: "calendar", selectedCalendarDate: "2026-12-31", selectedCalendarMonth: "2026-12" }),
   "/itinerary-reservations": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "reservations" }),
   "/itinerary-routes": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "routes", selectedRouteDate: "2026-08-14" }),
   "/itinerary-dense": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "list", expandedDays: ["2026-08-13", "2026-08-14"] }),

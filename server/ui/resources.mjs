@@ -10,7 +10,9 @@ export const LEGACY_ITINERARY_UI_URI = "ui://sendero/itinerary-v2.html";
 export const LEGACY_ITINERARY_V3_UI_URI = "ui://sendero/itinerary-v3.html";
 export const LEGACY_ITINERARY_V4_UI_URI = "ui://sendero/itinerary-v4.html";
 export const LEGACY_ITINERARY_V5_UI_URI = "ui://sendero/itinerary-v5.html";
-export const ITINERARY_UI_URI = "ui://sendero/itinerary-v6.html";
+export const LEGACY_ITINERARY_V6_UI_URI = "ui://sendero/itinerary-v6.html";
+export const LEGACY_ITINERARY_V7_UI_URI = "ui://sendero/itinerary-v7.html";
+export const ITINERARY_UI_URI = "ui://sendero/itinerary-v8.html";
 export const LEGACY_TRIP_INTAKE_UI_URI = "ui://sendero/trip-intake-v2.html";
 export const LEGACY_TRIP_INTAKE_V3_UI_URI = "ui://sendero/trip-intake-v3.html";
 export const LEGACY_TRIP_INTAKE_V4_UI_URI = "ui://sendero/trip-intake-v4.html";
@@ -31,7 +33,7 @@ export const LEGACY_PUBLIC_SHARE_V3_UI_URI = "ui://sendero/public-share-control-
 export const PUBLIC_SHARE_UI_URI = "ui://sendero/public-share-control-v4.html";
 
 const widgetDescriptions = {
-  itinerary: "Complete Sendero itinerary with daily list, expandable calendar, route map, and reservation tracker views. Reservation status controls update Sendero only and never book or cancel with a provider. The component is the primary answer; do not summarize its visible contents in prose.",
+  itinerary: "Complete Sendero itinerary with daily list, paginated expandable calendar, daily route handoffs, and a combined reservation and ticket tracker. Tracking controls update Sendero only and never book, purchase, or cancel with a provider. The component is the primary answer; do not summarize its visible contents in prose.",
   intake: "Interactive Sendero trip intake or action menu. The component itself collects or presents the next choice; do not repeat its fields or options in prose.",
   trips: "Interactive saved-trip picker. The component itself presents every matching choice; do not enumerate or describe the trips in prose.",
   requirements: "Interactive form containing every currently missing essential trip detail in one place. The component itself asks the complete question; do not repeat known facts, fields, or next steps in prose.",
@@ -46,7 +48,30 @@ function originFrom(value) {
   }
 }
 
-export function widgetResource({ uri, html, widgetOrigin, description, prefersBorder = false }) {
+function escapeHtmlAttribute(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function withGoogleMapsEmbedKey(html, apiKey) {
+  const key = typeof apiKey === "string" ? apiKey.trim() : "";
+  if (!key) return html;
+  const meta = `<meta name="sendero-google-maps-embed-key" content="${escapeHtmlAttribute(key)}" />`;
+  return html.replace("</head>", `    ${meta}\n  </head>`);
+}
+
+export function widgetResource({
+  uri,
+  html,
+  widgetOrigin,
+  description,
+  prefersBorder = false,
+  frameDomains = [],
+}) {
   const domain = originFrom(widgetOrigin);
   return {
     contents: [
@@ -59,7 +84,11 @@ export function widgetResource({ uri, html, widgetOrigin, description, prefersBo
           ui: {
             prefersBorder,
             ...(domain ? { domain } : {}),
-            csp: { connectDomains: [], resourceDomains: [] },
+            csp: {
+              connectDomains: [],
+              resourceDomains: [],
+              ...(frameDomains.length ? { frameDomains } : {}),
+            },
           },
         },
       },
@@ -67,8 +96,18 @@ export function widgetResource({ uri, html, widgetOrigin, description, prefersBo
   };
 }
 
-export function itineraryResource(widgetOrigin, uri = ITINERARY_UI_URI) {
-  return widgetResource({ uri, html: itineraryWidgetHtml, widgetOrigin, description: widgetDescriptions.itinerary });
+export function itineraryResource(
+  widgetOrigin,
+  uri = ITINERARY_UI_URI,
+  { mapsEmbedApiKey } = {},
+) {
+  return widgetResource({
+    uri,
+    html: withGoogleMapsEmbedKey(itineraryWidgetHtml, mapsEmbedApiKey),
+    widgetOrigin,
+    description: widgetDescriptions.itinerary,
+    frameDomains: ["https://www.google.com"],
+  });
 }
 
 export function tripIntakeResource(widgetOrigin, uri = TRIP_INTAKE_UI_URI) {

@@ -32,20 +32,47 @@ function mergedWidgetState(patch) {
   return { ...widgetState(), ...patch };
 }
 
+function reservationReceiptKey(dayDate, activityId) {
+  return `${dayDate}:${activityId}`;
+}
+
+function applyReservationReceipt(itinerary, receipt, context) {
+  if (!itinerary || !receipt?.statuses) return itinerary;
+  if (receipt.tripId && context?.tripId && receipt.tripId !== context.tripId) return itinerary;
+  if (
+    receipt.version != null
+    && context?.version != null
+    && Number(receipt.version) < Number(context.version)
+  ) return itinerary;
+  return {
+    ...itinerary,
+    days: itinerary.days.map((day) => ({
+      ...day,
+      activities: day.activities.map((activity) => {
+        const status = receipt.statuses[reservationReceiptKey(day.date, activity.id)];
+        if (!status || !activity.reservation) return activity;
+        return { ...activity, reservation: { ...activity.reservation, status } };
+      }),
+    })),
+  };
+}
+
 export function ItineraryApp() {
   const { output, refresh } = useToolOutput();
   const incomingItinerary = output?.itinerary;
-  const [timedOut, setTimedOut] = useState(false);
+  const initialReceipt = widgetState().reservationReceipt || null;
+  const incomingContext = tripContext(output, incomingItinerary);
   const [activeView, setActiveView] = useState(() => widgetState().activeView || "list");
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => widgetState().selectedCalendarDate || "");
+  const [selectedCalendarMonth, setSelectedCalendarMonth] = useState(() => widgetState().selectedCalendarMonth || "");
   const [selectedRouteDate, setSelectedRouteDate] = useState(() => widgetState().selectedRouteDate || "");
-  const [itinerary, setItinerary] = useState(incomingItinerary || null);
-  const [context, setContext] = useState(() => tripContext(output, incomingItinerary));
+  const [itinerary, setItinerary] = useState(() => applyReservationReceipt(incomingItinerary, initialReceipt, incomingContext) || null);
+  const [context, setContext] = useState(() => incomingContext);
   const contextRef = useRef(context);
   const hydrationKeyRef = useRef("");
   const reservationQueueRef = useRef(Promise.resolve());
   const reservationOperationIdsRef = useRef(widgetState().reservationOperationIds || {});
-  const reservationReceiptRef = useRef(widgetState().reservationReceipt || null);
+  const reservationReceiptRef = useRef(initialReceipt);
   const sourceSignatureRef = useRef("");
   const sourceSignature = incomingItinerary ? JSON.stringify({
     itinerary: incomingItinerary,
@@ -66,17 +93,9 @@ export function ItineraryApp() {
       && nextContext.tripId === currentContext.tripId
       && Number(nextContext.version) <= Number(currentContext.version)
     ) return;
-    setItinerary(incomingItinerary);
+    setItinerary(applyReservationReceipt(incomingItinerary, reservationReceiptRef.current, nextContext));
     setContext(nextContext);
   }, [incomingItinerary, output, sourceSignature]);
-
-  useEffect(() => {
-    if (itinerary) setTimedOut(false);
-    else {
-      const timeout = window.setTimeout(() => setTimedOut(true), 2500);
-      return () => window.clearTimeout(timeout);
-    }
-  }, [itinerary]);
 
   function persistWidgetState(patch) {
     setWidgetState(mergedWidgetState(patch));
@@ -90,6 +109,11 @@ export function ItineraryApp() {
   function changeCalendarDay(next) {
     setSelectedCalendarDate(next);
     persistWidgetState({ selectedCalendarDate: next });
+  }
+
+  function changeCalendarMonth(next) {
+    setSelectedCalendarMonth(next);
+    persistWidgetState({ selectedCalendarMonth: next });
   }
 
   function changeRouteDay(next) {
@@ -110,10 +134,15 @@ export function ItineraryApp() {
       && Number(nextContext.version) < Number(contextRef.current.version)
     ) return result;
     contextRef.current = nextContext;
-    reservationReceiptRef.current = nextContext;
+    const previousReceipt = reservationReceiptRef.current;
+    const nextReceipt = {
+      ...nextContext,
+      statuses: previousReceipt?.tripId === nextContext.tripId ? previousReceipt.statuses || {} : {},
+    };
+    reservationReceiptRef.current = nextReceipt;
     setContext(nextContext);
     setItinerary(result.itinerary);
-    persistWidgetState({ reservationReceipt: nextContext });
+    persistWidgetState({ reservationReceipt: nextReceipt });
     return result;
   }
 
@@ -175,10 +204,18 @@ export function ItineraryApp() {
       version: result.version || currentContext.version,
     };
     contextRef.current = nextContext;
-    reservationReceiptRef.current = nextContext;
+    const previousReceipt = reservationReceiptRef.current;
+    const nextReceipt = {
+      ...nextContext,
+      statuses: {
+        ...(previousReceipt?.tripId === nextContext.tripId ? previousReceipt.statuses || {} : {}),
+        [reservationReceiptKey(dayDate, activityId)]: status,
+      },
+    };
+    reservationReceiptRef.current = nextReceipt;
     persistWidgetState({
       reservationOperationIds: remainingOperationIds,
-      reservationReceipt: nextContext,
+      reservationReceipt: nextReceipt,
     });
     setItinerary(result.itinerary);
     setContext(nextContext);
@@ -193,7 +230,8 @@ export function ItineraryApp() {
     return run;
   }
 
-  if (!itinerary) return <main className="app-shell"><LoadingState failed={timedOut} onRetry={() => { setTimedOut(false); refresh(); }} /></main>;
+  const explicitFailure = output?.state === "error" || Boolean(output?.error || output?.isError);
+  if (!itinerary) return <main className="app-shell"><LoadingState failed={explicitFailure} onRetry={refresh} /></main>;
   const reservationWritable = Boolean(context.tripId && context.version && ["owner", "editor"].includes(context.role));
 
   return (
@@ -203,12 +241,14 @@ export function ItineraryApp() {
         activeView={activeView}
         itinerary={itinerary}
         onCalendarDayChange={changeCalendarDay}
+        onCalendarMonthChange={changeCalendarMonth}
         onOpenExternal={openExternal}
         onReservationStatusChange={updateReservationStatus}
         onRouteDayChange={changeRouteDay}
         onViewChange={changeView}
         reservationWritable={reservationWritable}
         selectedCalendarDate={selectedCalendarDate}
+        selectedCalendarMonth={selectedCalendarMonth}
         selectedRouteDate={selectedRouteDate}
         variant="chat"
       />

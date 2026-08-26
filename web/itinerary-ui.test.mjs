@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildDayAppleRouteUrl,
+  buildDayAppleRouteUrls,
+  buildDayEmbedMapUrl,
   buildDayRouteUrl,
   buildDayRouteUrls,
   coordinateCoverageForDay,
@@ -31,6 +34,27 @@ test("daily routes use canonical activity locations and never append a provision
   assert.doesNotMatch(route.href, /Base\+provisional|Wrong\+imported/i);
 });
 
+test("fallback routes exclude provisional areas from Google and Apple Maps", () => {
+  const itinerary = {
+    destination: "Ciudad de México, México",
+    lodging: { status: "area_only", name: "Zona provisional", area: "Roma Norte" },
+  };
+  const day = {
+    route: {
+      stops: ["Zona provisional: Roma Norte", "Museo Nacional de Antropología"],
+      returnToLodging: true,
+    },
+    activities: [],
+  };
+  assert.deepEqual(routeStopsForDay(day), ["Museo Nacional de Antropología"]);
+  const googleRoute = buildDayRouteUrl(itinerary, day);
+  const appleRoute = buildDayAppleRouteUrl(itinerary, day);
+  assert.doesNotMatch(googleRoute, /provisional|Roma\+Norte/i);
+  assert.doesNotMatch(appleRoute, /provisional|Roma\+Norte/i);
+  assert.match(new URL(googleRoute).searchParams.get("query"), /Museo Nacional de Antropología/);
+  assert.match(new URL(appleRoute).searchParams.get("query"), /Museo Nacional de Antropología/);
+});
+
 test("one real stop opens a scoped Google place search", () => {
   const href = buildDayRouteUrl(
     { destination: "Buenos Aires, Argentina" },
@@ -38,6 +62,18 @@ test("one real stop opens a scoped Google place search", () => {
   );
   const route = new URL(href);
   assert.match(route.pathname, /\/maps\/search\/$/);
+  assert.match(route.searchParams.get("query"), /MALBA/);
+  assert.match(route.searchParams.get("query"), /Buenos Aires/);
+});
+
+test("one real stop opens a scoped Apple Maps place search", () => {
+  const href = buildDayAppleRouteUrl(
+    { destination: "Buenos Aires, Argentina" },
+    { activities: [{ location: { name: "MALBA", address: "Av. Figueroa Alcorta 3415" } }] },
+  );
+  const route = new URL(href);
+  assert.equal(route.origin, "https://maps.apple.com");
+  assert.equal(route.pathname, "/search");
   assert.match(route.searchParams.get("query"), /MALBA/);
   assert.match(route.searchParams.get("query"), /Buenos Aires/);
 });
@@ -73,6 +109,120 @@ test("confirmed lodging is preserved as origin and destination when a day return
   assert.match(route.searchParams.get("waypoints"), /MAAT/);
 });
 
+test("Apple Maps preserves confirmed lodging and every public stop on return routes", () => {
+  const itinerary = {
+    destination: "Lisboa, Portugal",
+    lodging: { status: "confirmed", address: "Rua da Prata 80, Lisboa" },
+    transport: { modes: ["public_transit"] },
+  };
+  const day = {
+    route: { returnToLodging: true },
+    activities: [
+      { location: { name: "Museu do Fado", address: "Largo do Chafariz de Dentro 1" } },
+      { location: { name: "MAAT", address: "Av. Brasília" } },
+    ],
+  };
+  const route = new URL(buildDayAppleRouteUrl(itinerary, day));
+  assert.equal(route.origin, "https://maps.apple.com");
+  assert.equal(route.pathname, "/directions");
+  assert.equal(route.searchParams.get("source"), "Rua da Prata 80, Lisboa");
+  assert.equal(route.searchParams.get("destination"), "Rua da Prata 80, Lisboa");
+  assert.equal(route.searchParams.get("mode"), "transit");
+  const waypoints = route.searchParams.getAll("waypoint");
+  assert.equal(waypoints.length, 2);
+  assert.match(waypoints[0], /Museu do Fado/);
+  assert.match(waypoints[1], /MAAT/);
+});
+
+test("daily route links prefer the scheduled transport over a global walking option", () => {
+  const itinerary = {
+    destination: "Ciudad de México, México",
+    transport: { modes: ["walk", "public_transit", "taxi"] },
+  };
+  const day = {
+    activities: [
+      {
+        id: "one",
+        location: { name: "Centro", address: "Centro Histórico" },
+        travelToNext: { mode: "public_transit", durationMinutes: 25 },
+      },
+      { id: "two", location: { name: "Coyoacán", address: "Coyoacán" } },
+    ],
+  };
+  assert.equal(new URL(buildDayRouteUrl(itinerary, day)).searchParams.get("travelmode"), "transit");
+  assert.equal(new URL(buildDayAppleRouteUrl(itinerary, day)).searchParams.get("mode"), "transit");
+});
+
+test("embedded directions use complete public coordinates instead of ambiguous place names", () => {
+  const itinerary = {
+    destination: "Ciudad de México, México",
+    lodging: {
+      status: "confirmed",
+      address: "Private lodging address",
+    },
+    transport: { modes: ["public_transit"] },
+  };
+  const day = {
+    route: { returnToLodging: true },
+    activities: [
+      {
+        id: "one",
+        location: { name: "Museo", latitude: 19.4326, longitude: -99.1332 },
+        travelToNext: { mode: "public_transit" },
+      },
+      { id: "two", location: { name: "Mercado", latitude: 19.428, longitude: -99.127 } },
+    ],
+  };
+
+  const url = new URL(buildDayEmbedMapUrl("test-key", itinerary, day, { language: "es" }));
+  assert.equal(url.pathname, "/maps/embed/v1/directions");
+  assert.equal(url.searchParams.get("key"), "test-key");
+  assert.equal(url.searchParams.get("origin"), "19.4326,-99.1332");
+  assert.equal(url.searchParams.get("destination"), "19.428,-99.127");
+  assert.equal(url.searchParams.get("mode"), "transit");
+  assert.equal(url.searchParams.get("language"), "es");
+  assert.doesNotMatch(url.href, /Private|Museo|Mercado/);
+});
+
+test("embedded place maps support one coordinate and never render partial routes", () => {
+  const itinerary = { destination: "Buenos Aires, Argentina" };
+  const oneStop = {
+    activities: [
+      { id: "malba", location: { name: "MALBA", latitude: -34.5768, longitude: -58.4034 } },
+    ],
+  };
+  const place = new URL(buildDayEmbedMapUrl("test-key", itinerary, oneStop));
+  assert.equal(place.pathname, "/maps/embed/v1/place");
+  assert.equal(place.searchParams.get("q"), "-34.5768,-58.4034");
+
+  const partial = {
+    activities: [
+      ...oneStop.activities,
+      { id: "missing", location: { name: "Sin coordenadas", address: "Buenos Aires" } },
+    ],
+  };
+  assert.equal(buildDayEmbedMapUrl("test-key", itinerary, partial), "");
+  assert.equal(buildDayEmbedMapUrl("", itinerary, oneStop), "");
+});
+
+test("embedded directions accept Google's 20-waypoint limit and reject larger routes", () => {
+  const itinerary = { destination: "Buenos Aires, Argentina" };
+  const dayWithStops = (count) => ({
+    activities: Array.from({ length: count }, (_, index) => ({
+      id: `point-${index}`,
+      location: {
+        name: `Punto ${index}`,
+        latitude: -34.6 + (index * 0.001),
+        longitude: -58.4 + (index * 0.001),
+      },
+    })),
+  });
+
+  const supported = new URL(buildDayEmbedMapUrl("test-key", itinerary, dayWithStops(22)));
+  assert.equal(supported.searchParams.get("waypoints").split("|").length, 20);
+  assert.equal(buildDayEmbedMapUrl("test-key", itinerary, dayWithStops(23)), "");
+});
+
 test("long daily routes split into mobile-safe Google Maps segments without losing stops", () => {
   const activities = Array.from({ length: 7 }, (_, index) => ({
     id: `stop-${index + 1}`,
@@ -89,6 +239,25 @@ test("long daily routes split into mobile-safe Google Maps segments without losi
   assert.equal(first.searchParams.get("waypoints").split("|").length, 3);
   assert.match(first.searchParams.get("destination"), /Parada 5/);
   assert.match(second.searchParams.get("origin"), /Parada 5/);
+  assert.match(second.searchParams.get("destination"), /Parada 7/);
+});
+
+test("long daily routes split into mobile-safe Apple Maps segments without losing stops", () => {
+  const activities = Array.from({ length: 7 }, (_, index) => ({
+    id: `stop-${index + 1}`,
+    location: { name: `Parada ${index + 1}`, address: `Calle ${index + 1}` },
+  }));
+  const urls = buildDayAppleRouteUrls(
+    { destination: "Buenos Aires, Argentina", transport: { modes: ["bike"] } },
+    { activities },
+  );
+  assert.equal(urls.length, 2);
+  const first = new URL(urls[0]);
+  const second = new URL(urls[1]);
+  assert.equal(first.searchParams.get("mode"), "cycling");
+  assert.equal(first.searchParams.getAll("waypoint").length, 3);
+  assert.match(first.searchParams.get("destination"), /Parada 5/);
+  assert.match(second.searchParams.get("source"), /Parada 5/);
   assert.match(second.searchParams.get("destination"), /Parada 7/);
 });
 
@@ -126,7 +295,7 @@ test("schematic coverage refuses to represent only a subset of route stops", () 
   assert.equal(complete.requiredCount, 2);
 });
 
-test("schematic coverage includes both confirmed lodging endpoints", () => {
+test("schematic coverage ignores private lodging endpoints", () => {
   const coverage = coordinateCoverageForDay({
     destination: "Ciudad de México, México",
     lodging: { status: "confirmed", address: "Av. Sonora 100, Ciudad de México" },
@@ -137,9 +306,10 @@ test("schematic coverage includes both confirmed lodging endpoints", () => {
       { id: "two", location: { name: "Mercado", latitude: 19.428, longitude: -99.127 } },
     ],
   });
-  assert.equal(coverage.complete, false);
+  assert.equal(coverage.complete, true);
   assert.equal(coverage.locatedCount, 2);
-  assert.equal(coverage.requiredCount, 4);
+  assert.equal(coverage.requiredCount, 2);
+  assert.deepEqual(coverage.points.map((point) => point.id), ["one", "two"]);
 });
 
 test("external links allow only HTTP(S) destinations", () => {

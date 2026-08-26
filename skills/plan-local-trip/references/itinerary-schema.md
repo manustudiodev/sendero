@@ -45,6 +45,8 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
             "longitude": -9.1624
           },
           "reservation": {
+            "kind": "ticket",
+            "requirement": "required",
             "status": "confirmed",
             "note": "Official ticket received"
           },
@@ -75,16 +77,21 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
 ## Status values
 
 - Weather: `forecast`, `seasonal`, `unknown`.
-- Reservation: `not_needed`, `suggested`, `pending`, `confirmed`, `cancelled`.
+- Reservation or ticket lifecycle: `pending`, `confirmed`, `cancelled`.
 - Transport modes: `walk`, `bike`, `public_transit`, `taxi`, `car`, `train`, `boat`, `other`.
 
-Reservation status means:
+Lifecycle status means:
 
-- `not_needed`: no booking or purchase is needed.
-- `suggested`: booking is optional but may help.
 - `pending`: booking or purchase remains to be completed outside Sendero.
 - `confirmed`: the user has recorded the reservation as completed.
 - `cancelled`: the user has recorded the reservation as cancelled.
+
+Reservation type and necessity are separate from status:
+
+- `kind`: `reservation` for a table, bar, or bookable experience; `ticket` for a museum, attraction, concert, cinema, or event.
+- `requirement`: `required`, `recommended`, or `optional`.
+
+Do not encode optionality as lifecycle state in new itineraries. Omit `reservation` entirely when no booking or purchase is needed. The legacy values `not_needed` and `suggested` remain accepted only for old snapshots; `not_needed` stays hidden and `suggested` is normalized to an optional pending item.
 
 Changing `confirmed` or `cancelled` inside the itinerary updates Sendero's tracker only. It never performs the provider transaction. Use `reservation.url` for the official external booking or management page and make that boundary visible.
 

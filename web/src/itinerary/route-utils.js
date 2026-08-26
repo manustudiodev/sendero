@@ -1,4 +1,4 @@
-const provisionalStopPattern = /(?:base|alojamiento|hospedaje)\s+(?:provisional|por decidir)|(?:provisional|por decidir)\s+(?:base|alojamiento|hospedaje)/i;
+const provisionalStopPattern = /\b(?:por decidir|undecided|(?:base|zona|alojamiento|hospedaje|lodging)\s+provisional|provisional\s+(?:base|zona|alojamiento|hospedaje|lodging))\b/i;
 
 function normalizedText(value) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
@@ -53,16 +53,41 @@ function googlePlaceQuery(stop, destination) {
 }
 
 function googleTravelMode(modes = []) {
-  const preferred = modes.find((mode) => ["walk", "bike", "public_transit", "train", "taxi", "car"].includes(mode));
+  const preferred = modes.find((mode) => ["public_transit", "train", "taxi", "car", "bike", "walk"].includes(mode));
   if (preferred === "bike") return "bicycling";
   if (preferred === "public_transit" || preferred === "train") return "transit";
   if (preferred === "taxi" || preferred === "car") return "driving";
   return "walking";
 }
 
+function appleTravelMode(modes = []) {
+  const preferred = modes.find((mode) => ["public_transit", "train", "taxi", "car", "bike", "walk"].includes(mode));
+  if (preferred === "bike") return "cycling";
+  if (preferred === "public_transit" || preferred === "train") return "transit";
+  if (preferred === "taxi" || preferred === "car") return "driving";
+  return "walking";
+}
+
+function routeModes(itinerary, day) {
+  const activityModes = (day?.activities || [])
+    .map((activity) => activity?.travelToNext?.mode)
+    .filter(Boolean);
+  const candidates = activityModes.length ? activityModes : (itinerary?.transport?.modes || []);
+  const priority = ["public_transit", "train", "taxi", "car", "bike", "walk"];
+  return priority.filter((mode) => candidates.includes(mode));
+}
+
 function confirmedLodgingAddress(itinerary) {
   if (itinerary?.lodging?.status !== "confirmed" || !normalizedText(itinerary.lodging.address)) return "";
   return googlePlaceQuery(itinerary.lodging.address, itinerary.destination);
+}
+
+function routeQueriesForDay(itinerary, day) {
+  const stops = routeStopsForDay(day).map((stop) => googlePlaceQuery(stop, itinerary?.destination));
+  if (!stops.length) return [];
+  const lodgingAddress = confirmedLodgingAddress(itinerary);
+  const shouldReturnToLodging = Boolean(day?.route?.returnToLodging && lodgingAddress);
+  return shouldReturnToLodging ? [lodgingAddress, ...stops, lodgingAddress] : stops;
 }
 
 function buildDirectionsUrl(stops, modes) {
@@ -76,12 +101,19 @@ function buildDirectionsUrl(stops, modes) {
   return `https://www.google.com/maps/dir/?${params}`;
 }
 
+function buildAppleDirectionsUrl(stops, modes) {
+  const params = new URLSearchParams({
+    source: stops[0],
+    destination: stops.at(-1),
+    mode: appleTravelMode(modes),
+  });
+  stops.slice(1, -1).forEach((stop) => params.append("waypoint", stop));
+  return `https://maps.apple.com/directions?${params}`;
+}
+
 export function buildDayRouteUrls(itinerary, day) {
-  const stops = routeStopsForDay(day).map((stop) => googlePlaceQuery(stop, itinerary?.destination));
-  if (!stops.length) return [];
-  const lodgingAddress = confirmedLodgingAddress(itinerary);
-  const shouldReturnToLodging = Boolean(day?.route?.returnToLodging && lodgingAddress);
-  const routeStops = shouldReturnToLodging ? [lodgingAddress, ...stops, lodgingAddress] : stops;
+  const routeStops = routeQueriesForDay(itinerary, day);
+  if (!routeStops.length) return [];
   if (routeStops.length === 1) {
     const params = new URLSearchParams({ api: "1", query: routeStops[0] });
     return [`https://www.google.com/maps/search/?${params}`];
@@ -90,13 +122,56 @@ export function buildDayRouteUrls(itinerary, day) {
   for (let start = 0; start < routeStops.length - 1; start += 4) {
     const segment = routeStops.slice(start, start + 5);
     if (segment.length < 2) break;
-    urls.push(buildDirectionsUrl(segment, itinerary?.transport?.modes || []));
+    urls.push(buildDirectionsUrl(segment, routeModes(itinerary, day)));
   }
   return urls;
 }
 
 export function buildDayRouteUrl(itinerary, day) {
   return buildDayRouteUrls(itinerary, day)[0] || "";
+}
+
+export function buildDayEmbedMapUrl(apiKey, itinerary, day, { language = "es" } = {}) {
+  const key = normalizedText(apiKey);
+  const coverage = coordinateCoverageForDay(itinerary, day);
+  const routeStops = coverage.complete
+    ? coverage.points.map(({ latitude, longitude }) => `${latitude},${longitude}`)
+    : [];
+  if (!key || !routeStops.length || routeStops.length > 22) return "";
+  if (routeStops.length === 1) {
+    const params = new URLSearchParams({ key, q: routeStops[0], language });
+    return `https://www.google.com/maps/embed/v1/place?${params}`;
+  }
+  const params = new URLSearchParams({
+    key,
+    origin: routeStops[0],
+    destination: routeStops.at(-1),
+    mode: googleTravelMode(routeModes(itinerary, day)),
+    units: "metric",
+    language,
+  });
+  if (routeStops.length > 2) params.set("waypoints", routeStops.slice(1, -1).join("|"));
+  return `https://www.google.com/maps/embed/v1/directions?${params}`;
+}
+
+export function buildDayAppleRouteUrls(itinerary, day) {
+  const routeStops = routeQueriesForDay(itinerary, day);
+  if (!routeStops.length) return [];
+  if (routeStops.length === 1) {
+    const params = new URLSearchParams({ query: routeStops[0] });
+    return [`https://maps.apple.com/search?${params}`];
+  }
+  const urls = [];
+  for (let start = 0; start < routeStops.length - 1; start += 4) {
+    const segment = routeStops.slice(start, start + 5);
+    if (segment.length < 2) break;
+    urls.push(buildAppleDirectionsUrl(segment, routeModes(itinerary, day)));
+  }
+  return urls;
+}
+
+export function buildDayAppleRouteUrl(itinerary, day) {
+  return buildDayAppleRouteUrls(itinerary, day)[0] || "";
 }
 
 function coordinatePoint(location, id, label) {
@@ -127,7 +202,7 @@ export function coordinateStopsForDay(day) {
   });
 }
 
-export function coordinateCoverageForDay(itinerary, day) {
+export function coordinateCoverageForDay(_itinerary, day) {
   const activityEntries = activityStopEntries(day);
   const fallbackStops = activityEntries.length ? [] : routeStopsForDay(day);
   const activityPoints = activityEntries.flatMap(({ activity, label, location }) => {
@@ -138,19 +213,11 @@ export function coordinateCoverageForDay(itinerary, day) {
     );
     return point ? [point] : [];
   });
-  const lodgingAddress = confirmedLodgingAddress(itinerary);
-  const shouldReturnToLodging = Boolean(day?.route?.returnToLodging && lodgingAddress);
-  const lodgingPoint = shouldReturnToLodging
-    ? coordinatePoint(itinerary.lodging, "lodging", normalizedText(itinerary.lodging.name) || "Alojamiento")
-    : null;
-  const requiredCount = activityEntries.length + fallbackStops.length + (shouldReturnToLodging ? 2 : 0);
-  const points = shouldReturnToLodging && lodgingPoint
-    ? [lodgingPoint, ...activityPoints, { ...lodgingPoint, id: "lodging-return" }]
-    : activityPoints;
+  const requiredCount = activityEntries.length + fallbackStops.length;
   return {
-    complete: requiredCount > 0 && points.length === requiredCount,
-    locatedCount: points.length,
-    points,
+    complete: requiredCount > 0 && activityPoints.length === requiredCount,
+    locatedCount: activityPoints.length,
+    points: activityPoints,
     requiredCount,
   };
 }

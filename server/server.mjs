@@ -7,6 +7,8 @@ import {
   LEGACY_ITINERARY_V3_UI_URI,
   LEGACY_ITINERARY_V4_UI_URI,
   LEGACY_ITINERARY_V5_UI_URI,
+  LEGACY_ITINERARY_V6_UI_URI,
+  LEGACY_ITINERARY_V7_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -45,6 +47,8 @@ export {
   LEGACY_ITINERARY_V3_UI_URI,
   LEGACY_ITINERARY_V4_UI_URI,
   LEGACY_ITINERARY_V5_UI_URI,
+  LEGACY_ITINERARY_V6_UI_URI,
+  LEGACY_ITINERARY_V7_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -134,6 +138,8 @@ const tripBriefLodgingSchema = z.object({
 
 const reservationSchema = z.object({
   status: z.enum(["not_needed", "suggested", "pending", "confirmed", "cancelled"]),
+  kind: z.enum(["reservation", "ticket"]).optional(),
+  requirement: z.enum(["required", "recommended", "optional"]).optional(),
   url: httpUrl.optional(),
   deadline: z.string().optional(),
   note: z.string().optional(),
@@ -541,9 +547,18 @@ export function normalizeItinerary(itinerary) {
     days: [...itinerary.days]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((day) => {
-        const activities = [...day.activities].sort((a, b) =>
-          a.startTime.localeCompare(b.startTime),
-        );
+        const activities = [...day.activities]
+          .sort((a, b) => a.startTime.localeCompare(b.startTime))
+          .map((activity) => activity.reservation?.status === "suggested"
+            ? {
+                ...activity,
+                reservation: {
+                  ...activity.reservation,
+                  requirement: activity.reservation.requirement || "optional",
+                  status: "pending",
+                },
+              }
+            : activity);
         const normalizedDay = { ...day, activities };
         const stops = orderedActivityStops(itinerary, normalizedDay);
         const lodgingAddress = confirmedLodgingAddress(itinerary);
@@ -618,6 +633,7 @@ export function validateItinerary(itinerary) {
 
     const intervals = [];
     const seenActivityIds = new Set();
+    let routedLocationsWithoutCoordinates = 0;
     for (const activity of day.activities) {
       if (seenActivityIds.has(activity.id)) {
         errors.push(`${day.date}: duplicate activity ID ${activity.id}.`);
@@ -635,6 +651,16 @@ export function validateItinerary(itinerary) {
       }
       if (!activity.location && !["rest", "free_time"].includes(activity.category || "")) {
         warnings.push(`${day.date} · ${activity.title}: add a location for route planning.`);
+      }
+      if (
+        activity.location
+        && !["rest", "free_time"].includes(activity.category || "")
+        && !(
+          (activity.location.latitude !== undefined && activity.location.longitude !== undefined)
+          || (activity.location.lat !== undefined && activity.location.lng !== undefined)
+        )
+      ) {
+        routedLocationsWithoutCoordinates += 1;
       }
       if (
         activity.reservation?.status === "pending" &&
@@ -655,6 +681,12 @@ export function validateItinerary(itinerary) {
       if (activity.reservation?.status === "confirmed" && !activity.locked) {
         warnings.push(`${day.date} · ${activity.title}: confirmed reservation should normally be locked.`);
       }
+    }
+
+    if (routedLocationsWithoutCoordinates) {
+      warnings.push(
+        `${day.date}: ${routedLocationsWithoutCoordinates} route location(s) need source-backed coordinates for the in-chat schematic; external map links remain available.`,
+      );
     }
 
     intervals.sort((a, b) => a.start - b.start);
@@ -783,6 +815,7 @@ export function createTripPlannerServer({
   persistence,
   auth,
   widgetOrigin,
+  mapsEmbedApiKey = process.env.GOOGLE_MAPS_EMBED_API_KEY,
   publicWebUrl = "http://localhost:8788",
   publicShareSecret,
 } = {}) {
@@ -797,24 +830,30 @@ export function createTripPlannerServer({
     { name: "sendero", version: "0.5.0" },
     {
       instructions:
-        "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For every successful tool that renders a Sendero component, treat the component as the complete user-facing answer. End the turn without assistant prose when the component already contains the full result. If text is strictly necessary, write at most one short sentence only for a blocker, safety-critical caveat, required citation, or next action that the component does not show. Never restate component labels, values, choices, itinerary items, known trip facts, or tool mechanics. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief as the final action of the turn so every currently known critical gap is requested together in one component; never ask those fields one at a time in text and emit no assistant prose after the component. When a Sendero component continues with sendero.stage brief_ready, its validated brief replaces the earlier missing-fields result for the same interactionId: continue planning from that brief and never ask for or render those fields again unless a fresh prepare_trip_brief call on that exact brief still returns criticalFields. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use validate_itinerary before saving or presenting and render_itinerary once with the final snapshot. When rendering a saved trip, pass its authoritative tripId, version, and role so the component can persist reservation tracking safely. The component already contains the reservation tracker and official links; do not generate a separate reservation list in prose. Reservation status controls only update Sendero and never book or cancel with a provider. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, or reservation is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
+        "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For every successful tool that renders a Sendero component, treat the component as the complete user-facing answer. End the turn without assistant prose when the component already contains the full result. If text is strictly necessary, write at most one short sentence only for a blocker, safety-critical caveat, required citation, or next action that the component does not show. Never restate component labels, values, choices, itinerary items, known trip facts, or tool mechanics. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief as the final action of the turn so every currently known critical gap is requested together in one component; never ask those fields one at a time in text and emit no assistant prose after the component. When a Sendero component continues with sendero.stage brief_ready, its validated brief replaces the earlier missing-fields result for the same interactionId: continue planning from that brief and never ask for or render those fields again unless a fresh prepare_trip_brief call on that exact brief still returns criticalFields. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use a contextual trip title that reflects the interests, mood, or purpose of the trip; do not repeat the full destination in the title when destination is already a separate field. Use validate_itinerary before saving or presenting and render_itinerary once with the final snapshot. When rendering a saved trip, pass its authoritative tripId, version, and role so the component can persist reservation tracking safely. For every actionable reservation record, classify kind as reservation or ticket and requirement as required, recommended, or optional; keep that requirement separate from the pending, confirmed, or cancelled lifecycle status. The component already contains the reservation and ticket tracker with official links; do not generate a separate list in prose. Reservation status controls only update Sendero and never book, purchase, or cancel with a provider. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, reservation, or ticket is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
     },
   );
 
   server.registerResource("itinerary-ui", ITINERARY_UI_URI, {}, async () =>
-    itineraryResource(widgetOrigin),
+    itineraryResource(widgetOrigin, ITINERARY_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("itinerary-ui-v2", LEGACY_ITINERARY_UI_URI, {}, async () =>
-    itineraryResource(widgetOrigin, LEGACY_ITINERARY_UI_URI),
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("itinerary-ui-v3", LEGACY_ITINERARY_V3_UI_URI, {}, async () =>
-    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V3_UI_URI),
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V3_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("itinerary-ui-v4", LEGACY_ITINERARY_V4_UI_URI, {}, async () =>
-    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V4_UI_URI),
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V4_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("itinerary-ui-v5", LEGACY_ITINERARY_V5_UI_URI, {}, async () =>
-    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V5_UI_URI),
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V5_UI_URI, { mapsEmbedApiKey }),
+  );
+  server.registerResource("itinerary-ui-v6", LEGACY_ITINERARY_V6_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V6_UI_URI, { mapsEmbedApiKey }),
+  );
+  server.registerResource("itinerary-ui-v7", LEGACY_ITINERARY_V7_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V7_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),
@@ -1083,9 +1122,9 @@ export function createTripPlannerServer({
   server.registerTool(
     "update_reservation_status",
     {
-      title: "Update a reservation in Sendero",
+      title: "Update a reservation or ticket in Sendero",
       description:
-        "Update only Sendero's saved reservation tracker for one itinerary activity. This never books or cancels anything with an external provider. Use the operation ID supplied by the component so retries are idempotent.",
+        "Update only Sendero's saved reservation or ticket tracker for one itinerary activity. This never books, buys, or cancels anything with an external provider. Use the operation ID supplied by the component so retries are idempotent.",
       inputSchema: {
         tripId: z.string().min(1),
         dayDate: isoDate,

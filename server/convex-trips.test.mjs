@@ -48,7 +48,11 @@ function createDatabase() {
                   id: "museum",
                   startTime: "10:00",
                   title: "Museum",
-                  reservation: { status: "pending" },
+                  reservation: {
+                    kind: "ticket",
+                    requirement: "required",
+                    status: "pending",
+                  },
                 },
               ],
             },
@@ -125,7 +129,7 @@ function createDatabase() {
   };
 }
 
-test("an idempotent reservation retry returns the latest trip after a later update", async () => {
+test("reservation updates preserve classification and idempotent retries return the latest trip", async () => {
   const { updateReservationStatus } = await loadTripsModule();
   const db = createDatabase();
   const ctx = {
@@ -140,6 +144,13 @@ test("an idempotent reservation retry returns the latest trip after a later upda
     },
     db,
   };
+  const assertReservation = (result, status) => {
+    assert.deepEqual(result.itinerary.days[0].activities[0].reservation, {
+      kind: "ticket",
+      requirement: "required",
+      status,
+    });
+  };
   const firstRequest = {
     tripId: "trip_1",
     dayDate: "2026-08-22",
@@ -151,7 +162,7 @@ test("an idempotent reservation retry returns the latest trip after a later upda
 
   const first = await updateReservationStatus._handler(ctx, firstRequest);
   assert.equal(first.version, 2);
-  assert.equal(first.itinerary.days[0].activities[0].reservation.status, "confirmed");
+  assertReservation(first, "confirmed");
 
   const later = await updateReservationStatus._handler(ctx, {
     ...firstRequest,
@@ -160,12 +171,12 @@ test("an idempotent reservation retry returns the latest trip after a later upda
     operationId: "reservation-cancel-2",
   });
   assert.equal(later.version, 3);
-  assert.equal(later.itinerary.days[0].activities[0].reservation.status, "cancelled");
+  assertReservation(later, "cancelled");
 
   const retry = await updateReservationStatus._handler(ctx, firstRequest);
   assert.equal(retry.changed, true);
   assert.equal(retry.version, 3);
-  assert.equal(retry.itinerary.days[0].activities[0].reservation.status, "cancelled");
+  assertReservation(retry, "cancelled");
   assert.equal(db.tables.tripRevisions.length, 2);
   assert.equal(db.tables.reservationOperations.length, 2);
 });

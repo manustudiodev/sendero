@@ -11,6 +11,8 @@ import {
   LEGACY_ITINERARY_V3_UI_URI,
   LEGACY_ITINERARY_V4_UI_URI,
   LEGACY_ITINERARY_V5_UI_URI,
+  LEGACY_ITINERARY_V6_UI_URI,
+  LEGACY_ITINERARY_V7_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -63,7 +65,7 @@ test("pins a fresh URI for every current Sendero component bundle", () => {
       share: PUBLIC_SHARE_UI_URI,
     },
     {
-      itinerary: "ui://sendero/itinerary-v6.html",
+      itinerary: "ui://sendero/itinerary-v8.html",
       intake: "ui://sendero/trip-intake-v5.html",
       trips: "ui://sendero/trip-list-v4.html",
       requirements: "ui://sendero/trip-requirements-v6.html",
@@ -276,8 +278,30 @@ test("requires actionable details only for reservations that remain pending", ()
   );
 });
 
+test("keeps ticket type and necessity separate from lifecycle status", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.days[0].activities[1].reservation = {
+    kind: "ticket",
+    requirement: "optional",
+    status: "pending",
+    url: "https://tickets.example/buy",
+  };
+  const normalized = normalizeItinerary(candidate);
+  assert.deepEqual(normalized.days[0].activities[1].reservation, candidate.days[0].activities[1].reservation);
+  assert.equal(validateItinerary(normalized).valid, true);
+
+  const legacy = structuredClone(itinerary);
+  legacy.days[0].activities[1].reservation = {
+    status: "suggested",
+    url: "https://tickets.example/buy",
+  };
+  const migrated = normalizeItinerary(legacy);
+  assert.equal(migrated.days[0].activities[1].reservation.status, "pending");
+  assert.equal(migrated.days[0].activities[1].reservation.requirement, "optional");
+});
+
 test("advertises the planning tools and renders the MCP Apps resource", async () => {
-  const server = createTripPlannerServer();
+  const server = createTripPlannerServer({ mapsEmbedApiKey: "server-test-key" });
   const client = new Client({ name: "sendero-test", version: "0.1.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
@@ -364,6 +388,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(result.structuredContent.validation.valid, true);
   assert.equal(result.content[0].text, "Tu itinerario está listo en Sendero.");
   assert.doesNotMatch(result.content[0].text, /Lisboa|1 day|día/);
+  assert.doesNotMatch(JSON.stringify(result), /server-test-key/);
 
   const savedPresentation = await client.callTool({
     name: "render_itinerary",
@@ -388,6 +413,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.match(resource.contents[0].text, /Rutas/);
   assert.match(resource.contents[0].text, /toolOutput/);
   assert.match(resource.contents[0].text, /ui\/notifications\/tool-result/);
+  assert.match(resource.contents[0].text, /sendero-google-maps-embed-key/);
+  assert.match(resource.contents[0].text, /server-test-key/);
+  assert.deepEqual(resource.contents[0]._meta.ui.csp.frameDomains, ["https://www.google.com"]);
   assert.match(resource.contents[0]._meta["openai/widgetDescription"], /itinerary|calendar|route/i);
 
   const legacyItineraryResource = await client.readResource({ uri: LEGACY_ITINERARY_UI_URI });
@@ -402,6 +430,12 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyItineraryV5Resource = await client.readResource({ uri: LEGACY_ITINERARY_V5_UI_URI });
   assertInlineWidgetResource(legacyItineraryV5Resource, LEGACY_ITINERARY_V5_UI_URI);
   assert.equal(legacyItineraryV5Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV6Resource = await client.readResource({ uri: LEGACY_ITINERARY_V6_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV6Resource, LEGACY_ITINERARY_V6_UI_URI);
+  assert.equal(legacyItineraryV6Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV7Resource = await client.readResource({ uri: LEGACY_ITINERARY_V7_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV7Resource, LEGACY_ITINERARY_V7_UI_URI);
+  assert.equal(legacyItineraryV7Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");

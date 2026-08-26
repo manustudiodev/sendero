@@ -70,6 +70,7 @@ export function createApp({
   persistenceFactory = createConvexPersistence,
   publicWebUrl,
   publicShareSecret = process.env.SENDERO_SHARE_SECRET,
+  mapsEmbedApiKey = process.env.GOOGLE_MAPS_EMBED_API_KEY,
   logger = console,
   app = new Hono(),
 } = {}) {
@@ -104,6 +105,9 @@ export function createApp({
         typeof publicShareSecret === "string" && Buffer.byteLength(publicShareSecret, "utf8") >= 32
           ? "configured"
           : "not_configured",
+      mapsEmbed: typeof mapsEmbedApiKey === "string" && mapsEmbedApiKey.trim()
+        ? "configured"
+        : "not_configured",
     }),
   );
 
@@ -207,6 +211,7 @@ export function createApp({
       persistence,
       auth,
       widgetOrigin: authConfig.resourceServerUrl,
+      mapsEmbedApiKey,
       publicWebUrl: resolvedPublicWebUrl,
       publicShareSecret,
     });

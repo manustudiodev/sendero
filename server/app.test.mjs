@@ -14,6 +14,7 @@ test("reports whether Convex storage is configured", async () => {
     storage: "configured",
     authentication: "not_configured",
     publicSharing: "not_configured",
+    mapsEmbed: "not_configured",
   });
 
   const unconfigured = createApp({ convexUrl: "" });
@@ -26,6 +27,9 @@ test("reports whether Convex storage is configured", async () => {
     (await (await sharingConfigured.request("/health")).json()).publicSharing,
     "configured",
   );
+
+  const mapsConfigured = createApp({ mapsEmbedApiKey: "test-key" });
+  assert.equal((await (await mapsConfigured.request("/health")).json()).mapsEmbed, "configured");
 });
 
 test("publishes OAuth protected-resource metadata for ChatGPT and MCP clients", async () => {

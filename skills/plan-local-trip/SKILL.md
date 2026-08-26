@@ -48,6 +48,7 @@ Prefer official sources for operational facts. Use reputable local sources for d
 
 ### 3. Build a geographically coherent itinerary
 
+- Give the trip a contextual title based on its interests, mood, or purpose. The destination already has its own field, so do not repeat the full place name as the title or use it as a redundant prefix.
 - Group each day by area and start from the lodging.
 - Mix well-known highlights with local and alternative experiences selected for the user's interests; do not add obscure places merely to appear original.
 - Include morning, afternoon, and evening when the trip length and pace allow it.
@@ -62,11 +63,11 @@ Use the canonical structure in [itinerary-schema.md](references/itinerary-schema
 
 ### 4. Handle reservations safely
 
-For every reservable item, include status, official URL, recommended deadline, cancellation note when known, and what remains unconfirmed. Offer multiple restaurant, cafe, or activity options when the user has not selected one.
+For every actionable item, first determine whether the user needs a **reservation** (restaurants, bars, tables, or bookable experiences) or a **ticket** (museums, attractions, concerts, cinema, or events). Store that as `reservation.kind`. Separately classify whether it is `required`, `recommended`, or `optional` in `reservation.requirement`; never use optionality as the item's lifecycle status. Then include the current tracking status, official URL, recommended deadline, cancellation note when known, and what remains unconfirmed. Offer multiple restaurant, cafe, or activity options when the user has not selected one.
 
 The first final `render_itinerary` result must already contain the complete reservation tracker together with the list, calendar, and routes. Do not add a separate “review reservations” turn, reproduce the reservations as prose, or wait for another research pass merely because the user opens that view.
 
-Reservation controls inside Sendero change only Sendero's tracking status. **Marcar confirmada** records that the user says the reservation was completed; **Marcar cancelada en Sendero** records its local cancellation state. Neither action books, purchases, contacts, nor cancels with the provider. The official link is the explicit handoff to the external provider, and the component must state this boundary.
+Reservation and ticket controls inside Sendero change only Sendero's tracking status. **Ya reservé** or **Ya compré** records what the user says they completed; **Reserva cancelada** or **Boleto cancelado** records its local cancellation state. Neither action books, purchases, contacts, nor cancels with the provider. The official link is the explicit handoff to the external provider, and the component must state this boundary.
 
 Do not purchase, book, cancel, or send personal information without explicit confirmation immediately before the external action. A recommendation or draft itinerary is not permission to transact.
 

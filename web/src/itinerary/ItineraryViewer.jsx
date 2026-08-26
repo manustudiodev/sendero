@@ -1,16 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { DisclosurePanel } from "../DisclosurePanel.jsx";
 import { safeExternalUrl } from "../safe-url.js";
-import { buildDayRouteUrls, coordinateCoverageForDay, routeStopsForDay } from "./route-utils.js";
-
-const reservationLabels = {
-  required: "Necesaria",
-  recommended: "Recomendada",
-  suggested: "Opcional",
-  pending: "Por reservar",
-  confirmed: "Confirmada",
-  cancelled: "Cancelada",
-};
+import {
+  buildMonthPage,
+  monthKeyFromDate,
+  monthKeysInRange,
+  resolveMonthPage,
+} from "./calendar-model.js";
+import { contextualItineraryTitle, reservationPresentation } from "./presentation-utils.js";
+import {
+  buildDayEmbedMapUrl,
+  buildDayAppleRouteUrls,
+  buildDayRouteUrls,
+  coordinateCoverageForDay,
+  routeStopsForDay,
+} from "./route-utils.js";
 
 const transportLabels = {
   walk: "a pie",
@@ -48,6 +52,9 @@ function Activity({ activity, onOpenExternal, variant }) {
   const showPrivateStatus = variant !== "public";
   const location = activity.location;
   const sourceUrl = safeExternalUrl(activity.sourceUrl);
+  const reservationView = activity.reservation?.status && activity.reservation.status !== "not_needed"
+    ? reservationPresentation({ activity, reservation: activity.reservation })
+    : null;
   return (
     <li className="activity">
       <time className="activity-time" dateTime={activity.startTime}>{activity.startTime}</time>
@@ -70,10 +77,9 @@ function Activity({ activity, onOpenExternal, variant }) {
         ) : null}
         <div className="badges">
           {showPrivateStatus && activity.locked ? <span className="badge badge-locked">Fijo</span> : null}
-          {showPrivateStatus && activity.reservation?.status && activity.reservation.status !== "not_needed" ? (
-            <span className={`badge reservation-status reservation-status-${activity.reservation.status}`}>
-              Reserva: {reservationLabels[activity.reservation.status] || activity.reservation.status}
-            </span>
+          {showPrivateStatus && reservationView ? <span className="badge reservation-requirement">{reservationView.requirementLabel}</span> : null}
+          {showPrivateStatus && reservationView ? (
+            <span className={`badge reservation-status reservation-status-${reservationView.status}`}>{reservationView.statusLabel}</span>
           ) : null}
           {activity.travelToNext ? (
             <span className="badge">{activity.travelToNext.durationMinutes} min · {transportLabels[activity.travelToNext.mode] || activity.travelToNext.mode}</span>
@@ -173,24 +179,8 @@ function ListView({ itinerary, onOpenExternal, variant }) {
   return <div className="days">{itinerary.days.map((day, index) => <DayCard day={day} initiallyOpen={index === 0} key={day.date} onOpenExternal={onOpenExternal} variant={variant} />)}</div>;
 }
 
-function useCalendarColumns() {
-  const getColumns = () => {
-    if (typeof window === "undefined") return 7;
-    if (window.innerWidth <= 720) return 2;
-    if (window.innerWidth <= 1040) return 4;
-    return 7;
-  };
-  const [columns, setColumns] = useState(getColumns);
-  useEffect(() => {
-    const update = () => setColumns(getColumns());
-    window.addEventListener("resize", update, { passive: true });
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return columns;
-}
-
-function CalendarRow({ columns, currentDate, onOpenExternal, row, selectDate, variant }) {
-  const expandedDay = row.find((day) => day.date === currentDate);
+function CalendarWeek({ currentDate, onOpenExternal, selectDate, variant, week }) {
+  const expandedDay = week.find((cell) => cell.day?.date === currentDate)?.day;
   const lastExpandedDay = useRef(expandedDay || null);
   if (expandedDay) lastExpandedDay.current = expandedDay;
   const displayedDay = expandedDay || lastExpandedDay.current;
@@ -198,8 +188,15 @@ function CalendarRow({ columns, currentDate, onOpenExternal, row, selectDate, va
 
   return (
     <section className="calendar-row">
-      <div className="calendar-cells" style={{ "--calendar-columns": columns }}>
-        {row.map((day) => {
+      <div className="calendar-cells">
+        {week.map((cell) => {
+          const day = cell.day;
+          if (!cell.inMonth) {
+            return <div aria-hidden="true" className="calendar-day is-outside-month" key={cell.date}><strong>{cell.dayNumber}</strong></div>;
+          }
+          if (!day) {
+            return <div className="calendar-day is-inactive" key={cell.date}><time dateTime={cell.date}><strong>{cell.dayNumber}</strong></time></div>;
+          }
           const open = currentDate === day.date;
           const controlId = `calendar-${day.date}`;
           return (
@@ -213,7 +210,6 @@ function CalendarRow({ columns, currentDate, onOpenExternal, row, selectDate, va
               type="button"
             >
               <time dateTime={day.date}>
-                <span>{formatItineraryDate(day.date, { weekday: "short" }).toUpperCase()}</span>
                 <strong>{formatItineraryDate(day.date, { day: "numeric" })}</strong>
               </time>
               <p>{day.title}</p>
@@ -234,12 +230,37 @@ function CalendarRow({ columns, currentDate, onOpenExternal, row, selectDate, va
   );
 }
 
-function CalendarView({ itinerary, onOpenExternal, onSelectedDateChange, selectedDate, variant }) {
+function CalendarView({
+  itinerary,
+  onOpenExternal,
+  onSelectedDateChange,
+  onSelectedMonthChange,
+  selectedDate,
+  selectedMonth,
+  variant,
+}) {
   const [localDate, setLocalDate] = useState("");
-  const columns = useCalendarColumns();
+  const monthKeys = monthKeysInRange(itinerary.startDate, itinerary.endDate);
+  const requestedMonth = monthKeys.includes(selectedMonth)
+    ? selectedMonth
+    : monthKeys.includes(monthKeyFromDate(selectedDate))
+      ? monthKeyFromDate(selectedDate)
+      : monthKeys[0];
+  const [localMonth, setLocalMonth] = useState(requestedMonth || "");
   const currentDate = selectedDate ?? localDate;
-  const rows = [];
-  for (let index = 0; index < itinerary.days.length; index += columns) rows.push(itinerary.days.slice(index, index + columns));
+  const monthState = resolveMonthPage(monthKeys, selectedMonth || localMonth || requestedMonth);
+  const page = buildMonthPage({ days: itinerary.days, monthKey: monthState.key });
+
+  useEffect(() => {
+    if (selectedMonth && monthKeys.includes(selectedMonth)) setLocalMonth(selectedMonth);
+  }, [monthKeys.join("|"), selectedMonth]);
+
+  useEffect(() => {
+    const dateMonth = monthKeyFromDate(selectedDate);
+    if (!dateMonth || !monthKeys.includes(dateMonth) || dateMonth === monthState.key) return;
+    setLocalMonth(dateMonth);
+    onSelectedMonthChange?.(dateMonth);
+  }, [monthKeys.join("|"), monthState.key, onSelectedMonthChange, selectedDate]);
 
   function selectDate(date) {
     const next = currentDate === date ? "" : date;
@@ -247,17 +268,42 @@ function CalendarView({ itinerary, onOpenExternal, onSelectedDateChange, selecte
     onSelectedDateChange?.(next);
   }
 
+  function selectMonth(monthKey) {
+    if (!monthKey) return;
+    setLocalMonth(monthKey);
+    onSelectedMonthChange?.(monthKey);
+    setLocalDate("");
+    onSelectedDateChange?.("");
+  }
+
+  if (!page) return null;
+  const rawMonthLabel = formatItineraryDate(`${page.key}-01`, { month: "long", year: "numeric" });
+  const monthLabel = rawMonthLabel ? `${rawMonthLabel.charAt(0).toLocaleUpperCase("es")}${rawMonthLabel.slice(1)}` : rawMonthLabel;
+  const weekdayLabels = Array.from({ length: 7 }, (_, index) => formatItineraryDate(`2024-01-0${index + 1}`, { weekday: "short" }));
+
   return (
     <div aria-label="Calendario del viaje" className="calendar">
-      {rows.map((row) => (
-        <CalendarRow
-          columns={columns}
+      <header className="calendar-toolbar">
+        <div>
+          <p className="eyebrow">Mes {monthState.index + 1} de {monthKeys.length}</p>
+          <h2>{monthLabel}</h2>
+        </div>
+        <div className="calendar-pagination">
+          <button aria-label="Mes anterior" disabled={!monthState.previousKey} onClick={() => selectMonth(monthState.previousKey)} type="button">←</button>
+          <button aria-label="Mes siguiente" disabled={!monthState.nextKey} onClick={() => selectMonth(monthState.nextKey)} type="button">→</button>
+        </div>
+      </header>
+      <div aria-hidden="true" className="calendar-weekdays">
+        {weekdayLabels.map((label) => <span key={label}>{label}</span>)}
+      </div>
+      {page.weeks.map((week) => (
+        <CalendarWeek
           currentDate={currentDate}
-          key={row[0]?.date}
+          key={week[0]?.date}
           onOpenExternal={onOpenExternal}
-          row={row}
           selectDate={selectDate}
           variant={variant}
+          week={week}
         />
       ))}
     </div>
@@ -285,12 +331,12 @@ function RouteSchematic({ day, itinerary }) {
   const coverage = coordinateCoverageForDay(itinerary, day);
   if (!coverage.complete) {
     const coverageCopy = coverage.requiredCount
-      ? `${coverage.locatedCount} de ${coverage.requiredCount} puntos del recorrido tienen coordenadas. Para no mostrar una ruta parcial, ocultamos el esquema.`
+      ? "Todavía no podemos dibujar este recorrido completo aquí. Ábrelo en tu app de mapas para verlo."
       : "No hay paradas suficientes para dibujar este recorrido.";
     return (
       <div className="route-map-empty">
         <span aria-hidden="true" className="route-map-pin">⌖</span>
-        <strong>Mapa completo no disponible</strong>
+        <strong>Vista previa no disponible</strong>
         <p>{coverageCopy}</p>
       </div>
     );
@@ -319,7 +365,42 @@ function RouteSchematic({ day, itinerary }) {
           </g>
         ))}
       </svg>
-      <p>Cobertura completa: {coverage.locatedCount} de {coverage.requiredCount} puntos con coordenadas.</p>
+      <p>Vista esquemática del recorrido entre las actividades del día.</p>
+    </div>
+  );
+}
+
+function mapsEmbedApiKey() {
+  return document.querySelector('meta[name="sendero-google-maps-embed-key"]')?.content?.trim() || "";
+}
+
+function GoogleRouteMap({ day, embedUrl, itinerary }) {
+  const [state, setState] = useState("loading");
+  const timeoutRef = useRef();
+
+  useEffect(() => {
+    timeoutRef.current = window.setTimeout(() => setState("failed"), 10000);
+    return () => window.clearTimeout(timeoutRef.current);
+  }, [embedUrl]);
+
+  function finish(nextState) {
+    window.clearTimeout(timeoutRef.current);
+    setState(nextState);
+  }
+
+  if (state === "failed") return <RouteSchematic day={day} itinerary={itinerary} />;
+  return (
+    <div className={`route-map-embed route-map-embed-${state}`}>
+      {state === "loading" ? <div aria-live="polite" className="route-map-loading" role="status">Cargando mapa…</div> : null}
+      <iframe
+        allowFullScreen
+        loading="lazy"
+        onError={() => finish("failed")}
+        onLoad={() => finish("ready")}
+        referrerPolicy="strict-origin-when-cross-origin"
+        src={embedUrl}
+        title={`Mapa de la ruta: ${day.title}`}
+      />
     </div>
   );
 }
@@ -330,7 +411,14 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
   const currentDate = validSelectedDate || localDate || itinerary.days[0]?.date;
   const day = itinerary.days.find((candidate) => candidate.date === currentDate) || itinerary.days[0];
   const stops = routeStopsForDay(day);
-  const routeUrls = buildDayRouteUrls(itinerary, day);
+  const googleRouteUrls = buildDayRouteUrls(itinerary, day);
+  const appleRouteUrls = buildDayAppleRouteUrls(itinerary, day);
+  const embedUrl = buildDayEmbedMapUrl(
+    mapsEmbedApiKey(),
+    itinerary,
+    day,
+    { language: (document.documentElement.lang || "es").split("-")[0] },
+  );
 
   function selectDate(date) {
     setLocalDate(date);
@@ -366,18 +454,30 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
             </div>
             {day.route?.totalMinutes ? <span className="route-duration">{day.route.totalMinutes} min aprox.</span> : null}
           </header>
-          <RouteSchematic day={day} itinerary={itinerary} />
+          {embedUrl ? (
+            <GoogleRouteMap day={day} embedUrl={embedUrl} itinerary={itinerary} key={embedUrl} />
+          ) : (
+            <RouteSchematic day={day} itinerary={itinerary} />
+          )}
           {stops.length ? (
             <ol className="route-stops">
               {stops.map((stop, index) => <li key={`${stop}-${index}`}><span>{index + 1}</span>{stop}</li>)}
             </ol>
           ) : <p className="route-empty">Todavía no hay suficientes ubicaciones para trazar este día.</p>}
           <div className="route-external-links">
-            {routeUrls.map((routeUrl, index) => (
+            {googleRouteUrls.map((routeUrl, index) => (
               <RouteLink
                 href={routeUrl}
                 key={routeUrl}
-                label={routeUrls.length === 1 ? "Abrir en Google Maps" : `Abrir tramo ${index + 1} en Google Maps`}
+                label={googleRouteUrls.length === 1 ? "Abrir en Google Maps" : `Google Maps · tramo ${index + 1}`}
+                onOpenExternal={onOpenExternal}
+              />
+            ))}
+            {appleRouteUrls.map((routeUrl, index) => (
+              <RouteLink
+                href={routeUrl}
+                key={routeUrl}
+                label={appleRouteUrls.length === 1 ? "Abrir en Apple Maps" : `Apple Maps · tramo ${index + 1}`}
                 onOpenExternal={onOpenExternal}
               />
             ))}
@@ -404,14 +504,8 @@ function ReservationActions({ entry, onStatusChange, writable }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   if (!writable || !onStatusChange) return null;
-  const status = entry.reservation.status;
-  const actions = status === "confirmed"
-    ? [{ label: "Marcar cancelada en Sendero", status: "cancelled" }]
-    : status === "cancelled"
-      ? [{ label: "Marcar por reservar en Sendero", status: "pending" }]
-      : status === "suggested"
-        ? [{ label: "Marcar por reservar en Sendero", status: "pending" }, { label: "Marcar confirmada en Sendero", status: "confirmed" }]
-        : [{ label: "Marcar confirmada en Sendero", status: "confirmed" }];
+  const presentation = reservationPresentation(entry);
+  const actions = [presentation.nextAction];
 
   async function update(nextStatus) {
     setBusy(true);
@@ -419,7 +513,7 @@ function ReservationActions({ entry, onStatusChange, writable }) {
     try {
       await onStatusChange({ activityId: entry.activity.id, dayDate: entry.day.date, status: nextStatus });
     } catch (caught) {
-      setError(caught?.message || "No pudimos actualizar esta reserva.");
+      setError(caught?.message || "No pudimos actualizar esta gestión.");
     } finally {
       setBusy(false);
     }
@@ -442,8 +536,8 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable 
   if (!entries.length) {
     return (
       <div className="reservations-empty">
-        <strong>No hay reservas por gestionar</strong>
-        <p>Las actividades de este viaje no requieren una reserva registrada.</p>
+        <strong>No hay reservas ni boletos por gestionar</strong>
+        <p>Las actividades de este viaje no tienen gestiones pendientes registradas.</p>
       </div>
     );
   }
@@ -452,16 +546,16 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable 
       <header className="reservations-header">
         <div>
           <p className="eyebrow">Todo en un solo lugar</p>
-          <h2>Reservas del viaje</h2>
+          <h2>Reservas y boletos</h2>
           <p>Enlaces, fechas y estado actual, sin generar otra respuesta en el chat.</p>
           {writable ? <small>Los controles actualizan Sendero; no compran ni cancelan con el proveedor.</small> : null}
         </div>
-        <span>{entries.length} {entries.length === 1 ? "reserva" : "reservas"}</span>
+        <span>{entries.length} {entries.length === 1 ? "gestión" : "gestiones"}</span>
       </header>
       <div className="reservation-list">
         {entries.map((entry, index) => {
           const href = reservationUrl(entry);
-          const status = entry.reservation.status;
+          const presentation = reservationPresentation(entry);
           return (
             <article className="reservation-card" key={entry.activity.id || `${entry.day.date}-${index}`}>
               <div className="reservation-date">
@@ -470,14 +564,17 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable 
               </div>
               <div className="reservation-copy">
                 <div className="reservation-title-row">
-                  <h3>{entry.activity.title}</h3>
-                  <span className={`reservation-pill reservation-status-${status}`}>{reservationLabels[status] || status}</span>
+                  <div className="reservation-name">
+                    <h3>{entry.activity.title}</h3>
+                    <span className="reservation-requirement-pill">{presentation.requirementLabel}</span>
+                  </div>
+                  <span className={`reservation-pill reservation-status-${presentation.status}`}>{presentation.statusLabel}</span>
                 </div>
                 {entry.activity.location ? <p>{[entry.activity.location.name, entry.activity.location.address].filter(Boolean).join(" · ")}</p> : null}
-                {entry.reservation.deadline ? <p><strong>Reservar antes de:</strong> {entry.reservation.deadline}</p> : null}
+                {entry.reservation.deadline ? <p><strong>{presentation.deadlineLabel}:</strong> {entry.reservation.deadline}</p> : null}
                 {entry.reservation.note ? <p>{entry.reservation.note}</p> : null}
                 <div className="reservation-actions">
-                  {href ? <RouteLink href={href} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">Sin enlace oficial verificado</span>}
+                  {href ? <RouteLink href={href} label={presentation.externalActionLabel} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">Sin enlace oficial verificado</span>}
                   <ReservationActions entry={entry} onStatusChange={onStatusChange} writable={writable} />
                 </div>
               </div>
@@ -519,12 +616,14 @@ export function ItineraryViewer({
   actions,
   itinerary,
   onCalendarDayChange,
+  onCalendarMonthChange,
   onOpenExternal,
   onReservationStatusChange,
   onRouteDayChange,
   onViewChange,
   reservationWritable = false,
   selectedCalendarDate,
+  selectedCalendarMonth,
   selectedRouteDate,
   variant = "chat",
 }) {
@@ -532,6 +631,7 @@ export function ItineraryViewer({
   const tabRefs = useRef([]);
   const views = variant === "public" ? publicViews : privateViews;
   const currentView = views.some((view) => view.id === activeView) ? activeView : "list";
+  const contextualTitle = contextualItineraryTitle(itinerary.title, itinerary.destination);
   const meta = `${formatItineraryDate(itinerary.startDate, { day: "numeric", month: "long" })} — ${formatItineraryDate(itinerary.endDate, { day: "numeric", month: "long", year: "numeric" })} · ${itinerary.days.length} ${itinerary.days.length === 1 ? "día" : "días"}`;
 
   function selectView(view, focus = false) {
@@ -555,7 +655,7 @@ export function ItineraryViewer({
       <header className="app-header">
         <div className="header-copy">
           <p className="eyebrow">{itinerary.destination}</p>
-          <h1>{itinerary.title}</h1>
+          <h1>{contextualTitle}</h1>
           <p className="meta">{meta}</p>
         </div>
         <nav aria-label="Vistas del itinerario" className="tabs">
@@ -588,7 +688,15 @@ export function ItineraryViewer({
           tabIndex="0"
         >
           {currentView === "calendar" ? (
-            <CalendarView itinerary={itinerary} onOpenExternal={onOpenExternal} onSelectedDateChange={onCalendarDayChange} selectedDate={selectedCalendarDate} variant={variant} />
+            <CalendarView
+              itinerary={itinerary}
+              onOpenExternal={onOpenExternal}
+              onSelectedDateChange={onCalendarDayChange}
+              onSelectedMonthChange={onCalendarMonthChange}
+              selectedDate={selectedCalendarDate}
+              selectedMonth={selectedCalendarMonth}
+              variant={variant}
+            />
           ) : currentView === "routes" ? (
             <RoutesView itinerary={itinerary} onOpenExternal={onOpenExternal} onSelectedDateChange={onRouteDayChange} selectedDate={selectedRouteDate} />
           ) : currentView === "reservations" ? (
