@@ -1,6 +1,6 @@
 {
   "name": "sendero",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Create and adapt local-first travel itineraries with live context, realistic routes, and reservation planning.",
   "author": {
     "name": "Manuel Pacheco"
