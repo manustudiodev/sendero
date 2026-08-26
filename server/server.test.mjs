@@ -324,7 +324,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
       "get_itinerary",
       "get_public_share_status",
       "list_itineraries",
+      "open_trip",
       "prepare_trip_brief",
+      "present_trip",
       "preview_public_share",
       "publish_public_share",
       "render_itinerary",
@@ -333,6 +335,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
       "restore_itinerary_version",
       "revoke_public_share",
       "rotate_public_share",
+      "save_and_present_trip",
       "save_itinerary",
       "share_itinerary",
       "update_public_share",
@@ -356,6 +359,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const protectedTool = tools.tools.find((tool) => tool.name === "save_itinerary");
   const reservationTool = tools.tools.find((tool) => tool.name === "update_reservation_status");
   const getItineraryTool = tools.tools.find((tool) => tool.name === "get_itinerary");
+  const openTripTool = tools.tools.find((tool) => tool.name === "open_trip");
+  const presentTripTool = tools.tools.find((tool) => tool.name === "present_trip");
+  const saveAndPresentTool = tools.tools.find((tool) => tool.name === "save_and_present_trip");
   assert.deepEqual(publicTool._meta.securitySchemes, [{ type: "noauth" }]);
   assert.equal(findTool._meta.ui, undefined);
   assert.equal(publicTool._meta.ui.resourceUri, ITINERARY_UI_URI);
@@ -380,6 +386,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.deepEqual(protectedTool._meta.securitySchemes, [
     { type: "oauth2", scopes: [AUTH_SCOPES.write] },
   ]);
+  assert.equal(protectedTool.inputSchema.required.includes("operationId"), true);
   assert.deepEqual(reservationTool._meta.securitySchemes, [
     { type: "oauth2", scopes: [AUTH_SCOPES.write] },
   ]);
@@ -387,6 +394,19 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(reservationTool._meta["openai/widgetAccessible"], true);
   assert.deepEqual(getItineraryTool._meta.ui.visibility, ["model", "app"]);
   assert.equal(getItineraryTool._meta["openai/widgetAccessible"], true);
+  assert.equal(openTripTool._meta.ui.resourceUri, TRIP_LIST_UI_URI);
+  assert.deepEqual(openTripTool._meta.ui.visibility, ["model", "app"]);
+  assert.equal(openTripTool._meta["openai/outputTemplate"], TRIP_LIST_UI_URI);
+  assert.equal(presentTripTool._meta.ui.resourceUri, ITINERARY_UI_URI);
+  assert.equal(presentTripTool._meta["openai/outputTemplate"], ITINERARY_UI_URI);
+  assert.equal(presentTripTool.annotations.readOnlyHint, true);
+  assert.equal(saveAndPresentTool._meta.ui.resourceUri, ITINERARY_UI_URI);
+  assert.equal(saveAndPresentTool._meta["openai/outputTemplate"], ITINERARY_UI_URI);
+  assert.equal(saveAndPresentTool.annotations.idempotentHint, true);
+  assert.deepEqual(saveAndPresentTool._meta.securitySchemes, [
+    { type: "oauth2", scopes: [AUTH_SCOPES.write] },
+  ]);
+  assert.deepEqual(saveAndPresentTool.inputSchema.required.includes("operationId"), true);
 
   const result = await client.callTool({
     name: "render_itinerary",
@@ -764,6 +784,488 @@ test("requires write access before changing Sendero reservation tracking", async
   await server.close();
 });
 
+test("finds the latest updated trip deterministically without breaking text searches", async () => {
+  let trips = [
+    {
+      id: "trip_middle",
+      title: "Oporto junto al río",
+      destination: "Oporto, Portugal",
+      startDate: "2026-10-02",
+      endDate: "2026-10-05",
+      currentVersion: 2,
+      role: "owner",
+      updatedAt: 1788200000000,
+    },
+    {
+      id: "trip_oldest",
+      title: "Lisboa nocturna",
+      destination: "Lisboa, Portugal",
+      startDate: "2026-09-10",
+      endDate: "2026-09-14",
+      currentVersion: 1,
+      role: "owner",
+      updatedAt: 1788100000000,
+    },
+    {
+      id: "trip_latest",
+      title: "Lisboa entre clásicos y barrios",
+      destination: "Lisboa, Portugal",
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+      currentVersion: 3,
+      role: "editor",
+      updatedAt: 1788300000000,
+    },
+  ];
+  const server = createTripPlannerServer({
+    persistence: {
+      async list() {
+        return trips;
+      },
+    },
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.read],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-latest-trip-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const latest = await client.callTool({
+    name: "find_itineraries",
+    arguments: { selector: "latest_updated" },
+  });
+  assert.deepEqual(
+    latest.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
+
+  const named = await client.callTool({
+    name: "find_itineraries",
+    arguments: {
+      query: "LISBOA CLASICOS",
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+    },
+  });
+  assert.deepEqual(
+    named.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
+
+  const missingReference = await client.callTool({
+    name: "find_itineraries",
+    arguments: {},
+  });
+  assert.equal(missingReference.isError, true);
+
+  const ambiguousReference = await client.callTool({
+    name: "find_itineraries",
+    arguments: { query: "Lisboa", selector: "latest_updated" },
+  });
+  assert.equal(ambiguousReference.isError, true);
+
+  trips = [];
+  const empty = await client.callTool({
+    name: "find_itineraries",
+    arguments: { selector: "latest_updated" },
+  });
+  assert.deepEqual(empty.structuredContent.trips, []);
+
+  await client.close();
+  await server.close();
+});
+
+test("opens one saved trip atomically through persistence.open", async () => {
+  const openCalls = [];
+  const authoritative = structuredClone(itinerary);
+  authoritative.title = "Lisboa al ritmo de sus barrios";
+  const server = createTripPlannerServer({
+    persistence: {
+      async open(reference) {
+        openCalls.push(structuredClone(reference));
+        return {
+          state: "opened",
+          id: "trip_latest",
+          version: 4,
+          role: "editor",
+          itinerary: authoritative,
+          revisions: [{ version: 3, reason: "Adjusted pace", createdAt: 1788300000000 }],
+          trips: [],
+        };
+      },
+      async list() {
+        assert.fail("open_trip must not fall back to persistence.list");
+      },
+      async get() {
+        assert.fail("open_trip must not follow persistence.open with persistence.get");
+      },
+    },
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.read],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-atomic-open-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const opened = await client.callTool({
+    name: "open_trip",
+    arguments: { selector: "latest_updated" },
+  });
+
+  assert.deepEqual(openCalls, [{ selector: "latest_updated" }]);
+  assert.equal(opened.structuredContent.state, "opened");
+  assert.equal(opened.structuredContent.tripId, "trip_latest");
+  assert.equal(opened.structuredContent.version, 4);
+  assert.equal(opened.structuredContent.role, "editor");
+  assert.equal(opened.structuredContent.itinerary.title, authoritative.title);
+  assert.equal(opened.structuredContent.validation.valid, true);
+  assert.deepEqual(opened.structuredContent.trips, []);
+  assert.equal(opened.structuredContent.purpose, "open");
+  assert.deepEqual(opened.structuredContent.revisions, [
+    { version: 3, reason: "Adjusted pace", createdAt: 1788300000000 },
+  ]);
+
+  await client.close();
+  await server.close();
+});
+
+test("returns ambiguity and absence from one atomic open lookup each", async () => {
+  const openCalls = [];
+  const matchingTrips = [
+    {
+      id: "trip_123",
+      title: itinerary.title,
+      destination: itinerary.destination,
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+      currentVersion: 2,
+      role: "owner",
+      updatedAt: 1788300000000,
+    },
+    {
+      id: "trip_456",
+      title: "Lisboa nocturna",
+      destination: itinerary.destination,
+      startDate: "2026-09-10",
+      endDate: "2026-09-14",
+      currentVersion: 1,
+      role: "owner",
+      updatedAt: 1788200000000,
+    },
+  ];
+  const server = createTripPlannerServer({
+    persistence: {
+      async open(reference) {
+        openCalls.push(structuredClone(reference));
+        return "query" in reference
+          ? { state: "needs_selection", trips: matchingTrips }
+          : { state: "not_found", trips: [] };
+      },
+      async list() {
+        assert.fail("open_trip must not fall back to persistence.list");
+      },
+      async get() {
+        assert.fail("open_trip must not fall back to persistence.get");
+      },
+    },
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.read],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-open-resolution-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const ambiguous = await client.callTool({
+    name: "open_trip",
+    arguments: {
+      query: "Lisboa",
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+    },
+  });
+  assert.deepEqual(openCalls, [
+    { query: "Lisboa", startDate: itinerary.startDate, endDate: itinerary.endDate },
+  ]);
+  assert.equal(ambiguous.structuredContent.state, "needs_selection");
+  assert.deepEqual(ambiguous.structuredContent.trips, matchingTrips);
+  assert.equal(ambiguous.structuredContent.purpose, "open");
+
+  const missing = await client.callTool({
+    name: "open_trip",
+    arguments: { tripId: "trip_missing" },
+  });
+  assert.deepEqual(openCalls, [
+    { query: "Lisboa", startDate: itinerary.startDate, endDate: itinerary.endDate },
+    { tripId: "trip_missing" },
+  ]);
+  assert.equal(missing.structuredContent.state, "not_found");
+  assert.deepEqual(missing.structuredContent.trips, []);
+  assert.equal(missing.structuredContent.purpose, "open");
+
+  await client.close();
+  await server.close();
+});
+
+test("strictly presents a complete itinerary without touching persistence", async () => {
+  let persistenceCalled = false;
+  const server = createTripPlannerServer({
+    persistence: new Proxy(
+      {},
+      {
+        get() {
+          persistenceCalled = true;
+          throw new Error("present_trip must not access persistence");
+        },
+      },
+    ),
+  });
+  const client = new Client({ name: "sendero-present-trip-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const presented = await client.callTool({
+    name: "present_trip",
+    arguments: { itinerary },
+  });
+  assert.equal(presented.structuredContent.state, "presented");
+  assert.equal(presented.structuredContent.validation.valid, true);
+  assert.equal(presented.structuredContent.itinerary.title, itinerary.title);
+  assert.equal(persistenceCalled, false);
+
+  const overlapping = structuredClone(itinerary);
+  overlapping.days[0].activities[1].startTime = "12:30";
+  const rejected = await client.callTool({
+    name: "present_trip",
+    arguments: { itinerary: overlapping },
+  });
+  assert.equal(rejected.isError, true);
+  assert.match(rejected.content[0].text, /cannot be presented/i);
+  assert.equal(persistenceCalled, false);
+
+  await client.close();
+  await server.close();
+});
+
+test("saves and presents the authoritative snapshot with idempotent retry context", async () => {
+  const saveCalls = [];
+  const authoritative = structuredClone(itinerary);
+  authoritative.title = "Lisboa al ritmo de sus barrios";
+  const server = createTripPlannerServer({
+    persistence: {
+      async save(input) {
+        saveCalls.push(structuredClone(input));
+        return {
+          tripId: input.tripId,
+          version: 3,
+          savedVersion: 3,
+          role: "editor",
+          itinerary: authoritative,
+          replayed: saveCalls.length > 1,
+        };
+      },
+      async get() {
+        assert.fail("save_and_present_trip must not reload the saved snapshot");
+      },
+    },
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.write],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-save-present-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const argumentsForSave = {
+    tripId: "trip_123",
+    itinerary,
+    reason: "Refined neighborhood plan",
+    expectedVersion: 2,
+    operationId: "save-present-operation-123",
+  };
+  const first = await client.callTool({
+    name: "save_and_present_trip",
+    arguments: argumentsForSave,
+  });
+  const replay = await client.callTool({
+    name: "save_and_present_trip",
+    arguments: argumentsForSave,
+  });
+
+  assert.equal(saveCalls.length, 2);
+  assert.equal(saveCalls[0].tripId, "trip_123");
+  assert.equal(saveCalls[0].expectedVersion, 2);
+  assert.equal(saveCalls[0].operationId, "save-present-operation-123");
+  assert.equal(saveCalls[1].operationId, saveCalls[0].operationId);
+  assert.deepEqual(saveCalls[1], saveCalls[0]);
+  assert.equal(first.structuredContent.state, "saved");
+  assert.equal(first.structuredContent.tripId, "trip_123");
+  assert.equal(first.structuredContent.version, 3);
+  assert.equal(first.structuredContent.savedVersion, 3);
+  assert.equal(first.structuredContent.itinerary.title, authoritative.title);
+  assert.notEqual(first.structuredContent.itinerary.title, itinerary.title);
+  assert.equal(first.structuredContent.validation.valid, true);
+  assert.equal(first.structuredContent.replayed, false);
+  assert.equal(replay.structuredContent.replayed, true);
+  assert.equal(replay.structuredContent.itinerary.title, authoritative.title);
+
+  const missingExpectedVersion = await client.callTool({
+    name: "save_and_present_trip",
+    arguments: {
+      tripId: "trip_123",
+      itinerary,
+      operationId: "save-present-operation-456",
+    },
+  });
+  assert.equal(missingExpectedVersion.isError, true);
+  assert.match(missingExpectedVersion.content[0].text, /expectedVersion is required/i);
+  assert.equal(saveCalls.length, 2);
+
+  await client.close();
+  await server.close();
+});
+
+test("restores and presents one authoritative snapshot with concurrency and retry context", async () => {
+  const restoreCalls = [];
+  const authoritative = structuredClone(itinerary);
+  authoritative.title = "Lisboa restaurada, sin prisas";
+  const server = createTripPlannerServer({
+    persistence: {
+      async getRevision(input) {
+        assert.deepEqual(input, { tripId: "trip_123", version: 2 });
+        return {
+          tripId: input.tripId,
+          version: input.version,
+          role: "owner",
+          itinerary: authoritative,
+        };
+      },
+      async restore(input) {
+        restoreCalls.push(structuredClone(input));
+        return {
+          tripId: input.tripId,
+          version: 5,
+          restoredVersion: 5,
+          restoredFrom: input.version,
+          role: "owner",
+          itinerary: authoritative,
+          replayed: false,
+        };
+      },
+      async get() {
+        assert.fail("restore_itinerary_version must not reload the restored snapshot");
+      },
+    },
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.write],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-restore-present-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const restored = await client.callTool({
+    name: "restore_itinerary_version",
+    arguments: {
+      tripId: "trip_123",
+      version: 2,
+      expectedVersion: 4,
+      operationId: "restore-operation-123",
+    },
+  });
+
+  assert.deepEqual(restoreCalls, [
+    {
+      tripId: "trip_123",
+      version: 2,
+      expectedVersion: 4,
+      operationId: "restore-operation-123",
+    },
+  ]);
+  assert.equal(restored.structuredContent.state, "restored");
+  assert.equal(restored.structuredContent.tripId, "trip_123");
+  assert.equal(restored.structuredContent.version, 5);
+  assert.equal(restored.structuredContent.restoredVersion, 5);
+  assert.equal(restored.structuredContent.restoredFrom, 2);
+  assert.equal(restored.structuredContent.itinerary.title, authoritative.title);
+  assert.equal(restored.structuredContent.validation.valid, true);
+  assert.equal(restored.structuredContent.replayed, false);
+
+  await client.close();
+  await server.close();
+});
+
+test("rejects an invalid historical snapshot before restore can mutate the trip", async () => {
+  let restoreCalled = false;
+  const invalidRevision = structuredClone(itinerary);
+  invalidRevision.days[0].activities[0].endTime = "08:00";
+  const server = createTripPlannerServer({
+    persistence: {
+      async getRevision() {
+        return {
+          tripId: "trip_123",
+          version: 1,
+          role: "owner",
+          itinerary: invalidRevision,
+        };
+      },
+      async restore() {
+        restoreCalled = true;
+        assert.fail("an invalid revision must not reach the restore mutation");
+      },
+    },
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.write],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-invalid-restore-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const result = await client.callTool({
+    name: "restore_itinerary_version",
+    arguments: {
+      tripId: "trip_123",
+      version: 1,
+      expectedVersion: 3,
+      operationId: "restore-invalid-version-123",
+    },
+  });
+
+  assert.equal(result.isError, true);
+  assert.equal(restoreCalled, false);
+
+  await client.close();
+  await server.close();
+});
+
 test("saves, lists, opens, shares, and restores trips through the persistence boundary", async () => {
   const calls = [];
   const persistence = {
@@ -822,9 +1324,26 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
       calls.push(["share", input]);
       return { collaboratorId: "collab_123", role: input.role, status: "pending" };
     },
+    async getRevision(input) {
+      calls.push(["getRevision", input]);
+      return {
+        tripId: input.tripId,
+        version: input.version,
+        role: "owner",
+        itinerary,
+      };
+    },
     async restore(input) {
       calls.push(["restore", input]);
-      return { tripId: input.tripId, version: 3, restoredFrom: input.version, role: "owner" };
+      return {
+        tripId: input.tripId,
+        version: 3,
+        restoredVersion: 3,
+        restoredFrom: input.version,
+        role: "owner",
+        itinerary,
+        replayed: false,
+      };
     },
   };
 
@@ -877,7 +1396,11 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   pendingWithoutAction.days[0].activities[1].reservation = { status: "pending" };
   const rejectedSave = await client.callTool({
     name: "save_itinerary",
-    arguments: { itinerary: pendingWithoutAction, reason: "Incomplete reservation research" },
+    arguments: {
+      itinerary: pendingWithoutAction,
+      reason: "Incomplete reservation research",
+      operationId: "legacy-save-invalid-123",
+    },
   });
   assert.equal(rejectedSave.isError, true);
   assert.match(rejectedSave.content[0].text, /cannot be saved/i);
@@ -885,9 +1408,26 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
 
   const saved = await client.callTool({
     name: "save_itinerary",
-    arguments: { itinerary, reason: "Initial plan" },
+    arguments: {
+      itinerary,
+      reason: "Initial plan",
+      operationId: "legacy-save-create-123",
+    },
   });
   assert.equal(saved.structuredContent.version, 1);
+
+  const unsafeLegacyUpdate = await client.callTool({
+    name: "save_itinerary",
+    arguments: {
+      tripId: "trip_123",
+      itinerary,
+      reason: "Unsafe stale update",
+      operationId: "legacy-save-update-unsafe-123",
+    },
+  });
+  assert.equal(unsafeLegacyUpdate.isError, true);
+  assert.match(unsafeLegacyUpdate.content[0].text, /expectedVersion is required/i);
+  assert.equal(calls.filter(([name]) => name === "save").length, 1);
 
   const reservationUpdated = await client.callTool({
     name: "update_reservation_status",
@@ -917,12 +1457,30 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
 
   const restored = await client.callTool({
     name: "restore_itinerary_version",
-    arguments: { tripId: "trip_123", version: 1 },
+    arguments: {
+      tripId: "trip_123",
+      version: 1,
+      expectedVersion: 2,
+      operationId: "restore-operation-boundary-123",
+    },
   });
   assert.equal(restored.structuredContent.version, 3);
+  assert.equal(restored.structuredContent.restoredVersion, 3);
+  assert.equal(restored.structuredContent.itinerary.title, itinerary.title);
+  assert.equal(restored.structuredContent.validation.valid, true);
   assert.deepEqual(
     calls.map(([name]) => name),
-    ["list", "list", "list", "get", "save", "updateReservation", "share", "restore"],
+    [
+      "list",
+      "list",
+      "list",
+      "get",
+      "save",
+      "updateReservation",
+      "share",
+      "getRevision",
+      "restore",
+    ],
   );
 
   await client.close();

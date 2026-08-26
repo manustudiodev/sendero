@@ -2,7 +2,9 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
 const listMine = makeFunctionReference("trips:listMine");
+const openTrip = makeFunctionReference("trips:open");
 const getTrip = makeFunctionReference("trips:get");
+const getTripRevision = makeFunctionReference("trips:getRevision");
 const saveTrip = makeFunctionReference("trips:save");
 const updateReservationStatus = makeFunctionReference("trips:updateReservationStatus");
 const shareTrip = makeFunctionReference("trips:share");
@@ -44,6 +46,29 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
   }
 
   return {
+    async open(reference) {
+      const result = await client().query(openTrip, { reference });
+      if (result.state !== "opened") {
+        return {
+          state: result.state,
+          trips: result.trips || [],
+        };
+      }
+      return {
+        state: "opened",
+        id: result.trip._id,
+        role: result.trip.role,
+        version: result.trip.currentVersion,
+        itinerary: result.trip.snapshot,
+        revisions: (result.revisions || []).map((revision) => ({
+          version: revision.version,
+          reason: revision.reason,
+          createdAt: revision.createdAt,
+        })),
+        trips: [],
+      };
+    },
+
     async list() {
       const trips = await client().query(listMine, {});
       return trips.map((trip) => ({
@@ -73,11 +98,23 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       };
     },
 
-    async save({ tripId, itinerary, reason }) {
+    async getRevision({ tripId, version }) {
+      const revision = await client().query(getTripRevision, { tripId, version });
+      return {
+        tripId: revision.tripId,
+        version: revision.version,
+        role: revision.role,
+        itinerary: revision.itinerary,
+      };
+    },
+
+    async save({ tripId, itinerary, reason, expectedVersion, operationId }) {
       return client().mutation(saveTrip, {
         ...(tripId ? { tripId } : {}),
         itinerary,
         ...(reason ? { reason } : {}),
+        ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+        operationId,
       });
     },
 
@@ -103,8 +140,13 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       return client().mutation(shareTrip, { tripId, email, role });
     },
 
-    async restore({ tripId, version }) {
-      return client().mutation(restoreTripRevision, { tripId, version });
+    async restore({ tripId, version, expectedVersion, operationId }) {
+      return client().mutation(restoreTripRevision, {
+        tripId,
+        version,
+        expectedVersion,
+        operationId,
+      });
     },
 
     async publicPreview(tripId) {

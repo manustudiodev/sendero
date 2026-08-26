@@ -354,6 +354,28 @@ const validationSchema = z.object({
 
 const collaboratorRoleSchema = z.enum(["owner", "editor", "viewer"]);
 const tripListPurposeSchema = z.enum(["open", "adjust", "refresh"]);
+const tripSearchSelectorSchema = z.enum(["latest_updated"]);
+const tripSearchInputSchema = z.union([
+  z.object({ selector: tripSearchSelectorSchema }).strict(),
+  z
+    .object({
+      query: z.string().min(1),
+      startDate: isoDate.optional(),
+      endDate: isoDate.optional(),
+    })
+    .strict(),
+]);
+const tripOpenInputSchema = z.union([
+  z.object({ selector: tripSearchSelectorSchema }).strict(),
+  z.object({ tripId: z.string().min(1) }).strict(),
+  z
+    .object({
+      query: z.string().min(1),
+      startDate: isoDate.optional(),
+      endDate: isoDate.optional(),
+    })
+    .strict(),
+]);
 const tripSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -396,6 +418,11 @@ const reservationOperationIdSchema = z
   .min(8)
   .max(128)
   .regex(/^[A-Za-z0-9._:-]+$/, "Use only letters, numbers, dots, underscores, colons, and hyphens");
+const tripWriteOperationIdSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .regex(/^[A-Za-z0-9._:-]+$/, "Use only letters, numbers, dots, underscores, colons, and hyphens");
 const publicShareStatusFields = {
   state: publicShareStateSchema,
   tripId: z.string().min(1),
@@ -431,6 +458,7 @@ function normalizeSearchText(value) {
 }
 
 function findTripMatches(trips, query, { startDate, endDate } = {}) {
+  if (!query) return [];
   const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
   return trips.filter((trip) => {
@@ -441,6 +469,32 @@ function findTripMatches(trips, query, { startDate, endDate } = {}) {
       (!endDate || trip.endDate === endDate)
     );
   });
+}
+
+function findLatestUpdatedTrip(trips) {
+  return [...trips]
+    .sort(
+      (left, right) =>
+        Number(right.updatedAt) - Number(left.updatedAt) || left.id.localeCompare(right.id),
+    )
+    .slice(0, 1);
+}
+
+function validatedPresentation(itinerary, { reservationCompleteness } = {}) {
+  const normalized = itinerarySchema.parse(normalizeItinerary(itinerary));
+  const validation = validateItinerary(
+    normalized,
+    reservationCompleteness ? { reservationCompleteness } : undefined,
+  );
+  if (!validation.valid) {
+    throw new Error(`Itinerary cannot be presented: ${validation.errors.join(" ")}`);
+  }
+  return { itinerary: normalized, validation };
+}
+
+function isUnavailableTripError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Trip (?:not found|access denied)/i.test(message);
 }
 
 function googleTravelMode(mode) {
@@ -817,6 +871,21 @@ function publicShareToolMeta(invoking, invoked) {
   };
 }
 
+const SERVER_INSTRUCTIONS = [
+  "Treat natural language as Sendero's primary interface; slash commands are optional shortcuts.",
+  "Choose the tool that represents the user's complete current intent. Do not compose compatibility primitives when an intent-level facade exists.",
+  "Use open_trip once to resolve and present an unchanged saved trip by exact ID, latest_updated selector, or natural reference. Only a needs_selection result justifies showing the saved-trip picker.",
+  "Use present_trip once for a complete new or changed itinerary that must be shown without persistence. It is intentionally unsaved and must not receive a saved trip ID, version, or role.",
+  "Use save_and_present_trip once when the user asked to persist a new trip or revision. Reuse its operationId on retries and supply expectedVersion for updates.",
+  "After explicit confirmation of an exact historical version, use restore_itinerary_version once with expectedVersion and an idempotent operationId; it already returns and presents the authoritative restored snapshot.",
+  "find_itineraries, get_itinerary, validate_itinerary, save_itinerary, and render_itinerary are compatibility primitives. Never chain them for an ordinary open, present, save-and-present, or restore-and-present interaction.",
+  "A single user intent may still pause for grouped critical input, genuine ambiguity, current external research, authentication recovery, or an explicit confirmation for publication, sharing, destructive, or sensitive actions.",
+  "For trip creation, extract every supplied fact into prepare_trip_brief. If critical fields are missing, render_trip_requirements once with all current gaps together and stop; otherwise research and build the plan before calling the appropriate final facade.",
+  "Treat a rendered Sendero component as the complete answer. Do not restate its visible contents, tool names, stable IDs, JSON, or mechanics in prose.",
+  "Use contextual non-redundant titles, preserve locked activities and confirmed reservations, distinguish reservation versus ticket and requirement versus lifecycle status, and never claim current facts without a source.",
+  "Reservation controls only update Sendero; they never book, buy, or cancel with a provider. Public sharing remains preview then explicit confirmation then publish or update, and rotating or revoking remains explicit.",
+].join(" ");
+
 export function createTripPlannerServer({
   persistence,
   auth,
@@ -832,11 +901,26 @@ export function createTripPlannerServer({
     return persistence;
   }
 
+  function tripPresentation(result) {
+    const presented = validatedPresentation(result.itinerary, {
+      reservationCompleteness: "warning",
+    });
+    return {
+      state: "opened",
+      tripId: result.id,
+      version: result.version,
+      role: result.role,
+      revisions: result.revisions || [],
+      ...presented,
+      trips: [],
+      purpose: "open",
+    };
+  }
+
   const server = new McpServer(
-    { name: "sendero", version: "0.6.1" },
+    { name: "sendero", version: "0.7.0" },
     {
-      instructions:
-        "Treat natural language as Sendero's primary interface and infer the user's intent from the conversation; slash commands are optional shortcuts. For every successful tool that renders a Sendero component, treat the component as the complete user-facing answer. End the turn without assistant prose when the component already contains the full result. If text is strictly necessary, write at most one short sentence only for a blocker, safety-critical caveat, required citation, or next action that the component does not show. Never restate component labels, values, choices, itinerary items, known trip facts, or tool mechanics. For a clear request to create a trip, extract every supplied fact into a brief and call prepare_trip_brief without opening a launcher or the full intake form. If the brief has criticalFields, call render_trip_requirements once with the normalized brief as the final action of the turn so every currently known critical gap is requested together in one component; never ask those fields one at a time in text and emit no assistant prose after the component. When a Sendero component continues with sendero.stage brief_ready, its validated brief replaces the earlier missing-fields result for the same interactionId: continue planning from that brief and never ask for or render those fields again unless a fresh prepare_trip_brief call on that exact brief still returns criticalFields. Ask later only for information whose relevance genuinely depends on a new answer. If the brief is ready, continue directly with research and planning. Use render_trip_intake mode new only when the user explicitly asks for the guided form or uses the New trip shortcut, and mode menu only when intent is genuinely ambiguous or they ask what Sendero can do. When the user names a specific saved trip, use find_itineraries and continue directly if there is one match; otherwise show saved trips through list_itineraries as clickable cards with the matching purpose. Never repeat trip lists in plain text, tell the user to type a phrase, or expose tool names, stable IDs, or JSON. After a component selection, continue from the exact selected trip ID. If the complete current itinerary is already in context, continue from that snapshot without reloading it; if only its ID is known, call get_itinerary without listing trips again. The latest explicit intent selects open, adjust, or refresh even when an earlier component used another purpose. Treat a consumed component as the chosen path and do not reopen its alternatives unless the user changes intent. If authentication expires, preserve the pending intent and trip ID, describe the action as reconnecting Sendero, and resume once after reconnection. Use a contextual trip title that reflects the interests, mood, or purpose of the trip; do not repeat the full destination in the title when destination is already a separate field. Use strict validate_itinerary before saving or presenting a new or changed itinerary, then render_itinerary once with the final snapshot. When opening an unchanged saved trip, call render_itinerary directly after get_itinerary; its display-safe validation keeps structural and safety errors blocking while showing incomplete reservation details as warnings. When rendering a saved trip, pass its authoritative tripId, version, and role so the component can persist reservation tracking safely. For every actionable reservation record, classify kind as reservation or ticket and requirement as required, recommended, or optional; keep that requirement separate from the pending, confirmed, or cancelled lifecycle status. The component already contains the reservation and ticket tracker with official links; do not generate a separate list in prose. Reservation status controls only update Sendero and never book, purchase, or cancel with a provider. Preserve locked activities and confirmed reservations during changes. Never claim a forecast, event, schedule, route, reservation, or ticket is confirmed without a current source. Distinguish an email collaborator invitation from a public read-only link. For a public link, only the owner may continue: preview the complete sanitized projection first and require the user's explicit confirmation before publishing or updating it. Reuse the preview's exact proposed expiration when publishing; never recalculate it. Before rotating or revoking, check the current public-link status to obtain a fresh operation context unless the current component already supplied one. The publication is a frozen version and does not change when the private itinerary changes. Updating, rotating, and revoking are explicit actions; rotating invalidates the old link. Never claim that a public link exposes lodging details, reservation notes, collaborators, or version history, and never expose its token hash, internal IDs, or operation IDs in visible prose.",
+      instructions: SERVER_INSTRUCTIONS,
     },
   );
 
@@ -1126,6 +1210,39 @@ export function createTripPlannerServer({
   );
 
   server.registerTool(
+    "present_trip",
+    {
+      title: "Present a completed trip",
+      description:
+        "Strictly validate and present one complete itinerary without saving it. Use this single read-only facade for a new or changed plan when persistence is not part of the user's request; do not call validate_itinerary or render_itinerary before or after it.",
+      inputSchema: { itinerary: itinerarySchema },
+      outputSchema: {
+        state: z.literal("presented"),
+        itinerary: itinerarySchema,
+        validation: validationSchema,
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: {
+        securitySchemes: toolSecuritySchemes(),
+        ui: { resourceUri: ITINERARY_UI_URI },
+        "openai/outputTemplate": ITINERARY_UI_URI,
+        "openai/toolInvocation/invoking": "Checking the itinerary…",
+        "openai/toolInvocation/invoked": "Itinerary ready.",
+      },
+    },
+    async ({ itinerary }) => {
+      const presented = validatedPresentation(itinerary);
+      return {
+        structuredContent: {
+          state: "presented",
+          ...presented,
+        },
+        content: [{ type: "text", text: "Tu itinerario está listo en Sendero." }],
+      };
+    },
+  );
+
+  server.registerTool(
     "update_reservation_status",
     {
       title: "Update a reservation or ticket in Sendero",
@@ -1146,7 +1263,12 @@ export function createTripPlannerServer({
         changed: z.boolean(),
         itinerary: itinerarySchema,
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       _meta: {
         securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]),
         ui: { visibility: ["app"] },
@@ -1180,25 +1302,106 @@ export function createTripPlannerServer({
   );
 
   server.registerTool(
+    "open_trip",
+    {
+      title: "Open a saved trip",
+      description:
+        "Resolve, load, validate for display, and present one unchanged authoritative saved trip in a single read-only action. Use selector latest_updated for explicit recency, tripId for an exact component selection, or query plus any exact dates for a natural reference. The result is opened, needs_selection, or not_found. Only needs_selection may be followed by the clickable saved-trip picker because a human choice is genuinely required.",
+      inputSchema: tripOpenInputSchema,
+      outputSchema: {
+        state: z.enum(["opened", "needs_selection", "not_found"]),
+        tripId: z.string().min(1).optional(),
+        version: z.number().int().positive().optional(),
+        role: collaboratorRoleSchema.optional(),
+        itinerary: itinerarySchema.optional(),
+        validation: validationSchema.optional(),
+        revisions: z.array(revisionSummarySchema).optional(),
+        trips: z.array(tripSummarySchema),
+        purpose: z.literal("open"),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      _meta: {
+        securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]),
+        // One gateway component renders either the genuinely ambiguous picker
+        // or the full itinerary returned by this same intent-level operation.
+        ui: { resourceUri: TRIP_LIST_UI_URI, visibility: ["model", "app"] },
+        "openai/outputTemplate": TRIP_LIST_UI_URI,
+        "openai/widgetAccessible": true,
+        "openai/toolInvocation/invoking": "Opening trip…",
+        "openai/toolInvocation/invoked": "Trip ready.",
+      },
+    },
+    async ({ tripId, query, selector, startDate, endDate }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
+      if (denied) return denied;
+      try {
+        const reference = tripId
+          ? { tripId }
+          : selector
+            ? { selector }
+            : {
+                query,
+                ...(startDate ? { startDate } : {}),
+                ...(endDate ? { endDate } : {}),
+              };
+        const result = await storage().open(reference);
+        if (result.state === "needs_selection") {
+          return {
+            structuredContent: {
+              state: "needs_selection",
+              trips: result.trips,
+              purpose: "open",
+            },
+            content: [{ type: "text", text: "Hay más de un viaje que coincide." }],
+          };
+        }
+        if (result.state === "not_found") {
+          return {
+            structuredContent: { state: "not_found", trips: [], purpose: "open" },
+            content: [
+              {
+                type: "text",
+                text: tripId
+                  ? "Ese viaje ya no está disponible."
+                  : "No encontré un viaje guardado que coincida.",
+              },
+            ],
+          };
+        }
+        const opened = tripPresentation(result);
+        return {
+          structuredContent: opened,
+          content: [{ type: "text", text: "Tu viaje está abierto en Sendero." }],
+        };
+      } catch (error) {
+        if (!isUnavailableTripError(error)) throw error;
+        return {
+          structuredContent: { state: "not_found", trips: [], purpose: "open" },
+          content: [{ type: "text", text: "Ese viaje ya no está disponible." }],
+        };
+      }
+    },
+  );
+
+  server.registerTool(
     "find_itineraries",
     {
       title: "Find a saved itinerary",
       description:
-        "Search saved Sendero trips when the user naturally names a specific trip or destination. Pass any exact start and end dates the user supplied so one trip can be opened directly instead of showing an unnecessary picker. If exactly one match is returned, continue directly from its stable ID. If the reference remains ambiguous, render clickable cards instead. Never expose the stable ID to the user.",
-      inputSchema: {
-        query: z.string().min(1),
-        startDate: isoDate.optional(),
-        endDate: isoDate.optional(),
-      },
+        "Resolve a specific saved Sendero trip without showing an unnecessary picker. Use selector latest_updated when the user asks for their last, latest, or most recently saved trip; it returns at most one accessible active trip by updatedAt descending and query may be omitted. Otherwise, search by the named trip or destination and pass any exact start and end dates the user supplied. If exactly one match is returned, continue directly from its stable ID. If a text reference remains ambiguous, render clickable cards instead. Never expose the stable ID to the user.",
+      inputSchema: tripSearchInputSchema,
       outputSchema: { trips: z.array(tripSummarySchema) },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]) },
     },
-    async ({ query, startDate, endDate }) => {
+    async ({ query, selector, startDate, endDate }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
       if (denied) return denied;
       const trips = await storage().list();
-      const matches = findTripMatches(trips, query, { startDate, endDate });
+      const matches =
+        selector === "latest_updated"
+          ? findLatestUpdatedTrip(trips)
+          : findTripMatches(trips, query, { startDate, endDate });
       return {
         structuredContent: { trips: matches },
         content: [
@@ -1227,8 +1430,9 @@ export function createTripPlannerServer({
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: {
         securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]),
-        ui: { resourceUri: TRIP_LIST_UI_URI },
+        ui: { resourceUri: TRIP_LIST_UI_URI, visibility: ["model", "app"] },
         "openai/outputTemplate": TRIP_LIST_UI_URI,
+        "openai/widgetAccessible": true,
         "openai/toolInvocation/invoking": "Loading saved trips…",
         "openai/toolInvocation/invoked": "Saved trips ready.",
       },
@@ -1292,21 +1496,28 @@ export function createTripPlannerServer({
     {
       title: "Save itinerary",
       description:
-        "Create a saved Sendero trip or add a new version to an existing trip. Validate the full itinerary first.",
+        "Compatibility primitive that creates a saved Sendero trip or adds a concurrency-safe version to an existing trip. Validate the full itinerary first, reuse operationId on retries, and supply expectedVersion for updates. Prefer save_and_present_trip for ordinary user-facing completion.",
       inputSchema: {
         tripId: z.string().min(1).optional(),
         itinerary: itinerarySchema,
         reason: z.string().min(1).optional(),
+        expectedVersion: z.number().int().positive().optional(),
+        operationId: tripWriteOperationIdSchema,
       },
       outputSchema: {
         tripId: z.string(),
         version: z.number().int().positive(),
         role: z.enum(["owner", "editor"]),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]) },
     },
-    async ({ tripId, itinerary, reason }) => {
+    async ({ tripId, itinerary, reason, expectedVersion, operationId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
       if (denied) return denied;
       const normalized = normalizeItinerary(itinerary);
@@ -1314,15 +1525,100 @@ export function createTripPlannerServer({
       if (!validation.valid) {
         throw new Error(`Itinerary cannot be saved: ${validation.errors.join(" ")}`);
       }
-      const result = await storage().save({ tripId, itinerary: normalized, reason });
+      if (tripId && expectedVersion === undefined) {
+        throw new Error("expectedVersion is required when updating a saved trip");
+      }
+      const result = await storage().save({
+        tripId,
+        itinerary: normalized,
+        reason,
+        expectedVersion,
+        operationId,
+      });
       return {
-        structuredContent: result,
+        structuredContent: {
+          tripId: result.tripId,
+          version: result.version,
+          role: result.role,
+        },
         content: [
           {
             type: "text",
             text: `${tripId ? "Saved a new version" : "Created the trip"} successfully as version ${result.version}.`,
           },
         ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "save_and_present_trip",
+    {
+      title: "Save and present a completed trip",
+      description:
+        "Strictly validate, persist, and present the authoritative saved itinerary snapshot in one action. Use this facade when the user asked to save a new trip or revision; do not call validate_itinerary, save_itinerary, get_itinerary, or render_itinerary before or after it. Reuse the same operationId for retries. Updating an existing trip also requires its authoritative expectedVersion.",
+      inputSchema: {
+        tripId: z.string().min(1).optional(),
+        itinerary: itinerarySchema,
+        reason: z.string().min(1).optional(),
+        expectedVersion: z.number().int().positive().optional(),
+        operationId: tripWriteOperationIdSchema,
+      },
+      outputSchema: {
+        state: z.literal("saved"),
+        tripId: z.string().min(1),
+        version: z.number().int().positive(),
+        savedVersion: z.number().int().positive(),
+        role: collaboratorRoleSchema,
+        itinerary: itinerarySchema,
+        validation: validationSchema,
+        replayed: z.boolean(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]),
+        ui: { resourceUri: ITINERARY_UI_URI },
+        "openai/outputTemplate": ITINERARY_UI_URI,
+        "openai/toolInvocation/invoking": "Saving itinerary…",
+        "openai/toolInvocation/invoked": "Itinerary saved.",
+      },
+    },
+    async ({ tripId, itinerary, reason, expectedVersion, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
+      if (denied) return denied;
+      if (tripId && expectedVersion === undefined) {
+        throw new Error("expectedVersion is required when updating a saved trip.");
+      }
+      if (!tripId && expectedVersion !== undefined) {
+        throw new Error("expectedVersion is only valid when updating a saved trip.");
+      }
+      const prepared = validatedPresentation(itinerary);
+      const result = await storage().save({
+        tripId,
+        itinerary: prepared.itinerary,
+        reason,
+        expectedVersion,
+        operationId,
+      });
+      const authoritative = validatedPresentation(result.itinerary, {
+        reservationCompleteness: "warning",
+      });
+      return {
+        structuredContent: {
+          state: "saved",
+          tripId: result.tripId,
+          version: result.version,
+          savedVersion: result.savedVersion,
+          role: result.role,
+          ...authoritative,
+          replayed: result.replayed,
+        },
+        content: [{ type: "text", text: "Tu viaje quedó guardado y abierto en Sendero." }],
       };
     },
   );
@@ -1656,30 +1952,69 @@ export function createTripPlannerServer({
     {
       title: "Restore itinerary version",
       description:
-        "Restore a previous itinerary snapshot as a new version, preserving the complete history.",
+        "Restore a previous itinerary snapshot as a new version and present the authoritative restored snapshot in the same action. Do not follow it with get_itinerary or render_itinerary. Supply expectedVersion to prevent overwriting a newer edit and reuse operationId for retries.",
       inputSchema: {
         tripId: z.string().min(1),
         version: z.number().int().positive(),
+        expectedVersion: z.number().int().positive(),
+        operationId: tripWriteOperationIdSchema,
       },
       outputSchema: {
+        state: z.literal("restored"),
         tripId: z.string(),
         version: z.number().int().positive(),
+        restoredVersion: z.number().int().positive(),
         restoredFrom: z.number().int().positive(),
-        role: z.enum(["owner", "editor"]),
+        role: collaboratorRoleSchema,
+        itinerary: itinerarySchema,
+        validation: validationSchema,
+        replayed: z.boolean(),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]) },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]),
+        ui: { resourceUri: ITINERARY_UI_URI },
+        "openai/outputTemplate": ITINERARY_UI_URI,
+        "openai/toolInvocation/invoking": "Restoring itinerary…",
+        "openai/toolInvocation/invoked": "Itinerary restored.",
+      },
     },
-    async ({ tripId, version }) => {
+    async ({ tripId, version, expectedVersion, operationId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
       if (denied) return denied;
-      const result = await storage().restore({ tripId, version });
+      const candidate = await storage().getRevision({ tripId, version });
+      validatedPresentation(candidate.itinerary, {
+        reservationCompleteness: "warning",
+      });
+      const result = await storage().restore({
+        tripId,
+        version,
+        expectedVersion,
+        operationId,
+      });
+      const authoritative = validatedPresentation(result.itinerary, {
+        reservationCompleteness: "warning",
+      });
       return {
-        structuredContent: result,
+        structuredContent: {
+          state: "restored",
+          tripId: result.tripId,
+          version: result.version,
+          restoredVersion: result.restoredVersion,
+          restoredFrom: result.restoredFrom,
+          role: result.role,
+          ...authoritative,
+          replayed: result.replayed,
+        },
         content: [
           {
             type: "text",
-            text: `Restored version ${version} as the new version ${result.version}.`,
+            text: "La versión restaurada está abierta en Sendero.",
           },
         ],
       };

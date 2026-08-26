@@ -14,14 +14,14 @@ La conversación es la experiencia principal: no hace falta memorizar comandos n
 - `prepare_trip_brief` para normalizar las preferencias y detectar información crítica faltante.
 - `render_trip_requirements` para completar juntos todos los datos críticos pendientes sin volver a preguntar lo ya dicho.
 - `render_trip_intake` para abrir el formulario guiado o, cuando la intención es realmente ambigua, un menú breve.
-- `validate_itinerary` para controlar fechas, solapamientos, transporte, reservas, fuentes y actividades fijas.
-- `render_itinerary` para mostrar el itinerario completo en un componente MCP Apps con lista diaria, calendario expandible, mapa de rutas y seguimiento de reservas.
+- `open_trip` como fachada de apertura: resuelve una referencia reciente, exacta o natural, carga el snapshot autoritativo y lo presenta sin regenerarlo ni modificarlo.
+- `present_trip` como fachada de resultado no persistente: valida estrictamente el snapshot final y lo muestra como una vista deliberadamente no editable, sin `tripId`, `version`, `role` ni contexto de viaje guardado.
+- `save_and_present_trip` como fachada de resultado persistente: valida, guarda una nueva versión y presenta exactamente el snapshot autoritativo que quedó almacenado.
 - Controles de reserva que registran **confirmada** o **cancelada** únicamente dentro de Sendero; el enlace oficial abre el proveedor y Sendero nunca afirma haber reservado o cancelado allí.
-- `find_itineraries` para resolver referencias naturales a un viaje sin mostrar un selector; `list_itineraries` para los casos ambiguos con tarjetas clicables de un solo uso; y `get_itinerary` para abrir la selección exacta.
-- `save_itinerary` para crear un viaje o guardar una nueva versión sin perder el historial.
+- `find_itineraries`, `list_itineraries`, `get_itinerary`, `validate_itinerary`, `render_itinerary` y `save_itinerary` como primitivas internas y de compatibilidad para resolución especializada, diagnóstico y recuperación. `open_trip` ya incluye sus propias tarjetas cuando una referencia tiene varios resultados; `list_itineraries` queda solo para navegar explícitamente sin referencia. El flujo normal no encadena primitivas cuando una fachada expresa la intención completa.
 - `share_itinerary` para invitar por email a colaboradores como editores o lectores.
 - Un flujo de publicación que previsualiza la copia pública exacta, crea un enlace de solo lectura y permite actualizarla, cambiar el enlace o revocarlo conversando con Sendero.
-- `restore_itinerary_version` para recuperar una versión anterior como una nueva revisión.
+- `restore_itinerary_version` para recuperar una versión anterior como una nueva revisión y devolver ya presentado el snapshot autoritativo restaurado.
 - Rutas diarias reconstruidas desde las ubicaciones reales de las actividades, con enlaces de Google Maps divididos en tramos compatibles cuando el día es largo y una vista esquemática integrada cuando existen coordenadas respaldadas, sin asumir que el viajero conduce ni convertir una base provisional en parada final.
 
 El alojamiento exacto ya no bloquea un viaje nuevo. Sendero puede trabajar con un barrio, una zona o una base provisional claramente identificada y recalcular los trayectos cuando el usuario confirme dónde se hospedará.
@@ -32,7 +32,7 @@ El alojamiento exacto ya no bloquea un viaje nuevo. Sendero puede trabajar con u
 - Antes de preguntar, Sendero procesa todo lo que la persona ya dijo con `prepare_trip_brief`.
 - Si falta uno o más datos críticos, el mismo componente pregunta por el conjunto completo. Por ejemplo, si faltan destino y fechas, ambos aparecen en una sola interacción, no en dos turnos separados.
 - Una pregunta se pospone únicamente cuando depende de otra respuesta. La licencia de conducir, por ejemplo, solo se vuelve relevante si el viaje incluye auto.
-- Una referencia exacta a un viaje guardado lo abre directamente. Si hay varias coincidencias o ningún viaje identificado, Sendero muestra tarjetas clicables para elegir.
+- “Abre mi último viaje guardado” ejecuta una sola apertura de intención completa: resuelve directamente el viaje actualizado más recientemente y lo muestra sin selector, regeneración, validación ni cambios. Una referencia exacta a cualquier otro viaje también lo abre directamente; solo las referencias realmente ambiguas muestran tarjetas clicables para elegir.
 - Las decisiones que hacen avanzar la conversación son de un solo uso: después del clic, los controles se reemplazan por un recibo compacto y ya no pueden activarse desde un mensaje anterior.
 - La respuesta visible nunca muestra nombres de herramientas, IDs internos, JSON ni instrucciones como “escribe Abrir Sevilla”. Los componentes transmiten ese contexto internamente y la conversación continúa con lenguaje humano.
 
@@ -74,12 +74,14 @@ La persona propietaria puede decir “comparte este viaje con un enlace”. Send
 
 ## Persistencia y permisos
 
-Sendero usa Convex para siete colecciones relacionadas:
+Sendero usa Convex para ocho colecciones relacionadas:
 
 - Usuarios vinculados a la identidad autenticada.
 - Viajes con un propietario y el snapshot actual del itinerario.
 - Colaboradores con rol `owner`, `editor` o `viewer`.
 - Revisiones inmutables para conservar cada versión guardada y permitir restauraciones.
+- Operaciones idempotentes de guardado y restauración, con control optimista de versión para evitar sobrescribir cambios recientes.
+- Operaciones idempotentes de estado de reservas y boletos dentro de Sendero.
 - Publicaciones sanitizadas y congeladas, con expiración, generación y solamente el hash del token.
 - Operaciones idempotentes de publicación para que un reintento no cree enlaces distintos.
 

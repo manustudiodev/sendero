@@ -120,6 +120,11 @@ const reservationTrackingStatus = v.union(
   v.literal("cancelled"),
 );
 
+const tripWriteOperation = v.union(
+  v.literal("save"),
+  v.literal("restore"),
+);
+
 export default defineSchema({
   users: defineTable({
     tokenIdentifier: v.string(),
@@ -171,6 +176,18 @@ export default defineSchema({
   })
     .index("by_trip", ["tripId"])
     .index("by_trip_and_version", ["tripId", "version"]),
+
+  tripWriteOperations: defineTable({
+    tripId: v.id("trips"),
+    actorId: v.id("users"),
+    operationId: v.string(),
+    operation: tripWriteOperation,
+    requestFingerprint: v.string(),
+    resultVersion: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_actor_and_operation", ["actorId", "operationId"])
+    .index("by_trip", ["tripId"]),
 
   reservationOperations: defineTable({
     tripId: v.id("trips"),

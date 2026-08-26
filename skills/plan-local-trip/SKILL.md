@@ -59,13 +59,18 @@ Prefer official sources for operational facts. Use reputable local sources for d
 - Mark fixed activities as locked and preserve them during later changes.
 - Give every public venue or activity a precise, recognizable address. Add `latitude` and `longitude` only when both coordinates are backed by a current source; never guess coordinates. Do not add exact lodging coordinates merely to draw a map.
 
-Use the canonical structure in [itinerary-schema.md](references/itinerary-schema.md). Call `validate_itinerary` before presenting the result and correct blocking issues. When the user asked to save the trip, save the validated snapshot before the final render so the response provides the authoritative `tripId`, `version`, and `role`; pass those three values with the final snapshot to `render_itinerary`. If the trip remains unsaved, render the complete snapshot without inventing persistence context.
+Use the canonical structure in [itinerary-schema.md](references/itinerary-schema.md). Once research and itinerary construction are complete, finish through exactly one intent-level facade:
+
+- If the user explicitly asked to save or otherwise persist the trip, call `save_and_present_trip` once with the complete snapshot and a concise revision reason. It validates strictly, persists the authoritative version, and presents that saved snapshot with its real `tripId`, `version`, and `role`.
+- Otherwise call `present_trip` once with the complete snapshot. It validates strictly and presents the final unsaved plan as a deliberately non-editable preview, without `tripId`, `version`, `role`, or any other saved-trip context.
+
+Correct any blocking validation result returned by the facade before trying the same final action again. Do not manually chain `validate_itinerary`, `save_itinerary`, and `render_itinerary` for the ordinary completion path; those tools remain internal or compatibility primitives for narrower diagnostics and recovery.
 
 ### 4. Handle reservations safely
 
 For every actionable item, first determine whether the user needs a **reservation** (restaurants, bars, tables, or bookable experiences) or a **ticket** (museums, attractions, concerts, cinema, or events). Store that as `reservation.kind`. Separately classify whether it is `required`, `recommended`, or `optional` in `reservation.requirement`; never use optionality as the item's lifecycle status. Then include the current tracking status, official URL, recommended deadline, cancellation note when known, and what remains unconfirmed. Offer multiple restaurant, cafe, or activity options when the user has not selected one.
 
-The first final `render_itinerary` result must already contain the complete reservation tracker together with the list, calendar, and routes. Do not add a separate “review reservations” turn, reproduce the reservations as prose, or wait for another research pass merely because the user opens that view.
+The first final itinerary component returned by `present_trip` or `save_and_present_trip` must already contain the complete reservation tracker together with the list, calendar, and routes. Do not add a separate “review reservations” turn, reproduce the reservations as prose, or wait for another research pass merely because the user opens that view.
 
 Reservation and ticket controls inside Sendero change only Sendero's tracking status. **Ya reservé** or **Ya compré** records what the user says they completed; **Reserva cancelada** or **Boleto cancelado** records its local cancellation state. Neither action books, purchases, contacts, nor cancels with the provider. The official link is the explicit handoff to the external provider, and the component must state this boundary.
 

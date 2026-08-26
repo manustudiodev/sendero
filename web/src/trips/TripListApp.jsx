@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, SelectionReceipt } from "../components.jsx";
-import { sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
+import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { tripSelectionContinuation } from "../conversation.js";
+import { ItineraryApp } from "../itinerary/ItineraryApp.jsx";
+import { normalizeToolOutput } from "../tool-output.js";
 
 const purposeCopy = {
   open: { eyebrow: "Tus viajes", title: "¿Cuál quieres abrir?", action: "Abrir", selected: "Viaje elegido" },
@@ -29,35 +31,121 @@ function restoredStatus(saved) {
 export function TripListApp() {
   const { output } = useToolOutput();
   const saved = widgetState();
-  const trips = output?.trips || [];
-  const purpose = output?.purpose || "open";
+  const [listedOutput, setListedOutput] = useState(null);
+  const currentOutput = listedOutput || output;
+  const trips = currentOutput?.trips || [];
+  const purpose = currentOutput?.purpose || "open";
   const copy = purposeCopy[purpose] || purposeCopy.open;
   const pendingRef = useRef(false);
   const [selectedTrip, setSelectedTrip] = useState(saved.selectedTrip || null);
   const [status, setStatus] = useState(() => restoredStatus(saved));
+  // Keep the full itinerary in memory only. Persisting a complete trip in widget
+  // state can exceed host limits; a remount falls back to the inert selection receipt.
+  const [openedTrip, setOpenedTrip] = useState(output?.state === "opened" ? output : null);
+
+  useEffect(() => {
+    if (output?.state === "opened" && output.itinerary) setOpenedTrip(output);
+  }, [output]);
+
+  function persistWidgetState(patch) {
+    setWidgetState({
+      ...widgetState(),
+      selectedTrip,
+      status,
+      ...patch,
+    });
+  }
+
+  function clearSelection() {
+    const idle = { state: "idle", message: "" };
+    setSelectedTrip(null);
+    setOpenedTrip(null);
+    setStatus(idle);
+    persistWidgetState({ selectedTrip: null, openedTrip: null, status: idle });
+  }
 
   async function selectTrip(trip) {
     if (pendingRef.current) return;
     const selection = { ...trip, purpose };
     setSelectedTrip(selection);
+    setOpenedTrip(null);
     pendingRef.current = true;
-    const loading = { state: "loading", message: "Continuando en la conversación…" };
+    const loading = {
+      state: "loading",
+      message: purpose === "open" ? "Abriendo el viaje…" : "Continuando en la conversación…",
+    };
     setStatus(loading);
-    setWidgetState({ selectedTrip: selection, status: loading });
-    const continuation = tripSelectionContinuation({ trip, purpose });
+    persistWidgetState({ selectedTrip: selection, openedTrip: null, status: loading });
     try {
+      if (purpose === "open") {
+        const opened = normalizeToolOutput(await callTool("open_trip", { tripId: trip.id }));
+        if (opened?.state === "needs_selection") {
+          const idle = { state: "idle", message: "Elige el viaje que quieres abrir." };
+          setSelectedTrip(null);
+          setStatus(idle);
+          persistWidgetState({ selectedTrip: null, openedTrip: null, status: idle });
+          return;
+        }
+        if (opened?.state === "empty" || opened?.state === "not_found") {
+          const empty = {
+            state: "empty",
+            message: "No encontramos ese viaje. Puede que se haya eliminado o que ya no tengas acceso.",
+          };
+          setStatus(empty);
+          persistWidgetState({ selectedTrip: selection, openedTrip: null, status: empty });
+          return;
+        }
+        if (opened?.state !== "opened" || opened.tripId !== trip.id || !opened.itinerary) {
+          throw new Error("Sendero no devolvió el viaje solicitado.");
+        }
+        const success = { state: "success", message: "Viaje abierto." };
+        setOpenedTrip(opened);
+        setStatus(success);
+        persistWidgetState({ selectedTrip: selection, openedTrip: null, status: success });
+        return;
+      }
+
+      const continuation = tripSelectionContinuation({ trip, purpose });
       await updateModelContext(continuation.context);
       await sendFollowUpMessage(continuation.visibleMessage);
       const success = { state: "success", message: "Selección enviada." };
       setStatus(success);
-      setWidgetState({ selectedTrip: selection, status: success });
+      persistWidgetState({ selectedTrip: selection, openedTrip: null, status: success });
     } catch {
       const failure = {
         state: "error",
-        message: "No pudimos continuar todavía. Tu elección sigue aquí; inténtalo de nuevo.",
+        message: purpose === "open"
+          ? "No pudimos abrir este viaje. Tu elección sigue aquí; inténtalo de nuevo."
+          : "No pudimos continuar todavía. Tu elección sigue aquí; inténtalo de nuevo.",
       };
       setStatus(failure);
-      setWidgetState({ selectedTrip: selection, status: failure });
+      persistWidgetState({ selectedTrip: selection, openedTrip: null, status: failure });
+    } finally {
+      pendingRef.current = false;
+    }
+  }
+
+  async function viewSavedTrips() {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    const loading = { state: "loading", message: "Buscando tus viajes…" };
+    setStatus(loading);
+    persistWidgetState({ selectedTrip: null, openedTrip: null, status: loading });
+    try {
+      const listed = normalizeToolOutput(
+        await callTool("list_itineraries", { purpose: "open" }),
+      );
+      if (!listed || !Array.isArray(listed.trips)) {
+        throw new Error("Sendero no devolvió la lista de viajes.");
+      }
+      setListedOutput({ ...listed, purpose: "open" });
+      const success = { state: "idle", message: "" };
+      setStatus(success);
+      persistWidgetState({ selectedTrip: null, openedTrip: null, status: success });
+    } catch {
+      const failure = { state: "error", message: "No pudimos cargar tus viajes. Inténtalo de nuevo." };
+      setStatus(failure);
+      persistWidgetState({ selectedTrip: null, openedTrip: null, status: failure });
     } finally {
       pendingRef.current = false;
     }
@@ -76,6 +164,10 @@ export function TripListApp() {
     }
   }
 
+  if (openedTrip?.state === "opened" && openedTrip.itinerary) {
+    return <ItineraryApp initialOutput={openedTrip} />;
+  }
+
   if (selectedTrip) {
     return (
       <main className="app-shell trips-shell compact-shell">
@@ -86,7 +178,23 @@ export function TripListApp() {
           title={selectedTrip.title}
         >
           {status.state === "error" ? <Button onClick={() => selectTrip(selectedTrip)} variant="secondary">Reintentar</Button> : null}
+          {status.state === "empty" ? <Button onClick={clearSelection} variant="secondary">Volver a mis viajes</Button> : null}
         </SelectionReceipt>
+      </main>
+    );
+  }
+
+  if (purpose === "open" && currentOutput?.state === "not_found") {
+    return (
+      <main className="app-shell trips-shell">
+        <div className="empty-state">
+          <div>
+            <strong>No encontramos ese viaje</strong>
+            <p>Puede que se haya eliminado o que ya no tengas acceso.</p>
+            <Button disabled={status.state === "loading"} onClick={viewSavedTrips} variant="primary">Ver mis viajes</Button>
+            {status.message ? <p role={status.state === "error" ? "alert" : undefined}>{status.message}</p> : null}
+          </div>
+        </div>
       </main>
     );
   }

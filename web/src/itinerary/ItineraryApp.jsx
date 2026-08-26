@@ -57,8 +57,10 @@ function applyReservationReceipt(itinerary, receipt, context) {
   };
 }
 
-export function ItineraryApp() {
-  const { output, refresh } = useToolOutput();
+export function ItineraryApp({ initialOutput = null } = {}) {
+  const toolOutput = useToolOutput();
+  const output = initialOutput || toolOutput.output;
+  const refresh = toolOutput.refresh;
   const incomingItinerary = output?.itinerary;
   const initialReceipt = widgetState().reservationReceipt || null;
   const incomingContext = tripContext(output, incomingItinerary);

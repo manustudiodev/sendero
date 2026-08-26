@@ -124,35 +124,157 @@ function itineraryMetadata(snapshot: unknown) {
   };
 }
 
+function requireOperationId(operationId: string, label: string) {
+  if (
+    operationId.length < 8 ||
+    operationId.length > 128 ||
+    !/^[A-Za-z0-9._:-]+$/.test(operationId)
+  ) {
+    throw new Error(`Invalid ${label} operation ID`);
+  }
+}
+
+function requestFingerprint(value: unknown) {
+  const serialized = JSON.stringify(value);
+  let high = 0x9e3779b9;
+  let low = 0x85ebca6b;
+  for (let index = 0; index < serialized.length; index += 1) {
+    const code = serialized.charCodeAt(index);
+    high = Math.imul(high ^ code, 0x5bd1e995);
+    low = Math.imul(low ^ code, 0x27d4eb2d);
+  }
+  high = Math.imul(high ^ (high >>> 16), 0x85ebca6b) ^ Math.imul(low ^ (low >>> 13), 0xc2b2ae35);
+  low = Math.imul(low ^ (low >>> 16), 0x85ebca6b) ^ Math.imul(high ^ (high >>> 13), 0xc2b2ae35);
+  return `${serialized.length}:${(high >>> 0).toString(16).padStart(8, "0")}${(low >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+async function listAccessibleTrips(ctx: ReadContext) {
+  const { user } = await findCurrentUser(ctx);
+  if (!user) return [];
+
+  const owned = await ctx.db
+    .query("trips")
+    .withIndex("by_owner_and_status", (q) =>
+      q.eq("ownerId", user._id).eq("status", "active"),
+    )
+    .collect();
+  const memberships = await ctx.db
+    .query("collaborators")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .collect();
+
+  const results = new Map<string, Record<string, unknown>>();
+  for (const trip of owned) {
+    results.set(trip._id, { ...trip, role: "owner" });
+  }
+  for (const membership of memberships) {
+    if (membership.status !== "accepted" || membership.role === "owner") continue;
+    const trip = await ctx.db.get(membership.tripId);
+    if (trip?.status === "active") {
+      results.set(trip._id, { ...trip, role: membership.role });
+    }
+  }
+  return [...results.values()].sort(
+    (left, right) =>
+      Number(right.updatedAt) - Number(left.updatedAt) ||
+      String(left._id).localeCompare(String(right._id)),
+  );
+}
+
+function tripSummary(trip: Record<string, unknown>) {
+  return {
+    id: trip._id,
+    title: trip.title,
+    destination: trip.destination,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    currentVersion: trip.currentVersion,
+    role: trip.role,
+    updatedAt: trip.updatedAt,
+  };
+}
+
+async function revisionSummaries(ctx: ReadContext, tripId: Id<"trips">) {
+  const revisions = await ctx.db
+    .query("tripRevisions")
+    .withIndex("by_trip", (q) => q.eq("tripId", tripId))
+    .collect();
+  return revisions
+    .map(({ _id, version, reason, createdAt }) => ({ _id, version, reason, createdAt }))
+    .sort((a, b) => b.version - a.version);
+}
+
 export const listMine = query({
   args: {},
-  handler: async (ctx) => {
-    const { user } = await findCurrentUser(ctx);
-    if (!user) return [];
+  handler: async (ctx) => listAccessibleTrips(ctx),
+});
 
-    const owned = await ctx.db
-      .query("trips")
-      .withIndex("by_owner_and_status", (q) => q.eq("ownerId", user._id).eq("status", "active"))
-      .collect();
-    const memberships = await ctx.db
-      .query("collaborators")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
+export const open = query({
+  args: {
+    reference: v.union(
+      v.object({ tripId: v.id("trips") }),
+      v.object({ selector: v.literal("latest_updated") }),
+      v.object({
+        query: v.string(),
+        startDate: v.optional(v.string()),
+        endDate: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, { reference }) => {
+    if ("tripId" in reference) {
+      const access = await requireAccess(ctx, reference.tripId, "viewer");
+      return {
+        state: "opened" as const,
+        trip: { ...access.trip, role: access.role },
+        revisions: await revisionSummaries(ctx, reference.tripId),
+        trips: [],
+      };
+    }
 
-    const results = new Map<string, Record<string, unknown>>();
-    for (const trip of owned) {
-      results.set(trip._id, { ...trip, role: "owner" });
+    const trips = await listAccessibleTrips(ctx);
+    const matches = "selector" in reference
+      ? trips.slice(0, 1)
+      : (() => {
+          const terms = normalizeSearchText(reference.query).split(/\s+/).filter(Boolean);
+          if (!terms.length) return [];
+          return trips.filter((trip) => {
+            const searchable = normalizeSearchText(`${trip.title} ${trip.destination}`);
+            return (
+              terms.every((term) => searchable.includes(term)) &&
+              (!reference.startDate || trip.startDate === reference.startDate) &&
+              (!reference.endDate || trip.endDate === reference.endDate)
+            );
+          });
+        })();
+
+    if (matches.length === 0) {
+      return { state: "not_found" as const, trips: [] };
     }
-    for (const membership of memberships) {
-      if (membership.status !== "accepted" || membership.role === "owner") continue;
-      const trip = await ctx.db.get(membership.tripId);
-      if (trip?.status === "active") {
-        results.set(trip._id, { ...trip, role: membership.role });
-      }
+    if (matches.length > 1) {
+      return {
+        state: "needs_selection" as const,
+        trips: matches.map(tripSummary),
+      };
     }
-    return [...results.values()].sort(
-      (left, right) => Number(right.updatedAt) - Number(left.updatedAt),
-    );
+
+    const trip = matches[0];
+    const tripId = trip._id as Id<"trips">;
+    return {
+      state: "opened" as const,
+      trip,
+      revisions: await revisionSummaries(ctx, tripId),
+      trips: [],
+    };
   },
 });
 
@@ -160,16 +282,31 @@ export const get = query({
   args: { tripId: v.id("trips") },
   handler: async (ctx, { tripId }) => {
     const access = await requireAccess(ctx, tripId, "viewer");
-    const revisions = await ctx.db
-      .query("tripRevisions")
-      .withIndex("by_trip", (q) => q.eq("tripId", tripId))
-      .collect();
     return {
       ...access.trip,
       role: access.role,
-      revisions: revisions
-        .map(({ _id, version, reason, createdAt }) => ({ _id, version, reason, createdAt }))
-        .sort((a, b) => b.version - a.version),
+      revisions: await revisionSummaries(ctx, tripId),
+    };
+  },
+});
+
+export const getRevision = query({
+  args: {
+    tripId: v.id("trips"),
+    version: v.number(),
+  },
+  handler: async (ctx, { tripId, version }) => {
+    const access = await requireAccess(ctx, tripId, "viewer");
+    const revision = await ctx.db
+      .query("tripRevisions")
+      .withIndex("by_trip_and_version", (q) => q.eq("tripId", tripId).eq("version", version))
+      .unique();
+    if (!revision) throw new Error("Trip revision not found");
+    return {
+      tripId,
+      version: revision.version,
+      role: access.role,
+      itinerary: revision.snapshot,
     };
   },
 });
@@ -179,13 +316,52 @@ export const save = mutation({
     tripId: v.optional(v.id("trips")),
     itinerary: v.any(),
     reason: v.optional(v.string()),
+    expectedVersion: v.optional(v.number()),
+    operationId: v.string(),
   },
-  handler: async (ctx, { tripId, itinerary, reason }) => {
+  handler: async (
+    ctx,
+    { tripId, itinerary, reason, expectedVersion, operationId },
+  ) => {
+    requireOperationId(operationId, "trip save");
     const user = await ensureCurrentUser(ctx);
     const metadata = itineraryMetadata(itinerary);
     const now = Date.now();
+    const requestFingerprintValue = requestFingerprint({
+      tripId: tripId || null,
+      itinerary,
+      reason: reason || null,
+      expectedVersion: expectedVersion ?? null,
+    });
+    const existingOperation = await ctx.db
+      .query("tripWriteOperations")
+      .withIndex("by_actor_and_operation", (q) =>
+        q.eq("actorId", user._id).eq("operationId", operationId),
+      )
+      .unique();
+
+    if (existingOperation) {
+      if (
+        existingOperation.operation !== "save" ||
+        existingOperation.requestFingerprint !== requestFingerprintValue
+      ) {
+        throw new Error("Trip write operation ID was already used for a different request");
+      }
+      const access = await requireAccess(ctx, existingOperation.tripId, "viewer");
+      return {
+        tripId: existingOperation.tripId,
+        version: access.trip.currentVersion,
+        savedVersion: existingOperation.resultVersion,
+        role: access.role,
+        itinerary: access.trip.snapshot,
+        replayed: true,
+      };
+    }
 
     if (!tripId) {
+      if (expectedVersion !== undefined) {
+        throw new Error("expectedVersion is only valid when updating a saved trip");
+      }
       const createdTripId = await ctx.db.insert("trips", {
         ownerId: user._id,
         ...metadata,
@@ -212,10 +388,34 @@ export const save = mutation({
         reason: reason || "Trip created",
         createdAt: now,
       });
-      return { tripId: createdTripId, version: 1, role: "owner" as const };
+      await ctx.db.insert("tripWriteOperations", {
+        tripId: createdTripId,
+        actorId: user._id,
+        operationId,
+        operation: "save",
+        requestFingerprint: requestFingerprintValue,
+        resultVersion: 1,
+        createdAt: now,
+      });
+      return {
+        tripId: createdTripId,
+        version: 1,
+        savedVersion: 1,
+        role: "owner" as const,
+        itinerary,
+        replayed: false,
+      };
     }
 
     const access = await requireAccess(ctx, tripId, "editor");
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new Error("A positive integer expectedVersion is required when updating a trip");
+    }
+    if (access.trip.currentVersion !== expectedVersion) {
+      throw new Error(
+        `Trip version changed. Expected ${expectedVersion}, found ${access.trip.currentVersion}. Refresh before saving the itinerary.`,
+      );
+    }
     const version = access.trip.currentVersion + 1;
     await ctx.db.patch(tripId, {
       ...metadata,
@@ -231,7 +431,23 @@ export const save = mutation({
       reason: reason || "Itinerary updated",
       createdAt: now,
     });
-    return { tripId, version, role: access.role };
+    await ctx.db.insert("tripWriteOperations", {
+      tripId,
+      actorId: user._id,
+      operationId,
+      operation: "save",
+      requestFingerprint: requestFingerprintValue,
+      resultVersion: version,
+      createdAt: now,
+    });
+    return {
+      tripId,
+      version,
+      savedVersion: version,
+      role: access.role,
+      itinerary,
+      replayed: false,
+    };
   },
 });
 
@@ -424,10 +640,55 @@ export const share = mutation({
 });
 
 export const restoreRevision = mutation({
-  args: { tripId: v.id("trips"), version: v.number() },
-  handler: async (ctx, { tripId, version }) => {
+  args: {
+    tripId: v.id("trips"),
+    version: v.number(),
+    expectedVersion: v.number(),
+    operationId: v.string(),
+  },
+  handler: async (ctx, { tripId, version, expectedVersion, operationId }) => {
+    requireOperationId(operationId, "trip restore");
     const user = await ensureCurrentUser(ctx);
     const access = await requireAccess(ctx, tripId, "editor");
+    const requestFingerprintValue = requestFingerprint({
+      tripId,
+      version,
+      expectedVersion,
+    });
+    const existingOperation = await ctx.db
+      .query("tripWriteOperations")
+      .withIndex("by_actor_and_operation", (q) =>
+        q.eq("actorId", user._id).eq("operationId", operationId),
+      )
+      .unique();
+    if (existingOperation) {
+      if (
+        existingOperation.operation !== "restore" ||
+        existingOperation.tripId !== tripId ||
+        existingOperation.requestFingerprint !== requestFingerprintValue
+      ) {
+        throw new Error("Trip write operation ID was already used for a different request");
+      }
+      const currentTrip = await ctx.db.get(tripId);
+      if (!currentTrip) throw new Error("Trip not found");
+      return {
+        tripId,
+        version: currentTrip.currentVersion,
+        restoredVersion: existingOperation.resultVersion,
+        restoredFrom: version,
+        role: access.role,
+        itinerary: currentTrip.snapshot,
+        replayed: true,
+      };
+    }
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      throw new Error("A positive integer expectedVersion is required");
+    }
+    if (access.trip.currentVersion !== expectedVersion) {
+      throw new Error(
+        `Trip version changed. Expected ${expectedVersion}, found ${access.trip.currentVersion}. Refresh before restoring a revision.`,
+      );
+    }
     const revision = await ctx.db
       .query("tripRevisions")
       .withIndex("by_trip_and_version", (q) => q.eq("tripId", tripId).eq("version", version))
@@ -450,6 +711,23 @@ export const restoreRevision = mutation({
       reason: `Restored version ${version}`,
       createdAt: now,
     });
-    return { tripId, version: nextVersion, restoredFrom: version, role: access.role };
+    await ctx.db.insert("tripWriteOperations", {
+      tripId,
+      actorId: user._id,
+      operationId,
+      operation: "restore",
+      requestFingerprint: requestFingerprintValue,
+      resultVersion: nextVersion,
+      createdAt: now,
+    });
+    return {
+      tripId,
+      version: nextVersion,
+      restoredVersion: nextVersion,
+      restoredFrom: version,
+      role: access.role,
+      itinerary: revision.snapshot,
+      replayed: false,
+    };
   },
 });
