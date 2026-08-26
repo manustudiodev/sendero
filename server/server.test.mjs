@@ -251,6 +251,14 @@ test("requires actionable details only for reservations that remain pending", ()
   assert.equal(invalid.valid, false);
   assert.ok(invalid.errors.some((message) => message.includes("pending reservation needs")));
 
+  const displaySafe = validateItinerary(pendingWithoutAction, {
+    reservationCompleteness: "warning",
+  });
+  assert.equal(displaySafe.valid, true);
+  assert.ok(
+    displaySafe.warnings.some((message) => message.includes("pending reservation needs")),
+  );
+
   for (const actionable of [
     { status: "pending", url: "https://tickets.example/reserve" },
     { status: "pending", note: "Reservar por teléfono con el museo." },
@@ -397,6 +405,19 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(savedPresentation.structuredContent.tripId, "trip_123");
   assert.equal(savedPresentation.structuredContent.version, 2);
   assert.equal(savedPresentation.structuredContent.role, "editor");
+
+  const pendingWithoutAction = structuredClone(itinerary);
+  pendingWithoutAction.days[0].activities[1].reservation = { status: "pending" };
+  const displaySafeRender = await client.callTool({
+    name: "render_itinerary",
+    arguments: { itinerary: pendingWithoutAction },
+  });
+  assert.equal(displaySafeRender.structuredContent.validation.valid, true);
+  assert.ok(
+    displaySafeRender.structuredContent.validation.warnings.some((message) =>
+      message.includes("pending reservation needs"),
+    ),
+  );
 
   const invalid = structuredClone(itinerary);
   invalid.days[0].activities[1].startTime = "12:30";
@@ -759,6 +780,16 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
           role: "owner",
           updatedAt: 1786900000000,
         },
+        {
+          id: "trip_456",
+          title: "Lisboa nocturna",
+          destination: itinerary.destination,
+          startDate: "2026-09-10",
+          endDate: "2026-09-14",
+          currentVersion: 1,
+          role: "owner",
+          updatedAt: 1786800000000,
+        },
       ];
     },
     async get(tripId) {
@@ -818,6 +849,17 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   assert.equal(found.structuredContent.trips.length, 1);
   assert.equal(found.structuredContent.trips[0].id, "trip_123");
 
+  const foundByExactDates = await client.callTool({
+    name: "find_itineraries",
+    arguments: {
+      query: "Lisboa",
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+    },
+  });
+  assert.equal(foundByExactDates.structuredContent.trips.length, 1);
+  assert.equal(foundByExactDates.structuredContent.trips[0].id, "trip_123");
+
   const listed = await client.callTool({ name: "list_itineraries", arguments: { purpose: "adjust" } });
   assert.equal(listed.structuredContent.trips[0].id, "trip_123");
   assert.equal(listed.structuredContent.purpose, "adjust");
@@ -830,6 +872,16 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
     arguments: { tripId: "trip_123" },
   });
   assert.equal(opened.structuredContent.itinerary.title, itinerary.title);
+
+  const pendingWithoutAction = structuredClone(itinerary);
+  pendingWithoutAction.days[0].activities[1].reservation = { status: "pending" };
+  const rejectedSave = await client.callTool({
+    name: "save_itinerary",
+    arguments: { itinerary: pendingWithoutAction, reason: "Incomplete reservation research" },
+  });
+  assert.equal(rejectedSave.isError, true);
+  assert.match(rejectedSave.content[0].text, /cannot be saved/i);
+  assert.equal(calls.some(([name]) => name === "save"), false);
 
   const saved = await client.callTool({
     name: "save_itinerary",
@@ -870,7 +922,7 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   assert.equal(restored.structuredContent.version, 3);
   assert.deepEqual(
     calls.map(([name]) => name),
-    ["list", "list", "get", "save", "updateReservation", "share", "restore"],
+    ["list", "list", "list", "get", "save", "updateReservation", "share", "restore"],
   );
 
   await client.close();
