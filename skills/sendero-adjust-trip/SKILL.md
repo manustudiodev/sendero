@@ -10,7 +10,7 @@ description: Reorganize an existing Sendero itinerary while preserving confirmed
 3. Preserve unaffected days. Recheck current opening hours, transport, weather, or availability only where the change depends on them.
 4. Recluster affected activities geographically and recalculate their transfers and daily routes.
 5. Call `validate_itinerary`, correct blocking errors, and call `render_itinerary` once with the complete updated snapshot.
-6. Briefly explain material differences. Call `save_itinerary` only when the user explicitly asked to persist the adjustment; include a concise revision reason.
+6. Add at most one short sentence only for a material difference that the component does not already show; otherwise end the turn after the component. Call `save_itinerary` only when the user explicitly asked to persist the adjustment; include a concise revision reason.
 
 Do not book, cancel, or change a reservation without explicit confirmation immediately before that external action.
 

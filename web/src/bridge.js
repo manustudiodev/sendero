@@ -8,6 +8,29 @@ let resizeObserver;
 let lastReportedHeight = 0;
 let lastReportedWidth = 0;
 
+function normalizedTheme(value) {
+  return value === "dark" || value === "light" ? value : "";
+}
+
+function fallbackTheme() {
+  if (typeof window.matchMedia !== "function") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyHostTheme(value) {
+  const theme = normalizedTheme(value) || fallbackTheme();
+  if (!document.documentElement) return;
+  document.documentElement.dataset.theme = theme;
+}
+
+function installThemeSync() {
+  applyHostTheme(window.openai?.theme);
+  window.addEventListener("openai:set_globals", (event) => {
+    const theme = normalizedTheme(event.detail?.globals?.theme);
+    if (theme) applyHostTheme(theme);
+  }, { passive: true });
+}
+
 function postSizeChanged(width, height) {
   window.parent.postMessage({
     jsonrpc: "2.0",
@@ -80,6 +103,7 @@ function handleBridgeResponse(event) {
 }
 
 window.addEventListener("message", handleBridgeResponse, { passive: true });
+installThemeSync();
 installIntrinsicHeightSync();
 
 function request(method, params, timeoutMs = 8000) {

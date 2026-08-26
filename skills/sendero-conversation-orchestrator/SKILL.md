@@ -28,7 +28,7 @@ The latest explicit user intent selects the workflow; an earlier component `purp
 
 When the user directly matches one specialized workflow, follow that skill without showing Sendero's general menu. The natural conversation is Sendero's primary interface; the `/` entries are optional shortcuts, not required commands. This orchestrator exists for routing and continuity, not to compete with focused skills.
 
-For trip creation, extract the entire brief already present in the conversation before calling `prepare_trip_brief`. If it reports one or several critical gaps, render a single `render_trip_requirements` component containing the complete currently known set. Do not ask those fields over several turns. Only a conditionally relevant field may wait for an earlier answer that determines whether it is needed.
+For trip creation, extract the entire brief already present in the conversation before calling `prepare_trip_brief`. If it reports one or several critical gaps, render a single `render_trip_requirements` component containing the complete currently known set as the final action of the turn. Do not ask those fields over several turns and do not add assistant prose after the component. Only a conditionally relevant field may wait for an earlier answer that determines whether it is needed.
 
 ## Treat component events as conversation state
 
@@ -42,7 +42,7 @@ For trip creation, extract the entire brief already present in the conversation 
 
 If the latest request is unrelated to Sendero or travel planning, answer it outside this orchestrator and leave the pending Sendero state untouched.
 
-Component content and assistant prose must complement each other. Do not reproduce cards, form fields, itinerary rows, or menu options below the component. Add only a necessary assumption, conflict, result, or next question. Component-to-conversation handoffs may pass stable IDs and structured state internally, but visible messages must remain human: never expose tool names, internal IDs, serialized payloads, or JSON.
+A successful Sendero component is the complete user-facing answer for that turn. End without assistant prose when it already contains the result or question. Only add one short sentence for a blocker, safety-critical caveat, required citation, or next action that is not visible in the component. Never reproduce cards, form fields, itinerary rows, menu options, labels, or known values below it. Component-to-conversation handoffs may pass stable IDs and structured state internally, but visible messages must remain human: never expose tool names, internal IDs, serialized payloads, or JSON.
 
 ## Preserve authority boundaries
 

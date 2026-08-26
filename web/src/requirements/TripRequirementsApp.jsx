@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, ChoiceChips, Field, InlineNotice, SelectionReceipt } from "../components.jsx";
+import { DateRangePicker } from "../DateRangePicker.jsx";
 import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { briefReceiptSummary, tripRequirementsContinuation } from "../conversation.js";
 import { normalizeToolOutput } from "../tool-output.js";
@@ -51,6 +52,12 @@ export function TripRequirementsApp() {
   function update(field, value) {
     draftTouchedRef.current = true;
     setDraft((current) => ({ ...current, [field]: value }));
+    setStatus({ state: "idle", message: "" });
+  }
+
+  function updateDates(nextDates) {
+    draftTouchedRef.current = true;
+    setDraft((current) => ({ ...current, ...nextDates }));
     setStatus({ state: "idle", message: "" });
   }
 
@@ -241,8 +248,7 @@ export function TripRequirementsApp() {
         </header>
         <div className="requirements-grid">
           {fields.includes("destination") ? <Field className="field-wide" label="¿A dónde quieren viajar?"><input autoComplete="off" autoFocus onChange={(event) => update("destination", event.target.value)} placeholder="Sevilla, España" required value={draft.destination} /></Field> : null}
-          {fields.includes("startDate") ? <Field label="Llegada"><input onChange={(event) => update("startDate", event.target.value)} required type="date" value={draft.startDate} /></Field> : null}
-          {fields.includes("endDate") ? <Field label="Regreso"><input onChange={(event) => update("endDate", event.target.value)} required type="date" value={draft.endDate} /></Field> : null}
+          {fields.includes("startDate") || fields.includes("endDate") ? <DateRangePicker endDate={draft.endDate} onChange={updateDates} startDate={draft.startDate} /> : null}
           {fields.includes("travellers.adults") ? <Field className={fields.length === 1 ? "field-wide" : ""} label="Adultos"><input inputMode="numeric" min="1" onChange={(event) => update("adults", event.target.value)} required type="number" value={draft.adults} /></Field> : null}
           {fields.includes("transport.modes") ? <div className="field-wide"><ChoiceChips label="¿Cómo quieren moverse?" onChange={(value) => update("transportModes", value)} options={transportOptions} values={draft.transportModes} /></div> : null}
           {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />Al menos una persona tiene licencia válida y quiere conducir</label> : null}

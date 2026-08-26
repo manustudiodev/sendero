@@ -8,12 +8,17 @@ import { sanitizePublicSnapshot } from "../shared/public-snapshot.mjs";
 import {
   ITINERARY_UI_URI,
   LEGACY_ITINERARY_UI_URI,
+  LEGACY_ITINERARY_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
+  LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
+  LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
+  LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -29,13 +34,37 @@ function assertInlineWidgetResource(resource, expectedUri) {
   assert.equal(content.uri, expectedUri);
   assert.equal(content.mimeType, "text/html;profile=mcp-app");
   assert.equal(content._meta.ui.prefersBorder, false);
+  assert.equal(typeof content._meta["openai/widgetDescription"], "string");
+  assert.ok(content._meta["openai/widgetDescription"].length > 40);
   assert.match(content.text, /<html class="widget-document" lang="es">/);
   assert.match(content.text, /html\.widget-document #root \{[\s\S]*background: transparent;/);
   assert.match(content.text, /html\.widget-document \.app-shell \{[\s\S]*width: 100%;[\s\S]*max-width: none;[\s\S]*padding: 0;/);
   assert.match(content.text, /notifyIntrinsicHeight/);
   assert.match(content.text, /ui\/notifications\/size-changed/);
+  assert.match(content.text, /html\.widget-document\[data-theme="dark"\]/);
+  assert.match(content.text, /dataset\.theme/);
+  assert.match(content.text, /color-scheme: dark/);
   assert.doesNotMatch(content.text, /brand-line/);
 }
+
+test("pins a fresh URI for every current Sendero component bundle", () => {
+  assert.deepEqual(
+    {
+      itinerary: ITINERARY_UI_URI,
+      intake: TRIP_INTAKE_UI_URI,
+      trips: TRIP_LIST_UI_URI,
+      requirements: TRIP_REQUIREMENTS_UI_URI,
+      share: PUBLIC_SHARE_UI_URI,
+    },
+    {
+      itinerary: "ui://sendero/itinerary-v4.html",
+      intake: "ui://sendero/trip-intake-v4.html",
+      trips: "ui://sendero/trip-list-v3.html",
+      requirements: "ui://sendero/trip-requirements-v5.html",
+      share: "ui://sendero/public-share-control-v3.html",
+    },
+  );
+});
 
 const itinerary = {
   title: "Lisboa entre clásicos y barrios",
@@ -193,6 +222,8 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   });
   assert.equal(result.structuredContent.itinerary.days.length, 1);
   assert.equal(result.structuredContent.validation.valid, true);
+  assert.equal(result.content[0].text, "Tu itinerario está listo en Sendero.");
+  assert.doesNotMatch(result.content[0].text, /Lisboa|1 day|día/);
 
   const resource = await client.readResource({ uri: ITINERARY_UI_URI });
   assertInlineWidgetResource(resource, ITINERARY_UI_URI);
@@ -200,14 +231,19 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.match(resource.contents[0].text, /Rutas/);
   assert.match(resource.contents[0].text, /toolOutput/);
   assert.match(resource.contents[0].text, /ui\/notifications\/tool-result/);
+  assert.match(resource.contents[0]._meta["openai/widgetDescription"], /itinerary|calendar|route/i);
 
   const legacyItineraryResource = await client.readResource({ uri: LEGACY_ITINERARY_UI_URI });
   assertInlineWidgetResource(legacyItineraryResource, LEGACY_ITINERARY_UI_URI);
   assert.equal(legacyItineraryResource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV3Resource = await client.readResource({ uri: LEGACY_ITINERARY_V3_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV3Resource, LEGACY_ITINERARY_V3_UI_URI);
+  assert.equal(legacyItineraryV3Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");
   assert.deepEqual(intake.structuredContent.actions, []);
+  assert.equal(intake.content[0].text, "Sendero está listo para continuar.");
   const menu = await client.callTool({ name: "render_trip_intake", arguments: { mode: "menu" } });
   assert.equal(menu.structuredContent.mode, "menu");
   assert.deepEqual(menu.structuredContent.actions, ["new", "open", "adjust", "refresh"]);
@@ -216,25 +252,34 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.match(intakeResource.contents[0].text, /Nuevo viaje/);
   assert.match(intakeResource.contents[0].text, /area_only/);
   assert.match(intakeResource.contents[0].text, /undecided/);
+  assert.match(intakeResource.contents[0]._meta["openai/widgetDescription"], /intake|action menu/i);
 
   const legacyIntakeResource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_UI_URI });
   assertInlineWidgetResource(legacyIntakeResource, LEGACY_TRIP_INTAKE_UI_URI);
   assert.equal(legacyIntakeResource.contents[0].text, intakeResource.contents[0].text);
+  const legacyIntakeV3Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V3_UI_URI });
+  assertInlineWidgetResource(legacyIntakeV3Resource, LEGACY_TRIP_INTAKE_V3_UI_URI);
+  assert.equal(legacyIntakeV3Resource.contents[0].text, intakeResource.contents[0].text);
 
   const tripListResource = await client.readResource({ uri: TRIP_LIST_UI_URI });
   assertInlineWidgetResource(tripListResource, TRIP_LIST_UI_URI);
   assert.match(tripListResource.contents[0].text, /Viaje elegido/);
   assert.match(tripListResource.contents[0].text, /selectedTrip/);
+  assert.match(tripListResource.contents[0]._meta["openai/widgetDescription"], /saved-trip picker/i);
 
   const legacyTripListResource = await client.readResource({ uri: LEGACY_TRIP_LIST_UI_URI });
   assertInlineWidgetResource(legacyTripListResource, LEGACY_TRIP_LIST_UI_URI);
   assert.equal(legacyTripListResource.contents[0].text, tripListResource.contents[0].text);
+  const legacyTripListV2Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V2_UI_URI });
+  assertInlineWidgetResource(legacyTripListV2Resource, LEGACY_TRIP_LIST_V2_UI_URI);
+  assert.equal(legacyTripListV2Resource.contents[0].text, tripListResource.contents[0].text);
 
   const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
   assertInlineWidgetResource(requirementsResource, TRIP_REQUIREMENTS_UI_URI);
   assert.match(requirementsResource.contents[0].text, /ui\/update-model-context/);
   assert.match(requirementsResource.contents[0].text, /prepare_trip_brief/);
   assert.match(requirementsResource.contents[0].text, /brief_ready/);
+  assert.match(requirementsResource.contents[0]._meta["openai/widgetDescription"], /missing essential trip detail/i);
 
   const legacyRequirementsResource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_UI_URI });
   assert.equal(legacyRequirementsResource.contents[0].uri, LEGACY_TRIP_REQUIREMENTS_UI_URI);
@@ -249,6 +294,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyRequirementsV3Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V3_UI_URI });
   assertInlineWidgetResource(legacyRequirementsV3Resource, LEGACY_TRIP_REQUIREMENTS_V3_UI_URI);
   assert.equal(legacyRequirementsV3Resource.contents[0].text, requirementsResource.contents[0].text);
+  const legacyRequirementsV4Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V4_UI_URI });
+  assertInlineWidgetResource(legacyRequirementsV4Resource, LEGACY_TRIP_REQUIREMENTS_V4_UI_URI);
+  assert.equal(legacyRequirementsV4Resource.contents[0].text, requirementsResource.contents[0].text);
 
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
   assertInlineWidgetResource(publicShareResource, PUBLIC_SHARE_UI_URI);
@@ -256,10 +304,14 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.match(publicShareResource.contents[0].text, /publish_public_share/);
   assert.match(publicShareResource.contents[0].text, /proposedExpiresAt/);
   assert.match(publicShareResource.contents[0].text, /Reemplazar enlace/);
+  assert.match(publicShareResource.contents[0]._meta["openai/widgetDescription"], /public read-only trip link/i);
 
   const legacyPublicShareResource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_UI_URI });
   assertInlineWidgetResource(legacyPublicShareResource, LEGACY_PUBLIC_SHARE_UI_URI);
   assert.equal(legacyPublicShareResource.contents[0].text, publicShareResource.contents[0].text);
+  const legacyPublicShareV2Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V2_UI_URI });
+  assertInlineWidgetResource(legacyPublicShareV2Resource, LEGACY_PUBLIC_SHARE_V2_UI_URI);
+  assert.equal(legacyPublicShareV2Resource.contents[0].text, publicShareResource.contents[0].text);
 
   await client.close();
   await server.close();
@@ -354,10 +406,8 @@ test("groups every known critical trip gap into one requirements component", asy
     "transport.modes",
   ]);
   assert.equal(requirements.structuredContent.brief.destination, "Buenos Aires, Argentina");
-  assert.match(requirements.content[0].text, /fecha de llegada/);
-  assert.match(requirements.content[0].text, /fecha de regreso/);
-  assert.match(requirements.content[0].text, /cantidad de adultos/);
-  assert.match(requirements.content[0].text, /cómo quieren moverse/);
+  assert.equal(requirements.content[0].text, "Completa los datos esenciales directamente en Sendero.");
+  assert.doesNotMatch(requirements.content[0].text, /fecha|adultos|moverse|Buenos Aires/);
   assert.doesNotMatch(requirements.content[0].text, /render_|prepare_|tripId|\{\s*"/);
 
   const readyWithoutOptionalDetails = await client.callTool({
@@ -510,7 +560,8 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   const listed = await client.callTool({ name: "list_itineraries", arguments: { purpose: "adjust" } });
   assert.equal(listed.structuredContent.trips[0].id, "trip_123");
   assert.equal(listed.structuredContent.purpose, "adjust");
-  assert.match(listed.content[0].text, /Lisboa entre clásicos y barrios/);
+  assert.equal(listed.content[0].text, "Elige un viaje en Sendero.");
+  assert.doesNotMatch(listed.content[0].text, /Lisboa entre clásicos y barrios|Lisboa, Portugal/);
   assert.doesNotMatch(listed.content[0].text, /trip_123|tripId|list_|get_|render_|\{\s*"/);
 
   const opened = await client.callTool({
@@ -635,6 +686,8 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
   assert.equal(preview.structuredContent.action, "publish");
   assert.equal(preview.structuredContent.expectedVersion, 2);
   assert.equal(preview.structuredContent.itinerary.lodging, undefined);
+  assert.equal(preview.content[0].text, "Revisa y confirma la vista pública en Sendero.");
+  assert.doesNotMatch(preview.content[0].text, /Bairro Alto|Lisboa|publicar|actualizar/);
   assert.doesNotMatch(JSON.stringify(preview.structuredContent), /Bairro Alto|Reserva existente/);
 
   const publishArguments = {
@@ -648,6 +701,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
     arguments: publishArguments,
   });
   assert.equal(published.structuredContent.state, "published");
+  assert.ok(published.content[0].text.includes(published.structuredContent.publicUrl));
   const firstUrl = new URL(published.structuredContent.publicUrl);
   const firstToken = firstUrl.hash.slice(1);
   assert.equal(firstUrl.pathname, "/share");
@@ -707,6 +761,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
     arguments: rotateArguments,
   });
   assert.equal(rotated.structuredContent.state, "rotated");
+  assert.ok(rotated.content[0].text.includes(rotated.structuredContent.publicUrl));
   assert.notEqual(rotated.structuredContent.publicUrl, published.structuredContent.publicUrl);
   assert.equal(rotatedRetry.structuredContent.publicUrl, rotated.structuredContent.publicUrl);
 

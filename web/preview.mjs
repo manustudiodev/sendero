@@ -56,16 +56,21 @@ const proposedExpiresAt = Date.UTC(2026, 8, 24);
 
 function withBridge(html, toolOutput) {
   const safeOutput = (JSON.stringify(toolOutput) ?? "undefined").replaceAll("<", "\\u003c");
-  const bridge = `<script>{
-    const initialToolOutput = ${safeOutput};
-    const persistWidgetState = new URLSearchParams(location.search).has("persist");
+	  const bridge = `<script>{
+	    const initialToolOutput = ${safeOutput};
+	    const requestedTheme = new URLSearchParams(location.search).get("theme");
+	    const initialTheme = requestedTheme === "dark" || requestedTheme === "light"
+	      ? requestedTheme
+	      : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+	    const persistWidgetState = new URLSearchParams(location.search).has("persist");
     const widgetStateKey = "sendero-preview:" + location.pathname;
     let initialWidgetState = {};
     if (persistWidgetState) {
       try { initialWidgetState = JSON.parse(sessionStorage.getItem(widgetStateKey)) || {}; } catch {}
     }
-    window.openai = {
-      toolOutput: initialToolOutput,
+	    window.openai = {
+	      toolOutput: initialToolOutput,
+	      theme: initialTheme,
       widgetState: initialWidgetState,
       calls: [],
       heightNotifications: [],
@@ -74,8 +79,8 @@ function withBridge(html, toolOutput) {
         if (persistWidgetState) sessionStorage.setItem(widgetStateKey, JSON.stringify(value));
         this.calls.push({ method: "setWidgetState", value });
         queueMicrotask(() => window.dispatchEvent(new CustomEvent("openai:set_globals", {
-          detail: { globals: { toolOutput: structuredClone(initialToolOutput), widgetState: value } },
-        })));
+	          detail: { globals: { theme: this.theme, toolOutput: structuredClone(initialToolOutput), widgetState: value } },
+	        })));
       },
       updateModelContext: async function(value) {
         this.modelContext = value;
@@ -105,9 +110,14 @@ function withBridge(html, toolOutput) {
         this.intrinsicHeight = height;
         this.heightNotifications.push(height);
       },
-      openExternal: function() {},
-    };
-  }</script>`;
+	      openExternal: function() {},
+	    };
+	    window.setSenderoPreviewTheme = function(theme) {
+	      if (theme !== "dark" && theme !== "light") return;
+	      window.openai.theme = theme;
+	      window.dispatchEvent(new CustomEvent("openai:set_globals", { detail: { globals: { theme } } }));
+	    };
+	  }</script>`;
   return html.replace("<body>", `<body>${bridge}`);
 }
 

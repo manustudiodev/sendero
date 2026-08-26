@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, ChoiceChips, Field, InlineNotice, SegmentedControl, SelectionReceipt } from "../components.jsx";
+import { DateRangePicker } from "../DateRangePicker.jsx";
 import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
 import { tripIntakeContinuation } from "../conversation.js";
 import { normalizeToolOutput } from "../tool-output.js";
@@ -126,6 +127,15 @@ export function TripIntakeApp() {
   function update(field, value) {
     dirtyFieldsRef.current.add(field);
     setDraft((current) => ({ ...current, [field]: value }));
+    setStatus({ state: "idle", message: "" });
+  }
+
+  function updateDates(nextDates) {
+    setDraft((current) => {
+      if (nextDates.startDate !== current.startDate) dirtyFieldsRef.current.add("startDate");
+      if (nextDates.endDate !== current.endDate) dirtyFieldsRef.current.add("endDate");
+      return { ...current, ...nextDates };
+    });
     setStatus({ state: "idle", message: "" });
   }
 
@@ -341,8 +351,7 @@ export function TripIntakeApp() {
               <Field label="Adultos"><input min="1" onChange={(event) => update("adults", event.target.value)} type="number" value={draft.adults} /></Field>
               <Field label="Niños"><input min="0" onChange={(event) => update("children", event.target.value)} type="number" value={draft.children} /></Field>
             </div>
-            <Field label="Llegada"><input onChange={(event) => update("startDate", event.target.value)} required type="date" value={draft.startDate} /></Field>
-            <Field label="Regreso"><input onChange={(event) => update("endDate", event.target.value)} required type="date" value={draft.endDate} /></Field>
+            <DateRangePicker endDate={draft.endDate} onChange={updateDates} startDate={draft.startDate} />
 
             <div className="lodging-fields">
               <SegmentedControl label="Alojamiento" onChange={(value) => update("lodgingStatus", value)} options={[{ value: "confirmed", label: "Tengo dirección" }, { value: "area_only", label: "Solo sé la zona" }, { value: "undecided", label: "Todavía no lo elegí" }]} value={draft.lodgingStatus} />

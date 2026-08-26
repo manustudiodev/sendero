@@ -21,7 +21,7 @@ Before the first publication or before replacing the published snapshot:
 
 1. Prepare the authoritative public preview for the exact saved trip.
 2. Show the sanitized snapshot in the native Sendero component. The preview omits the exact lodging, personal data, private reservation notes, collaborators, version history, and private route origins.
-3. Explain briefly that free text and public venue details remain visible, that anyone with the link can view the page, and that nothing has been published or updated yet.
+3. Ensure the component itself states that free text and public venue details remain visible, that anyone with the link can view the page, and that nothing has been published or updated yet. Do not restate those facts in assistant prose when the preview rendered successfully.
 4. Wait for explicit confirmation. A request merely to “see what sharing looks like” is not permission to publish.
 
 Pass the preview's stable trip ID, expected version, operation ID, and chosen expiry internally. Never print those values. If the private version changed after preview, stop and generate a fresh preview instead of publishing unreviewed content.
