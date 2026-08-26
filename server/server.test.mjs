@@ -397,6 +397,21 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(openTripTool._meta.ui.resourceUri, TRIP_LIST_UI_URI);
   assert.deepEqual(openTripTool._meta.ui.visibility, ["model", "app"]);
   assert.equal(openTripTool._meta["openai/outputTemplate"], TRIP_LIST_UI_URI);
+  assert.deepEqual(Object.keys(openTripTool.inputSchema.properties).sort(), [
+    "endDate",
+    "query",
+    "reference",
+    "selector",
+    "startDate",
+    "tripId",
+  ]);
+  assert.deepEqual(Object.keys(findTool.inputSchema.properties).sort(), [
+    "endDate",
+    "query",
+    "reference",
+    "selector",
+    "startDate",
+  ]);
   assert.equal(presentTripTool._meta.ui.resourceUri, ITINERARY_UI_URI);
   assert.equal(presentTripTool._meta["openai/outputTemplate"], ITINERARY_UI_URI);
   assert.equal(presentTripTool.annotations.readOnlyHint, true);
@@ -861,13 +876,76 @@ test("finds the latest updated trip deterministically without breaking text sear
     name: "find_itineraries",
     arguments: {},
   });
-  assert.equal(missingReference.isError, true);
+  assert.deepEqual(
+    missingReference.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
 
-  const ambiguousReference = await client.callTool({
+  const whitespaceReference = await client.callTool({
     name: "find_itineraries",
-    arguments: { query: "Lisboa", selector: "latest_updated" },
+    arguments: { selector: "  ", query: "   ", reference: "  " },
   });
-  assert.equal(ambiguousReference.isError, true);
+  assert.deepEqual(
+    whitespaceReference.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
+
+  const blankQueryWithNamedReference = await client.callTool({
+    name: "find_itineraries",
+    arguments: {
+      query: "   ",
+      reference: "LISBOA CLASICOS",
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+    },
+  });
+  assert.deepEqual(
+    blankQueryWithNamedReference.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
+
+  const redundantRecencyReference = await client.callTool({
+    name: "find_itineraries",
+    arguments: { query: "Oporto", selector: "latest_updated" },
+  });
+  assert.deepEqual(
+    redundantRecencyReference.structuredContent.trips.map((trip) => trip.id),
+    ["trip_middle"],
+  );
+
+  const naturalRecencyReference = await client.callTool({
+    name: "find_itineraries",
+    arguments: { query: "Abre mi último viaje guardado" },
+  });
+  assert.deepEqual(
+    naturalRecencyReference.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
+
+  const englishRecencyReference = await client.callTool({
+    name: "find_itineraries",
+    arguments: { reference: "my last saved trip" },
+  });
+  assert.deepEqual(
+    englishRecencyReference.structuredContent.trips.map((trip) => trip.id),
+    ["trip_latest"],
+  );
+
+  for (const reference of [
+    "el más reciente",
+    "el último",
+    "the latest",
+    "most recently saved trip",
+  ]) {
+    const articlePrefixedRecency = await client.callTool({
+      name: "find_itineraries",
+      arguments: { reference },
+    });
+    assert.deepEqual(
+      articlePrefixedRecency.structuredContent.trips.map((trip) => trip.id),
+      ["trip_latest"],
+    );
+  }
 
   trips = [];
   const empty = await client.callTool({
@@ -935,6 +1013,108 @@ test("opens one saved trip atomically through persistence.open", async () => {
     { version: 3, reason: "Adjusted pace", createdAt: 1788300000000 },
   ]);
 
+  await client.callTool({
+    name: "open_trip",
+    arguments: {
+      query:
+        "Abre mi último viaje guardado y muéstralo. No lo regeneres ni lo modifiques.",
+    },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { reference: "the most recent trip" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { selector: "latest_updated", query: "último viaje" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { tripId: "trip_exact", query: "último viaje" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { tripId: "   ", query: "último viaje" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { tripId: "último viaje" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { tripId: "last saved trip" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { query: "¿Puedes abrir mi último viaje?" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { query: "Show me my last saved trip" },
+  });
+  await client.callTool({ name: "open_trip", arguments: {} });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { selector: "latest_updated", query: "Lisboa" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { query: "No abras mi último viaje; abre Lisboa" },
+  });
+  await client.callTool({
+    name: "open_trip",
+    arguments: { query: "Mi último viaje a Japón" },
+  });
+  for (const query of [
+    "don't open my last trip; open Lisbon",
+    "No quiero abrir mi último viaje; abre Lisboa",
+    "my most recently saved trip to Tokyo",
+    "mi último viaje guardado a Japón",
+    "Abre Lisboa, no mi último viaje",
+    "No mi último viaje; abre Lisboa",
+    "Open Lisbon, not my last trip",
+    "Not my last trip; open Lisbon",
+    "Open my last trip called Tokyo Nights",
+    "Open Lisbon instead of my last trip",
+    "Abre Lisboa en vez de mi último viaje",
+    "My last trip was Lisbon; open Tokyo",
+    "Mi último viaje fue Lisboa; abre Tokio",
+  ]) {
+    await client.callTool({
+      name: "open_trip",
+      arguments: { query },
+    });
+  }
+  assert.deepEqual(openCalls, [
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { tripId: "trip_exact" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { selector: "latest_updated" },
+    { query: "Lisboa" },
+    { query: "No abras mi último viaje; abre Lisboa" },
+    { query: "Mi último viaje a Japón" },
+    { query: "don't open my last trip; open Lisbon" },
+    { query: "No quiero abrir mi último viaje; abre Lisboa" },
+    { query: "my most recently saved trip to Tokyo" },
+    { query: "mi último viaje guardado a Japón" },
+    { query: "Abre Lisboa, no mi último viaje" },
+    { query: "No mi último viaje; abre Lisboa" },
+    { query: "Open Lisbon, not my last trip" },
+    { query: "Not my last trip; open Lisbon" },
+    { query: "Open my last trip called Tokyo Nights" },
+    { query: "Open Lisbon instead of my last trip" },
+    { query: "Abre Lisboa en vez de mi último viaje" },
+    { query: "My last trip was Lisbon; open Tokyo" },
+    { query: "Mi último viaje fue Lisboa; abre Tokio" },
+  ]);
+
   await client.close();
   await server.close();
 });
@@ -967,6 +1147,11 @@ test("returns ambiguity and absence from one atomic open lookup each", async () 
     persistence: {
       async open(reference) {
         openCalls.push(structuredClone(reference));
+        if (reference.tripId === "malformed") {
+          throw new Error(
+            'ArgumentValidationError: Value does not match validator. Path: .reference.tripId Validator: v.id("trips")',
+          );
+        }
         return "query" in reference
           ? { state: "needs_selection", trips: matchingTrips }
           : { state: "not_found", trips: [] };
@@ -1016,6 +1201,13 @@ test("returns ambiguity and absence from one atomic open lookup each", async () 
   assert.equal(missing.structuredContent.state, "not_found");
   assert.deepEqual(missing.structuredContent.trips, []);
   assert.equal(missing.structuredContent.purpose, "open");
+
+  const malformed = await client.callTool({
+    name: "open_trip",
+    arguments: { tripId: "malformed" },
+  });
+  assert.equal(malformed.structuredContent.state, "not_found");
+  assert.deepEqual(malformed.structuredContent.trips, []);
 
   await client.close();
   await server.close();

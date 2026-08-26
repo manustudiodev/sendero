@@ -354,28 +354,34 @@ const validationSchema = z.object({
 
 const collaboratorRoleSchema = z.enum(["owner", "editor", "viewer"]);
 const tripListPurposeSchema = z.enum(["open", "adjust", "refresh"]);
-const tripSearchSelectorSchema = z.enum(["latest_updated"]);
-const tripSearchInputSchema = z.union([
-  z.object({ selector: tripSearchSelectorSchema }).strict(),
-  z
-    .object({
-      query: z.string().min(1),
-      startDate: isoDate.optional(),
-      endDate: isoDate.optional(),
-    })
-    .strict(),
-]);
-const tripOpenInputSchema = z.union([
-  z.object({ selector: tripSearchSelectorSchema }).strict(),
-  z.object({ tripId: z.string().min(1) }).strict(),
-  z
-    .object({
-      query: z.string().min(1),
-      startDate: isoDate.optional(),
-      endDate: isoDate.optional(),
-    })
-    .strict(),
-]);
+const tripReferenceTextSchema = z.string().trim();
+const tripSearchSelectorSchema = z
+  .string()
+  .trim()
+  .describe(
+    "Use latest_updated for the user's last, latest, or most recently saved trip. Natural-language equivalents are also accepted.",
+  );
+const tripSearchInputSchema = z
+  .object({
+    selector: tripSearchSelectorSchema.optional(),
+    query: tripReferenceTextSchema.optional(),
+    reference: tripReferenceTextSchema.optional(),
+    startDate: isoDate.optional(),
+    endDate: isoDate.optional(),
+  })
+  .strict();
+const tripOpenInputSchema = z
+  .object({
+    tripId: tripReferenceTextSchema
+      .describe("Opaque stable trip ID returned by Sendero; never invent this value.")
+      .optional(),
+    selector: tripSearchSelectorSchema.optional(),
+    query: tripReferenceTextSchema.optional(),
+    reference: tripReferenceTextSchema.optional(),
+    startDate: isoDate.optional(),
+    endDate: isoDate.optional(),
+  })
+  .strict();
 const tripSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -457,6 +463,116 @@ function normalizeSearchText(value) {
     .trim();
 }
 
+const latestTripReferences = new Set([
+  "latest",
+  "latest updated",
+  "latest trip",
+  "last",
+  "last saved",
+  "last saved trip",
+  "last trip",
+  "most recent",
+  "most recent trip",
+  "most recently saved",
+  "most recently saved trip",
+  "newest trip",
+  "ultimo",
+  "ultimo guardado",
+  "ultimo que guarde",
+  "ultimo viaje",
+  "ultimo viaje guardado",
+  "mas reciente",
+  "viaje mas reciente",
+]);
+
+function isLatestTripReference(value) {
+  if (!value) return false;
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return false;
+  const withoutLeadingDeterminer = normalized.replace(
+    /^(?:el|la|mi|mis|the|my)\s+/,
+    "",
+  );
+  const hasNegatedOpen =
+    /\bno\b.{0,32}\b(?:abras?|abra|abrir|muestres?|muestre|mostrar|uses?|use|usar)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:do\s+not|don\s+t|dont|never)\b.{0,32}\b(?:open|show|use)\b/.test(
+      normalized,
+    );
+  const hasNegatedRecencyReference =
+    /\bno\s+(?:(?:el|la|mi|mis)\s+)?(?:ultimo|mas\s+reciente)\b/.test(normalized) ||
+    /\b(?:not|never)\s+(?:(?:the|my)\s+)?(?:latest|last|most\s+recent|most\s+recently\s+saved|newest)\b/.test(
+      normalized,
+    );
+  const hasNamedDestinationQualifier =
+    /\b(?:ultimo|mas\s+reciente)\b(?:\s+(?:viaje|itinerario|guardado|que\s+guarde)){0,4}\s+(?:a|de|en|por)\s+(?!sendero\b)\w/.test(
+      normalized,
+    ) ||
+    /\b(?:latest|last|most\s+recent|most\s+recently\s+saved|newest)\b(?:\s+(?:saved|trip|itinerary)){0,4}\s+(?:in|to|through|for)\s+(?!sendero\b)\w/.test(
+      normalized,
+    );
+  const hasNamedTitleQualifier =
+    /\b(?:ultimo|mas\s+reciente)\b(?:\s+(?:viaje|itinerario|guardado|que\s+guarde)){0,4}\s+(?:llamad[oa]|titulad[oa]|que\s+se\s+llama)\s+\w/.test(
+      normalized,
+    ) ||
+    /\b(?:latest|last|most\s+recent|most\s+recently\s+saved|newest)\b(?:\s+(?:saved|trip|itinerary)){0,4}\s+(?:called|named|titled)\s+\w/.test(
+      normalized,
+    );
+  if (
+    hasNegatedOpen ||
+    hasNegatedRecencyReference ||
+    hasNamedDestinationQualifier ||
+    hasNamedTitleQualifier
+  ) {
+    return false;
+  }
+  if (
+    latestTripReferences.has(normalized) ||
+    latestTripReferences.has(withoutLeadingDeterminer)
+  ) {
+    return true;
+  }
+  const hasPositiveSpanishRecencyIntent =
+    /^(?:(?:por\s+favor)\s+)?(?:(?:(?:puedes|podrias|quiero|quisiera|necesito)\s+(?:que\s+)?(?:abrir|ver|mostrar|buscar|recuperar|cargar)\s+)|(?:(?:abre|abreme|abrir|muestra|muestrame|mostrar|ver|busca|buscar|recupera|recuperar|carga|cargar)\s+))(?:(?:el|la|mi|mis)\s+)?(?:(?:ultimo|mas\s+reciente)(?:\s+(?:viaje|itinerario|guardado|que\s+guarde)){0,4}|(?:viaje|itinerario)\s+(?:mas\s+reciente|ultimo)(?:\s+guardado)?)(?:\b|$)/.test(
+      normalized,
+    );
+  const hasPositiveEnglishRecencyIntent =
+    /^(?:please\s+)?(?:(?:(?:(?:can|could|would)\s+you|i\s+(?:want|need)\s+to)\s+(?:open|show|see|find|load)\s+)|(?:(?:open|show|find|load)(?:\s+me)?\s+))(?:(?:the|my)\s+)?(?:(?:latest|last|most\s+recent|most\s+recently\s+saved|newest)(?:\s+(?:saved|trip|itinerary)){0,4}|(?:trip|itinerary)\s+(?:latest|last|most\s+recent))(?:\b|$)/.test(
+      normalized,
+    );
+  return hasPositiveSpanishRecencyIntent || hasPositiveEnglishRecencyIntent;
+}
+
+function canonicalTripReference({ tripId, selector, query, reference, startDate, endDate }) {
+  if (tripId && !isLatestTripReference(tripId)) return { tripId };
+  const namedQuery = query && !isLatestTripReference(query) ? query : undefined;
+  const namedReference =
+    reference && !isLatestTripReference(reference) ? reference : undefined;
+  const naturalReference = namedQuery || namedReference;
+  if (naturalReference) {
+    return {
+      query: naturalReference,
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+    };
+  }
+  if (
+    isLatestTripReference(selector) ||
+    isLatestTripReference(tripId) ||
+    isLatestTripReference(query) ||
+    isLatestTripReference(reference) ||
+    (!selector && !query && !reference)
+  ) {
+    return { selector: "latest_updated" };
+  }
+  return {
+    query: selector,
+    ...(startDate ? { startDate } : {}),
+    ...(endDate ? { endDate } : {}),
+  };
+}
+
 function findTripMatches(trips, query, { startDate, endDate } = {}) {
   if (!query) return [];
   const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean);
@@ -494,7 +610,12 @@ function validatedPresentation(itinerary, { reservationCompleteness } = {}) {
 
 function isUnavailableTripError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /Trip (?:not found|access denied)/i.test(message);
+  return (
+    /Trip (?:not found|access denied)/i.test(message) ||
+    /(?:ArgumentValidationError|does not match validator|invalid (?:convex )?id)[\s\S]*tripId/i.test(
+      message,
+    )
+  );
 }
 
 function googleTravelMode(mode) {
@@ -918,7 +1039,7 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.7.0" },
+    { name: "sendero", version: "0.7.1" },
     {
       instructions: SERVER_INSTRUCTIONS,
     },
@@ -1306,7 +1427,7 @@ export function createTripPlannerServer({
     {
       title: "Open a saved trip",
       description:
-        "Resolve, load, validate for display, and present one unchanged authoritative saved trip in a single read-only action. Use selector latest_updated for explicit recency, tripId for an exact component selection, or query plus any exact dates for a natural reference. The result is opened, needs_selection, or not_found. Only needs_selection may be followed by the clickable saved-trip picker because a human choice is genuinely required.",
+        "Resolve, load, validate for display, and present one unchanged authoritative saved trip in a single read-only action. Use selector latest_updated for explicit recency, tripId for an exact component selection, or query/reference plus any exact dates for a natural reference. Natural recency phrases such as ultimo viaje, last saved trip, or most recently saved trip are accepted and normalized even if misplaced in tripId. Redundant fields are tolerated; a stable tripId takes precedence, then a specific named query/reference, then recency. With no reference fields, the read-only operation safely defaults to the latest updated trip. The result is opened, needs_selection, or not_found. Only needs_selection may be followed by the clickable saved-trip picker because a human choice is genuinely required.",
       inputSchema: tripOpenInputSchema,
       outputSchema: {
         state: z.enum(["opened", "needs_selection", "not_found"]),
@@ -1331,20 +1452,19 @@ export function createTripPlannerServer({
         "openai/toolInvocation/invoked": "Trip ready.",
       },
     },
-    async ({ tripId, query, selector, startDate, endDate }) => {
+    async ({ tripId, query, reference, selector, startDate, endDate }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
       if (denied) return denied;
       try {
-        const reference = tripId
-          ? { tripId }
-          : selector
-            ? { selector }
-            : {
-                query,
-                ...(startDate ? { startDate } : {}),
-                ...(endDate ? { endDate } : {}),
-              };
-        const result = await storage().open(reference);
+        const resolvedReference = canonicalTripReference({
+          tripId,
+          selector,
+          query,
+          reference,
+          startDate,
+          endDate,
+        });
+        const result = await storage().open(resolvedReference);
         if (result.state === "needs_selection") {
           return {
             structuredContent: {
@@ -1388,20 +1508,30 @@ export function createTripPlannerServer({
     {
       title: "Find a saved itinerary",
       description:
-        "Resolve a specific saved Sendero trip without showing an unnecessary picker. Use selector latest_updated when the user asks for their last, latest, or most recently saved trip; it returns at most one accessible active trip by updatedAt descending and query may be omitted. Otherwise, search by the named trip or destination and pass any exact start and end dates the user supplied. If exactly one match is returned, continue directly from its stable ID. If a text reference remains ambiguous, render clickable cards instead. Never expose the stable ID to the user.",
+        "Resolve a specific saved Sendero trip without showing an unnecessary picker. Use selector latest_updated when the user asks for their last, latest, or most recently saved trip; natural recency phrases in query or reference are also normalized and return at most one accessible active trip by updatedAt descending. A specific named query/reference takes precedence over a redundant recency selector. With no reference fields, the read-only operation safely defaults to the latest updated trip. Otherwise, search by the named trip or destination and pass any exact start and end dates the user supplied. If exactly one match is returned, continue directly from its stable ID. If a text reference remains ambiguous, render clickable cards instead. Never expose the stable ID to the user.",
       inputSchema: tripSearchInputSchema,
       outputSchema: { trips: z.array(tripSummarySchema) },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.read]) },
     },
-    async ({ query, selector, startDate, endDate }) => {
+    async ({ query, reference, selector, startDate, endDate }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
       if (denied) return denied;
       const trips = await storage().list();
+      const resolvedReference = canonicalTripReference({
+        selector,
+        query,
+        reference,
+        startDate,
+        endDate,
+      });
       const matches =
-        selector === "latest_updated"
+        "selector" in resolvedReference
           ? findLatestUpdatedTrip(trips)
-          : findTripMatches(trips, query, { startDate, endDate });
+          : findTripMatches(trips, resolvedReference.query, {
+              startDate: resolvedReference.startDate,
+              endDate: resolvedReference.endDate,
+            });
       return {
         structuredContent: { trips: matches },
         content: [
