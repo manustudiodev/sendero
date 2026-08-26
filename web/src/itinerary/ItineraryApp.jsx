@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components.jsx";
-import { openExternal, sendFollowUpMessage, setWidgetState, useToolOutput, widgetState } from "../bridge.js";
+import { callTool, openExternal, sendFollowUpMessage, setWidgetState, useToolOutput, widgetState } from "../bridge.js";
 import { ItineraryViewer } from "./ItineraryViewer.jsx";
 
 function LoadingState({ failed, onRetry }) {
@@ -15,12 +15,60 @@ function LoadingState({ failed, onRetry }) {
   );
 }
 
+function tripContext(output, itinerary) {
+  const context = output?.tripContext || output?.trip || {};
+  return {
+    tripId: output?.tripId || context.tripId || context.id || itinerary?.tripId || itinerary?.id || "",
+    version: output?.version || context.version || context.currentVersion || itinerary?.version || itinerary?.currentVersion || null,
+    role: output?.role || context.role || itinerary?.role || "",
+  };
+}
+
+function normalizedToolResult(value) {
+  return value?.structuredContent || value || {};
+}
+
+function mergedWidgetState(patch) {
+  return { ...widgetState(), ...patch };
+}
+
 export function ItineraryApp() {
   const { output, refresh } = useToolOutput();
+  const incomingItinerary = output?.itinerary;
   const [timedOut, setTimedOut] = useState(false);
   const [activeView, setActiveView] = useState(() => widgetState().activeView || "list");
-  const itinerary = output?.itinerary;
-  const warnings = output?.validation?.warnings || [];
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => widgetState().selectedCalendarDate || "");
+  const [selectedRouteDate, setSelectedRouteDate] = useState(() => widgetState().selectedRouteDate || "");
+  const [itinerary, setItinerary] = useState(incomingItinerary || null);
+  const [context, setContext] = useState(() => tripContext(output, incomingItinerary));
+  const contextRef = useRef(context);
+  const hydrationKeyRef = useRef("");
+  const reservationQueueRef = useRef(Promise.resolve());
+  const reservationOperationIdsRef = useRef(widgetState().reservationOperationIds || {});
+  const reservationReceiptRef = useRef(widgetState().reservationReceipt || null);
+  const sourceSignatureRef = useRef("");
+  const sourceSignature = incomingItinerary ? JSON.stringify({
+    itinerary: incomingItinerary,
+    context: tripContext(output, incomingItinerary),
+  }) : "";
+
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
+
+  useEffect(() => {
+    if (!incomingItinerary || sourceSignatureRef.current === sourceSignature) return;
+    sourceSignatureRef.current = sourceSignature;
+    const nextContext = tripContext(output, incomingItinerary);
+    const currentContext = contextRef.current;
+    if (
+      nextContext.tripId
+      && nextContext.tripId === currentContext.tripId
+      && Number(nextContext.version) <= Number(currentContext.version)
+    ) return;
+    setItinerary(incomingItinerary);
+    setContext(nextContext);
+  }, [incomingItinerary, output, sourceSignature]);
 
   useEffect(() => {
     if (itinerary) setTimedOut(false);
@@ -30,28 +78,139 @@ export function ItineraryApp() {
     }
   }, [itinerary]);
 
+  function persistWidgetState(patch) {
+    setWidgetState(mergedWidgetState(patch));
+  }
+
   function changeView(next) {
     setActiveView(next);
-    setWidgetState({ activeView: next });
+    persistWidgetState({ activeView: next });
+  }
+
+  function changeCalendarDay(next) {
+    setSelectedCalendarDate(next);
+    persistWidgetState({ selectedCalendarDate: next });
+  }
+
+  function changeRouteDay(next) {
+    setSelectedRouteDate(next);
+    persistWidgetState({ selectedRouteDate: next });
+  }
+
+  async function loadAuthoritativeTrip(tripId) {
+    const result = normalizedToolResult(await callTool("get_itinerary", { tripId }));
+    if (!result.itinerary || !result.version) throw new Error("Sendero no pudo recargar la última versión del viaje.");
+    const nextContext = {
+      tripId: result.id || tripId,
+      version: result.version,
+      role: result.role || contextRef.current.role,
+    };
+    if (
+      nextContext.tripId === contextRef.current.tripId
+      && Number(nextContext.version) < Number(contextRef.current.version)
+    ) return result;
+    contextRef.current = nextContext;
+    reservationReceiptRef.current = nextContext;
+    setContext(nextContext);
+    setItinerary(result.itinerary);
+    persistWidgetState({ reservationReceipt: nextContext });
+    return result;
+  }
+
+  useEffect(() => {
+    const receipt = reservationReceiptRef.current;
+    const incomingContext = tripContext(output, incomingItinerary);
+    if (
+      !receipt?.tripId
+      || receipt.tripId !== incomingContext.tripId
+      || Number(receipt.version) <= Number(incomingContext.version)
+    ) return;
+    const hydrationKey = `${receipt.tripId}:${receipt.version}`;
+    if (hydrationKeyRef.current === hydrationKey) return;
+    hydrationKeyRef.current = hydrationKey;
+    loadAuthoritativeTrip(receipt.tripId).catch(() => undefined);
+  }, [incomingItinerary, output]);
+
+  async function performReservationStatusUpdate({ activityId, dayDate, status }) {
+    const currentContext = contextRef.current;
+    if (!currentContext.tripId || !currentContext.version) {
+      throw new Error("Guarda el viaje antes de actualizar sus reservas.");
+    }
+    const operationKey = [currentContext.tripId, currentContext.version, dayDate, activityId, status].join(":");
+    const operationIds = reservationOperationIdsRef.current;
+    const operationId = operationIds[operationKey]
+      || `sendero-reservation:${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    if (!operationIds[operationKey]) {
+      reservationOperationIdsRef.current = { ...operationIds, [operationKey]: operationId };
+      persistWidgetState({ reservationOperationIds: reservationOperationIdsRef.current });
+    }
+    let result;
+    try {
+      result = normalizedToolResult(await callTool("update_reservation_status", {
+        activityId,
+        dayDate,
+        expectedVersion: currentContext.version,
+        operationId,
+        status,
+        tripId: currentContext.tripId,
+      }));
+    } catch (caught) {
+      if (/version changed|refresh before updating/i.test(caught?.message || "")) {
+        const remainingOperationIds = { ...reservationOperationIdsRef.current };
+        delete remainingOperationIds[operationKey];
+        reservationOperationIdsRef.current = remainingOperationIds;
+        persistWidgetState({ reservationOperationIds: remainingOperationIds });
+        await loadAuthoritativeTrip(currentContext.tripId);
+        throw new Error("El viaje cambió en otro lugar. Ya cargamos la última versión; vuelve a intentarlo.");
+      }
+      throw caught;
+    }
+    if (!result.itinerary) throw new Error("Sendero no devolvió el viaje actualizado.");
+    const remainingOperationIds = { ...reservationOperationIdsRef.current };
+    delete remainingOperationIds[operationKey];
+    reservationOperationIdsRef.current = remainingOperationIds;
+    const nextContext = {
+      ...currentContext,
+      role: result.role || currentContext.role,
+      version: result.version || currentContext.version,
+    };
+    contextRef.current = nextContext;
+    reservationReceiptRef.current = nextContext;
+    persistWidgetState({
+      reservationOperationIds: remainingOperationIds,
+      reservationReceipt: nextContext,
+    });
+    setItinerary(result.itinerary);
+    setContext(nextContext);
+  }
+
+  function updateReservationStatus(input) {
+    const run = reservationQueueRef.current.then(
+      () => performReservationStatusUpdate(input),
+      () => performReservationStatusUpdate(input),
+    );
+    reservationQueueRef.current = run.catch(() => undefined);
+    return run;
   }
 
   if (!itinerary) return <main className="app-shell"><LoadingState failed={timedOut} onRetry={() => { setTimedOut(false); refresh(); }} /></main>;
+  const reservationWritable = Boolean(context.tripId && context.version && ["owner", "editor"].includes(context.role));
 
   return (
     <main className="app-shell">
       <ItineraryViewer
-        actions={(
-          <>
-          <Button onClick={() => sendFollowUpMessage(`Quiero ajustar el itinerario “${itinerary.title}” sin perder actividades fijas ni reservas confirmadas.`)}>Ajustar viaje</Button>
-          <Button onClick={() => sendFollowUpMessage(`Revisa todas las reservas pendientes del itinerario “${itinerary.title}”, con enlaces oficiales y fechas recomendadas.`)} variant="ghost">Revisar reservas</Button>
-          </>
-        )}
+        actions={<Button onClick={() => sendFollowUpMessage(`Quiero ajustar el itinerario “${itinerary.title}” sin perder actividades fijas ni reservas confirmadas.`)}>Ajustar viaje</Button>}
         activeView={activeView}
         itinerary={itinerary}
+        onCalendarDayChange={changeCalendarDay}
         onOpenExternal={openExternal}
+        onReservationStatusChange={updateReservationStatus}
+        onRouteDayChange={changeRouteDay}
         onViewChange={changeView}
+        reservationWritable={reservationWritable}
+        selectedCalendarDate={selectedCalendarDate}
+        selectedRouteDate={selectedRouteDate}
         variant="chat"
-        warnings={warnings}
       />
     </main>
   );

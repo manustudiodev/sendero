@@ -15,13 +15,14 @@ La conversación es la experiencia principal: no hace falta memorizar comandos n
 - `render_trip_requirements` para completar juntos todos los datos críticos pendientes sin volver a preguntar lo ya dicho.
 - `render_trip_intake` para abrir el formulario guiado o, cuando la intención es realmente ambigua, un menú breve.
 - `validate_itinerary` para controlar fechas, solapamientos, transporte, reservas, fuentes y actividades fijas.
-- `render_itinerary` para mostrar el itinerario en un componente MCP Apps con vistas de lista, calendario y rutas.
+- `render_itinerary` para mostrar el itinerario completo en un componente MCP Apps con lista diaria, calendario expandible, mapa de rutas y seguimiento de reservas.
+- Controles de reserva que registran **confirmada** o **cancelada** únicamente dentro de Sendero; el enlace oficial abre el proveedor y Sendero nunca afirma haber reservado o cancelado allí.
 - `find_itineraries` para resolver referencias naturales a un viaje sin mostrar un selector; `list_itineraries` para los casos ambiguos con tarjetas clicables de un solo uso; y `get_itinerary` para abrir la selección exacta.
 - `save_itinerary` para crear un viaje o guardar una nueva versión sin perder el historial.
 - `share_itinerary` para invitar por email a colaboradores como editores o lectores.
 - Un flujo de publicación que previsualiza la copia pública exacta, crea un enlace de solo lectura y permite actualizarla, cambiar el enlace o revocarlo conversando con Sendero.
 - `restore_itinerary_version` para recuperar una versión anterior como una nueva revisión.
-- Rutas diarias generadas para Google Maps desde el alojamiento, sin asumir que el viajero conduce.
+- Rutas diarias reconstruidas desde las ubicaciones reales de las actividades, con enlaces de Google Maps divididos en tramos compatibles cuando el día es largo y una vista esquemática integrada cuando existen coordenadas respaldadas, sin asumir que el viajero conduce ni convertir una base provisional en parada final.
 
 El alojamiento exacto ya no bloquea un viaje nuevo. Sendero puede trabajar con un barrio, una zona o una base provisional claramente identificada y recalcular los trayectos cuando el usuario confirme dónde se hospedará.
 
@@ -42,11 +43,11 @@ La interfaz vive en `web/src` como componentes React independientes y contextual
 - `requirements`: formulario compacto con todos los datos críticos pendientes de la solicitud actual.
 - `intake`: formulario guiado completo y menú solo cuando corresponde.
 - `trips`: selector de viajes guardados con tarjetas que se consumen y colapsan a un recibo al elegirlas.
-- `itinerary`: lista diaria, calendario, rutas, reservas y acciones de seguimiento.
+- `itinerary`: lista diaria compacta, calendario cuyos días se expanden en contexto, rutas en vista dividida, reservas con enlaces y estado, y acciones de seguimiento.
 - `share-control`: previsualización completa y recibos para crear, actualizar, reemplazar o revocar una publicación.
 - `share`: página pública independiente y sin login, con las mismas vistas de lista, calendario y rutas en modo de solo lectura.
 
-`npm run build:ui` genera recursos HTML autocontenidos en `server/ui/generated/widgets.mjs`. Cada recurso recibe el resultado de la herramienta mediante el puente de MCP Apps y también escucha actualizaciones posteriores. Si el host no entrega un itinerario válido, el componente muestra un error recuperable en lugar de quedar indefinidamente en “Preparando tu viaje…”.
+`npm run build:ui` genera recursos HTML autocontenidos en `server/ui/generated/widgets.mjs`. Cada recurso recibe el resultado de la herramienta mediante el puente de MCP Apps y también escucha actualizaciones posteriores. El itinerario incluye desde su primer render las reservas que requieren atención; abrir la vista **Reservas** no genera una segunda respuesta de texto. Si el host no entrega un itinerario válido, el componente muestra un error recuperable en lugar de quedar indefinidamente en “Preparando tu viaje…”.
 
 Después de conectar Sendero en ChatGPT, basta con conversar, por ejemplo: “Ayúdame a organizar Buenos Aires del 13 al 26 de agosto; no conducimos y queremos combinar clásicos con planes locales”. Sendero extrae lo que ya está dicho y pide en conjunto solo los datos críticos que todavía falten.
 
@@ -73,7 +74,7 @@ La persona propietaria puede decir “comparte este viaje con un enlace”. Send
 
 ## Persistencia y permisos
 
-Sendero usa Convex para seis colecciones relacionadas:
+Sendero usa Convex para siete colecciones relacionadas:
 
 - Usuarios vinculados a la identidad autenticada.
 - Viajes con un propietario y el snapshot actual del itinerario.
@@ -87,7 +88,7 @@ Las funciones de Convex exigen una identidad válida. Un lector no puede modific
 La planificación, validación y visualización son públicas. Las herramientas de persistencia usan OAuth con permisos mínimos:
 
 - `trips:read` para listar y abrir viajes.
-- `trips:write` para guardar y restaurar versiones.
+- `trips:write` para guardar, restaurar versiones y actualizar el estado de una reserva dentro de Sendero.
 - `trips:share` para administrar colaboradores y publicaciones públicas; Convex vuelve a verificar que solo el propietario pueda publicar.
 
 ## Desarrollo local
@@ -104,7 +105,7 @@ El servidor HTTP queda disponible en `http://localhost:8788/mcp` y su comprobaci
 
 La página pública se sirve en `http://localhost:8788/share#TOKEN` y resuelve el snapshot con `POST /api/public-shares/resolve`; ninguno de esos dos endpoints exige Auth0.
 
-Para revisar los componentes con datos de muestra, ejecuta `npm run preview:ui` y abre `http://127.0.0.1:4173`.
+Para revisar los componentes con datos de muestra, ejecuta `npm run preview:ui` y abre `http://127.0.0.1:4173`. Las rutas `/itinerary`, `/itinerary-calendar`, `/itinerary-reservations`, `/itinerary-routes` e `/itinerary-warnings` permiten revisar directamente los estados principales del itinerario.
 
 Copia `.env.example` como `.env.local` para desarrollo. La configuración pública actual es:
 

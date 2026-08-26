@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { DisclosurePanel } from "./DisclosurePanel.jsx";
 import {
   addMonthsISO,
   formatDateLabel,
@@ -121,8 +122,8 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
           </button>
         ))}
       </div>
-      {open ? (
-        <section aria-describedby={instructionsId} aria-label="Elegir fechas del viaje" className="date-range-panel" id={panelId} onKeyDown={handlePanelKeyDown}>
+      <DisclosurePanel className="date-range-disclosure" id={panelId} open={open}>
+        <section aria-describedby={instructionsId} aria-label="Elegir fechas del viaje" className="date-range-panel" onKeyDown={handlePanelKeyDown}>
           <p className="visually-hidden" id={instructionsId}>Usa las flechas para moverte por el calendario. Presiona Enter para elegir primero la llegada y luego el regreso. Escape cierra el calendario.</p>
           <div className="date-range-toolbar">
             <button aria-label="Mes anterior" onClick={() => moveMonth(-1)} type="button">←</button>
@@ -172,7 +173,7 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
           </div>
           <button className="date-range-close" onClick={() => close()} type="button">Cerrar calendario</button>
         </section>
-      ) : null}
+      </DisclosurePanel>
     </fieldset>
   );
 }

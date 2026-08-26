@@ -50,6 +50,15 @@ function optionalNonnegativeInteger(value) {
   return Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
+function optionalCoordinate(value, minimum, maximum) {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= minimum &&
+    value <= maximum
+    ? value
+    : undefined;
+}
+
 function compact(record) {
   return Object.fromEntries(
     Object.entries(record).filter(([, value]) => value !== undefined),
@@ -106,7 +115,13 @@ function publicLocation(value, privateValues) {
   const name = optionalString(value.name);
   const address = optionalString(value.address);
   if (!name && !address) return undefined;
-  return compact({ name: name || address, address });
+  const latitude = optionalCoordinate(value.latitude ?? value.lat, -90, 90);
+  const longitude = optionalCoordinate(value.longitude ?? value.lng, -180, 180);
+  return compact({
+    name: name || address,
+    address,
+    ...(latitude !== undefined && longitude !== undefined ? { latitude, longitude } : {}),
+  });
 }
 
 function publicTravel(value, privateValues) {
@@ -161,36 +176,83 @@ function googleTravelMode(modes) {
   return "driving";
 }
 
-function buildPublicRoute({ origin, stops, returnToBase, modes }) {
-  if (!origin || stops.length === 0) return undefined;
-  const destination = returnToBase ? origin : stops.at(-1);
-  const waypoints = returnToBase ? stops : stops.slice(0, -1);
-  const params = new URLSearchParams({
-    api: "1",
-    origin,
-    destination,
-    travelmode: googleTravelMode(modes),
-  });
-  if (waypoints.length) params.set("waypoints", waypoints.join("|"));
+function withDestinationContext(value, destination) {
+  const cleanValue = optionalString(value);
+  if (!cleanValue) return undefined;
+  const destinationCity = optionalString(destination)?.split(",")[0]?.trim();
+  if (destinationCity && normalizedWords(cleanValue).includes(normalizedWords(destinationCity))) {
+    return cleanValue;
+  }
+  return destination ? `${cleanValue}, ${destination}` : cleanValue;
+}
+
+function orderedPublicStops(activities, destination, baseArea) {
+  const seen = new Set();
+  const stops = [];
+  for (const activity of activities) {
+    const rawStop = activity.location?.address || activity.location?.name;
+    const rawKey = normalizedWords(rawStop);
+    if (
+      !rawKey ||
+      (baseArea && rawKey === normalizedWords(baseArea)) ||
+      /\b(base provisional|provisional base|alojamiento provisional|provisional lodging|por decidir|undecided)\b/.test(
+        rawKey,
+      )
+    ) {
+      continue;
+    }
+    const stop = withDestinationContext(rawStop, destination);
+    const key = normalizedWords(stop);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    stops.push(stop);
+  }
+  return stops;
+}
+
+function buildPublicRoute({ stops, modes }) {
+  if (stops.length === 0) return undefined;
+  if (stops.length === 1) {
+    const params = new URLSearchParams({ api: "1", query: stops[0] });
+    const mapUrl = `https://www.google.com/maps/search/?${params.toString()}`;
+    return {
+      origin: stops[0],
+      stops,
+      returnToLodging: false,
+      mapUrl,
+      mapUrls: [mapUrl],
+    };
+  }
+  const mapUrls = [];
+  for (let start = 0; start < stops.length - 1; start += 4) {
+    const segment = stops.slice(start, start + 5);
+    if (segment.length < 2) break;
+    const params = new URLSearchParams({
+      api: "1",
+      origin: segment[0],
+      destination: segment.at(-1),
+      travelmode: googleTravelMode(modes),
+    });
+    if (segment.length > 2) params.set("waypoints", segment.slice(1, -1).join("|"));
+    mapUrls.push(`https://www.google.com/maps/dir/?${params.toString()}`);
+  }
   return {
-    origin,
+    origin: stops[0],
     stops,
-    returnToLodging: returnToBase,
-    mapUrl: `https://www.google.com/maps/dir/?${params.toString()}`,
+    returnToLodging: false,
+    mapUrl: mapUrls[0],
+    mapUrls,
   };
 }
 
-function publicDay(value, dayIndex, { base, modes, privateValues }) {
+function publicDay(value, dayIndex, { destination, baseArea, modes, privateValues }) {
   if (!isRecord(value) || !Array.isArray(value.activities)) {
     throw new Error(`Invalid public itinerary day ${dayIndex + 1}.`);
   }
   const activities = value.activities.map((activity, activityIndex) =>
     publicActivity(activity, dayIndex, activityIndex, privateValues),
   );
-  const stops = activities
-    .map((activity) => activity.location?.address || activity.location?.name)
-    .filter(Boolean);
-  const returnToBase = !isRecord(value.route) || value.route.returnToLodging !== false;
+  const stops = orderedPublicStops(activities, destination, baseArea);
 
   return compact({
     date: requiredString(value.date, "day date"),
@@ -201,7 +263,8 @@ function publicDay(value, dayIndex, { base, modes, privateValues }) {
     fallback: redactPrivateText(value.fallback, privateValues),
     activities,
     // Never copy a private route origin, stop list, duration, or Maps URL.
-    route: buildPublicRoute({ origin: base, stops, returnToBase, modes }),
+    // Public directions only contain public activity locations and never a lodging/base point.
+    route: buildPublicRoute({ stops, modes }),
   });
 }
 
@@ -238,7 +301,6 @@ export function sanitizePublicSnapshot(snapshot) {
     ? [...new Set(snapshot.transport.modes.filter((mode) => TRANSPORT_MODES.has(mode)))]
     : [];
   if (modes.length === 0) modes.push("public_transit");
-  const base = baseArea || destination;
   const sources = Array.isArray(snapshot.sources)
     ? snapshot.sources.map((source) => publicSource(source, privateValues)).filter(Boolean)
     : [];
@@ -256,7 +318,7 @@ export function sanitizePublicSnapshot(snapshot) {
     baseArea,
     transport: { modes },
     days: snapshot.days.map((day, dayIndex) =>
-      publicDay(day, dayIndex, { base, modes, privateValues }),
+      publicDay(day, dayIndex, { destination, baseArea, modes, privateValues }),
     ),
     sources: sources.length ? sources : undefined,
   });

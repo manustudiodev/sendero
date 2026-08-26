@@ -40,6 +40,10 @@ const publicActivity = v.object({
     v.object({
       name: v.string(),
       address: v.optional(v.string()),
+      lat: v.optional(v.number()),
+      lng: v.optional(v.number()),
+      latitude: v.optional(v.number()),
+      longitude: v.optional(v.number()),
     }),
   ),
   sourceUrl: v.optional(v.string()),
@@ -73,6 +77,7 @@ const publicDay = v.object({
       stops: v.array(v.string()),
       returnToLodging: v.boolean(),
       mapUrl: v.string(),
+      mapUrls: v.optional(v.array(v.string())),
     }),
   ),
 });
@@ -108,6 +113,11 @@ const publicShareOperationResult = v.union(
   v.literal("active"),
   v.literal("revoked"),
   v.literal("not_published"),
+);
+const reservationTrackingStatus = v.union(
+  v.literal("pending"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
 );
 
 export default defineSchema({
@@ -161,6 +171,19 @@ export default defineSchema({
   })
     .index("by_trip", ["tripId"])
     .index("by_trip_and_version", ["tripId", "version"]),
+
+  reservationOperations: defineTable({
+    tripId: v.id("trips"),
+    actorId: v.id("users"),
+    operationId: v.string(),
+    requestFingerprint: v.string(),
+    targetStatus: reservationTrackingStatus,
+    resultVersion: v.number(),
+    changed: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_actor_and_operation", ["actorId", "operationId"])
+    .index("by_trip", ["tripId"]),
 
   publicShares: defineTable({
     tripId: v.id("trips"),

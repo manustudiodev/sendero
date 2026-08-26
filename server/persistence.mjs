@@ -4,6 +4,7 @@ import { makeFunctionReference } from "convex/server";
 const listMine = makeFunctionReference("trips:listMine");
 const getTrip = makeFunctionReference("trips:get");
 const saveTrip = makeFunctionReference("trips:save");
+const updateReservationStatus = makeFunctionReference("trips:updateReservationStatus");
 const shareTrip = makeFunctionReference("trips:share");
 const restoreTripRevision = makeFunctionReference("trips:restoreRevision");
 const previewPublicShare = makeFunctionReference("publicShares:preview");
@@ -77,6 +78,24 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
         ...(tripId ? { tripId } : {}),
         itinerary,
         ...(reason ? { reason } : {}),
+      });
+    },
+
+    async updateReservation({
+      tripId,
+      dayDate,
+      activityId,
+      status,
+      expectedVersion,
+      operationId,
+    }) {
+      return client().mutation(updateReservationStatus, {
+        tripId,
+        dayDate,
+        activityId,
+        status,
+        expectedVersion,
+        operationId,
       });
     },
 

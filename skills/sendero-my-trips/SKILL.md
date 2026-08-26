@@ -10,7 +10,7 @@ description: List, select, reopen, and visualize itineraries saved in Sendero, i
 3. Do not repeat the trips in plain text, invent a typed command such as “Open X,” or ask the user to type a trip name. Wait for the component selection.
 4. When the component returns a selected trip ID, consume the choice once, collapse the cards to an inert receipt, and call `get_itinerary` with that exact ID. Never expose the ID in visible prose.
 5. If no trips exist, let the component's empty state and **Crear un viaje** action handle the response. Only if the component fails to render, say so briefly and offer to create one. Open `render_trip_intake` with `mode: "new"` only after the user accepts the guided path or invokes the optional shortcut.
-6. After loading the trip, call `validate_itinerary` and then `render_itinerary` once with its complete current snapshot.
+6. After loading the trip, call `validate_itinerary` and then `render_itinerary` once with its complete current snapshot plus the authoritative `tripId`, `version`, and `role` returned by Sendero. The initial render already includes reservations; do not create a separate “review reservations” prose turn.
 7. Mention available version history only when useful. Call `restore_itinerary_version` only after the user selects an exact version and explicitly asks to restore it.
 
 Do not expose trips that the authenticated user cannot access. Do not treat opening or viewing a trip as permission to modify it. Keep internal tool names, stable IDs, and structured payloads out of user-visible messages.

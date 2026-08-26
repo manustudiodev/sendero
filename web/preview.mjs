@@ -13,64 +13,201 @@ const port = Number(process.env.PORT || 4173);
 const previewToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const offlineToken = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const unavailableToken = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+
+function googleRoute(stops, travelmode = "walking") {
+  const places = stops.filter(Boolean);
+  if (places.length < 2) return places[0]
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0])}`
+    : undefined;
+  const parameters = new URLSearchParams({
+    api: "1",
+    origin: places[0],
+    destination: places.at(-1),
+    travelmode,
+  });
+  if (places.length > 2) parameters.set("waypoints", places.slice(1, -1).join("|"));
+  return `https://www.google.com/maps/dir/?${parameters}`;
+}
+
 const itinerary = {
   title: "Buenos Aires entre clásicos y barrios",
-  destination: "Buenos Aires",
+  destination: "Buenos Aires, Argentina",
   startDate: "2026-08-13",
   endDate: "2026-08-15",
+  lodging: {
+    name: "Base provisional en Palermo",
+    area: "Palermo, Buenos Aires",
+    status: "area_only",
+  },
+  transport: {
+    modes: ["walk", "public_transit", "taxi"],
+    hasLicense: false,
+    wantsCar: false,
+  },
   days: [
     {
       date: "2026-08-13",
       title: "Centro histórico y Corrientes",
       area: "Monserrat · San Nicolás",
       summary: "Una primera mirada a la ciudad, sin apurar el día de llegada.",
-      weather: { summary: "Fresco; llevar abrigo para la noche." },
+      weather: { status: "seasonal", summary: "Fresco; llevar abrigo para la noche." },
       fallback: "Museo del Cabildo si llueve.",
       activities: [
-        { id: "plaza", startTime: "10:30", title: "Plaza de Mayo", description: "Casa Rosada, Catedral y Cabildo.", location: { name: "Plaza de Mayo", address: "Balcarce 50" }, travelToNext: { durationMinutes: 12, mode: "walk" } },
-        { id: "tortoni", startTime: "13:00", title: "Café con historia", description: "Elegir entre Tortoni y El Gato Negro según la espera.", location: { name: "Café Tortoni", address: "Av. de Mayo 825" }, reservation: { status: "suggested" }, travelToNext: { durationMinutes: 8, mode: "walk" } },
-        { id: "corrientes", startTime: "19:30", title: "Avenida Corrientes", description: "Librerías, pizza porteña y marquesinas.", location: { name: "Obelisco", address: "Av. 9 de Julio y Corrientes" }, locked: true },
+        {
+          id: "plaza",
+          startTime: "10:30",
+          title: "Plaza de Mayo",
+          description: "Casa Rosada, Catedral y Cabildo.",
+          location: { name: "Plaza de Mayo", address: "Balcarce 50, Buenos Aires, Argentina", latitude: -34.6081, longitude: -58.3702 },
+          sourceUrl: "https://turismo.buenosaires.gob.ar/es/otros-establecimientos/plaza-de-mayo",
+          travelToNext: { durationMinutes: 12, mode: "walk" },
+        },
+        {
+          id: "tortoni",
+          startTime: "13:00",
+          title: "Café con historia",
+          description: "Café Tortoni y una caminata por Avenida de Mayo.",
+          location: { name: "Café Tortoni", address: "Av. de Mayo 825, Buenos Aires, Argentina", latitude: -34.6087, longitude: -58.3782 },
+          sourceUrl: "https://www.cafetortoni.com.ar/",
+          reservation: { status: "suggested", url: "https://www.cafetortoni.com.ar/", note: "Consultar el canal oficial si prefieren evitar la espera." },
+          travelToNext: { durationMinutes: 12, mode: "walk" },
+        },
+        {
+          id: "colon-tour",
+          startTime: "16:00",
+          title: "Visita guiada al Teatro Colón",
+          description: "Recorrido por la sala, el foyer y las galerías.",
+          location: { name: "Teatro Colón", address: "Cerrito 628, Buenos Aires, Argentina", latitude: -34.6011, longitude: -58.383 },
+          sourceUrl: "https://teatrocolon.org.ar/es/visitas-guiadas",
+          reservation: {
+            status: "pending",
+            url: "https://teatrocolon.org.ar/es/visitas-guiadas",
+            deadline: "Reservar antes del 8 de agosto",
+            note: "La disponibilidad y la política de cambios se confirman en el canal oficial.",
+          },
+        },
       ],
-      route: { stops: ["Alojamiento provisional", "Plaza de Mayo", "Café Tortoni", "Obelisco"], mapUrl: "https://www.google.com/maps" },
+      route: {
+        origin: "Balcarce 50, Buenos Aires, Argentina",
+        stops: ["Balcarce 50, Buenos Aires, Argentina", "Av. de Mayo 825, Buenos Aires, Argentina", "Cerrito 628, Buenos Aires, Argentina"],
+        returnToLodging: false,
+        totalMinutes: 24,
+        mapUrl: googleRoute(["Balcarce 50, Buenos Aires, Argentina", "Av. de Mayo 825, Buenos Aires, Argentina", "Cerrito 628, Buenos Aires, Argentina"]),
+      },
     },
     {
       date: "2026-08-14",
       title: "San Telmo cotidiano",
       area: "San Telmo · Barracas",
       summary: "Mercado, arquitectura y una noche con música.",
-      activities: [{ id: "mercado", startTime: "10:00", title: "Mercado y pasajes", location: { name: "Mercado de San Telmo", address: "Carlos Calvo 495" } }],
-      route: { stops: ["Alojamiento provisional", "Mercado de San Telmo", "Pasaje Lanín"], mapUrl: "https://www.google.com/maps" },
+      weather: { status: "seasonal", summary: "Día fresco y potencialmente húmedo." },
+      fallback: "Cambiar la caminata por el Museo de Arte Moderno.",
+      activities: [
+        {
+          id: "mercado",
+          startTime: "10:00",
+          title: "Mercado y pasajes",
+          description: "Puestos históricos y comercios de barrio antes del horario más concurrido.",
+          location: { name: "Mercado de San Telmo", address: "Carlos Calvo 495, Buenos Aires, Argentina", latitude: -34.621, longitude: -58.3716 },
+          sourceUrl: "https://mercadodesantelmo.com/",
+          travelToNext: { durationMinutes: 8, mode: "walk" },
+        },
+        {
+          id: "mamba",
+          startTime: "12:15",
+          title: "Museo de Arte Moderno",
+          location: { name: "Museo de Arte Moderno de Buenos Aires", address: "Av. San Juan 350, Buenos Aires, Argentina", latitude: -34.622, longitude: -58.3703 },
+          sourceUrl: "https://museomoderno.org/",
+          reservation: { status: "confirmed", url: "https://museomoderno.org/", note: "Entrada registrada en Sendero; conservar el comprobante del proveedor." },
+          locked: true,
+          travelToNext: { durationMinutes: 18, mode: "taxi" },
+        },
+        {
+          id: "usina",
+          startTime: "17:00",
+          title: "Programación en la Usina del Arte",
+          location: { name: "Usina del Arte", address: "Agustín R. Caffarena 1, Buenos Aires, Argentina", latitude: -34.6282, longitude: -58.3578 },
+          sourceUrl: "https://usinadelarte.ar/",
+          reservation: { status: "cancelled", url: "https://usinadelarte.ar/", note: "Marcada como cancelada en Sendero; verificar cualquier gestión real con el organizador." },
+        },
+      ],
+      route: {
+        origin: "Carlos Calvo 495, Buenos Aires, Argentina",
+        stops: ["Carlos Calvo 495, Buenos Aires, Argentina", "Av. San Juan 350, Buenos Aires, Argentina", "Agustín R. Caffarena 1, Buenos Aires, Argentina"],
+        returnToLodging: false,
+        totalMinutes: 26,
+        mapUrl: googleRoute(["Carlos Calvo 495, Buenos Aires, Argentina", "Av. San Juan 350, Buenos Aires, Argentina", "Agustín R. Caffarena 1, Buenos Aires, Argentina"]),
+      },
     },
     {
       date: "2026-08-15",
-      title: "Arte y vida de barrio",
-      area: "Villa Crespo · Chacarita",
-      summary: "Diseño independiente, cafés y bodegón.",
-      activities: [{ id: "crespo", startTime: "11:00", title: "Paseo por Villa Crespo", location: { name: "Villa Crespo", address: "Av. Corrientes 5500" } }],
-      route: { stops: ["Alojamiento provisional", "Villa Crespo", "Chacarita"], mapUrl: "https://www.google.com/maps" },
+      title: "Recoleta, jardines y despedida",
+      area: "Recoleta · Palermo · Villa Crespo",
+      summary: "Arte, un paseo exterior corto y una cena especial.",
+      activities: [
+        {
+          id: "bellas-artes",
+          startTime: "10:30",
+          title: "Museo Nacional de Bellas Artes",
+          location: { name: "Museo Nacional de Bellas Artes", address: "Av. del Libertador 1473, Buenos Aires, Argentina", latitude: -34.583, longitude: -58.3928 },
+          sourceUrl: "https://www.bellasartes.gob.ar/",
+          travelToNext: { durationMinutes: 20, mode: "public_transit" },
+        },
+        {
+          id: "jardin-japones",
+          startTime: "14:30",
+          title: "Jardín Japonés",
+          location: { name: "Jardín Japonés", address: "Av. Casares 3401, Buenos Aires, Argentina", latitude: -34.5753, longitude: -58.4093 },
+          sourceUrl: "https://jardinjapones.org.ar/",
+          reservation: { status: "suggested", url: "https://jardinjapones.org.ar/", deadline: "Revisar entradas durante la semana del viaje" },
+          travelToNext: { durationMinutes: 18, mode: "taxi" },
+        },
+        {
+          id: "chui-dinner",
+          startTime: "20:30",
+          title: "Cena de despedida en Chuí",
+          location: { name: "Chuí", address: "Loyola 1250, Buenos Aires, Argentina", latitude: -34.5929, longitude: -58.4432 },
+          sourceUrl: "https://www.instagram.com/chui.ba/",
+          reservation: { status: "pending", url: "https://www.instagram.com/chui.ba/", deadline: "Reservar una semana antes", note: "Confirmar el canal de reservas y la política de cancelación con el restaurante." },
+          locked: true,
+        },
+      ],
+      route: {
+        origin: "Av. del Libertador 1473, Buenos Aires, Argentina",
+        stops: ["Av. del Libertador 1473, Buenos Aires, Argentina", "Av. Casares 3401, Buenos Aires, Argentina", "Loyola 1250, Buenos Aires, Argentina"],
+        returnToLodging: false,
+        totalMinutes: 38,
+        mapUrl: googleRoute(["Av. del Libertador 1473, Buenos Aires, Argentina", "Av. Casares 3401, Buenos Aires, Argentina", "Loyola 1250, Buenos Aires, Argentina"]),
+      },
     },
+  ],
+  sources: [
+    { label: "Turismo de Buenos Aires", url: "https://turismo.buenosaires.gob.ar/", checkedAt: "2026-08-01T12:00:00Z" },
+    { label: "Teatro Colón", url: "https://teatrocolon.org.ar/es/visitas-guiadas", checkedAt: "2026-08-01T12:00:00Z" },
   ],
 };
 const publicItinerary = sanitizePublicSnapshot(itinerary);
 const proposedExpiresAt = Date.UTC(2026, 8, 24);
 
-function withBridge(html, toolOutput) {
+function withBridge(html, toolOutput, previewWidgetState = {}) {
   const safeOutput = (JSON.stringify(toolOutput) ?? "undefined").replaceAll("<", "\\u003c");
-	  const bridge = `<script>{
-	    const initialToolOutput = ${safeOutput};
-	    const requestedTheme = new URLSearchParams(location.search).get("theme");
-	    const initialTheme = requestedTheme === "dark" || requestedTheme === "light"
-	      ? requestedTheme
-	      : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-	    const persistWidgetState = new URLSearchParams(location.search).has("persist");
+  const safeWidgetState = JSON.stringify(previewWidgetState).replaceAll("<", "\\u003c");
+  const bridge = `<script>{
+    const initialToolOutput = ${safeOutput};
+    let liveToolOutput = structuredClone(initialToolOutput);
+    const requestedTheme = new URLSearchParams(location.search).get("theme");
+    const initialTheme = requestedTheme === "dark" || requestedTheme === "light"
+      ? requestedTheme
+      : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const persistWidgetState = new URLSearchParams(location.search).has("persist");
     const widgetStateKey = "sendero-preview:" + location.pathname;
-    let initialWidgetState = {};
+    let initialWidgetState = ${safeWidgetState};
     if (persistWidgetState) {
-      try { initialWidgetState = JSON.parse(sessionStorage.getItem(widgetStateKey)) || {}; } catch {}
+      try { initialWidgetState = JSON.parse(sessionStorage.getItem(widgetStateKey)) || initialWidgetState; } catch {}
     }
-	    window.openai = {
-	      toolOutput: initialToolOutput,
-	      theme: initialTheme,
+    window.openai = {
+      toolOutput: liveToolOutput,
+      theme: initialTheme,
       widgetState: initialWidgetState,
       calls: [],
       heightNotifications: [],
@@ -79,8 +216,8 @@ function withBridge(html, toolOutput) {
         if (persistWidgetState) sessionStorage.setItem(widgetStateKey, JSON.stringify(value));
         this.calls.push({ method: "setWidgetState", value });
         queueMicrotask(() => window.dispatchEvent(new CustomEvent("openai:set_globals", {
-	          detail: { globals: { theme: this.theme, toolOutput: structuredClone(initialToolOutput), widgetState: value } },
-	        })));
+          detail: { globals: { theme: this.theme, toolOutput: structuredClone(liveToolOutput), widgetState: value } },
+        })));
       },
       updateModelContext: async function(value) {
         this.modelContext = value;
@@ -94,32 +231,83 @@ function withBridge(html, toolOutput) {
       },
       callTool: async function(name, args) {
         this.calls.push({ method: "callTool", name, args });
-        if (name !== "prepare_trip_brief") throw new Error("Unsupported preview tool");
-        return {
-          structuredContent: {
-            ready: true,
-            missing: [],
-            criticalFields: [],
-            warnings: [],
-            assumptions: [],
-            brief: args.brief,
-          },
-        };
+        if (name === "prepare_trip_brief") {
+          return {
+            structuredContent: {
+              ready: true,
+              missing: [],
+              criticalFields: [],
+              warnings: [],
+              assumptions: [],
+              brief: args.brief,
+            },
+          };
+        }
+        if (name === "update_reservation_status") {
+          const targetStatus = args.status || args.reservationStatus;
+          if (!new Set(["pending", "confirmed", "cancelled"]).has(targetStatus)) {
+            throw new Error("Unsupported preview reservation status");
+          }
+          const activity = liveToolOutput?.itinerary?.days
+            ?.flatMap((day) => day.activities || [])
+            .find((item) => item.id === args.activityId);
+          if (!activity) throw new Error("Preview activity not found");
+          const currentVersion = liveToolOutput.version || liveToolOutput.currentVersion || 1;
+          const alreadyApplied = activity.reservation?.status === targetStatus;
+          if (!alreadyApplied && args.expectedVersion != null && args.expectedVersion !== currentVersion) {
+            throw new Error("Preview version conflict; refresh the itinerary");
+          }
+          if (!alreadyApplied) {
+            activity.reservation = { ...(activity.reservation || {}), status: targetStatus };
+            activity.locked = targetStatus === "confirmed" ? true : targetStatus === "cancelled" ? false : activity.locked;
+          }
+          const version = alreadyApplied ? currentVersion : currentVersion + 1;
+          liveToolOutput = {
+            ...liveToolOutput,
+            itinerary: structuredClone(liveToolOutput.itinerary),
+            version,
+            currentVersion: version,
+          };
+          this.toolOutput = liveToolOutput;
+          return {
+            structuredContent: {
+              tripId: liveToolOutput.tripId || args.tripId,
+              version,
+              currentVersion: version,
+              role: liveToolOutput.role || "owner",
+              changed: !alreadyApplied,
+              itinerary: structuredClone(liveToolOutput.itinerary),
+            },
+          };
+        }
+        throw new Error("Unsupported preview tool");
       },
       notifyIntrinsicHeight: function(height) {
         this.intrinsicHeight = height;
         this.heightNotifications.push(height);
       },
-	      openExternal: function() {},
-	    };
-	    window.setSenderoPreviewTheme = function(theme) {
-	      if (theme !== "dark" && theme !== "light") return;
-	      window.openai.theme = theme;
-	      window.dispatchEvent(new CustomEvent("openai:set_globals", { detail: { globals: { theme } } }));
-	    };
-	  }</script>`;
+      openExternal: function(value) {
+        this.externalUrl = typeof value === "string" ? value : value?.href;
+        this.calls.push({ method: "openExternal", value });
+      },
+    };
+    window.setSenderoPreviewTheme = function(theme) {
+      if (theme !== "dark" && theme !== "light") return;
+      window.openai.theme = theme;
+      window.dispatchEvent(new CustomEvent("openai:set_globals", { detail: { globals: { theme } } }));
+    };
+  }</script>`;
   return html.replace("<body>", `<body>${bridge}`);
 }
+
+const itineraryOutput = {
+  itinerary,
+  validation: { valid: true, warnings: [] },
+  tripId: "trip-preview",
+  version: 4,
+  currentVersion: 4,
+  role: "owner",
+};
 
 const pages = {
   "/": withBridge(tripIntakeWidgetHtml, { mode: "new", actions: [] }),
@@ -139,7 +327,22 @@ const pages = {
     fields: ["transport.modes"],
     brief: { destination: "Sevilla, España", startDate: "2027-03-21", endDate: "2027-03-27", travellers: { adults: 2, children: 0 }, transport: { modes: ["car"] } },
   }),
-  "/itinerary": withBridge(itineraryWidgetHtml, { itinerary, validation: { valid: true, warnings: ["Alojamiento pendiente: las rutas parten de una base provisional."] } }),
+  "/itinerary": withBridge(itineraryWidgetHtml, itineraryOutput),
+  "/itinerary-calendar": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "calendar", selectedCalendarDate: "2026-08-14" }),
+  "/itinerary-reservations": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "reservations" }),
+  "/itinerary-routes": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "routes", selectedRouteDate: "2026-08-14" }),
+  "/itinerary-dense": withBridge(itineraryWidgetHtml, itineraryOutput, { activeView: "list", expandedDays: ["2026-08-13", "2026-08-14"] }),
+  "/itinerary-warnings": withBridge(itineraryWidgetHtml, {
+    ...itineraryOutput,
+    validation: {
+      valid: true,
+      warnings: [
+        "Daily routes use a provisional area until an exact address is available.",
+        "A venue needs a current official reservation URL.",
+        "An activity is missing a routable location.",
+      ],
+    },
+  }),
   "/itinerary-empty": withBridge(itineraryWidgetHtml, undefined),
   "/share": publicSharePageHtml,
   "/share-control-preview": withBridge(publicShareControlWidgetHtml, { state: "preview", action: "publish", itinerary: publicItinerary, tripId: "trip-preview", operationId: "preview-share", expectedVersion: 4, expiresInDays: 30, proposedExpiresAt }),

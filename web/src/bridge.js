@@ -7,6 +7,7 @@ let resizeAnimationFrame = 0;
 let resizeObserver;
 let lastReportedHeight = 0;
 let lastReportedWidth = 0;
+let resizeReportGeneration = 0;
 
 function normalizedTheme(value) {
   return value === "dark" || value === "light" ? value : "";
@@ -46,14 +47,21 @@ function reportIntrinsicHeight() {
   const bounds = root.getBoundingClientRect();
   const width = Math.ceil(bounds.width);
   const height = Math.ceil(Math.max(root.scrollHeight, bounds.height));
-  if (width <= 0 || height <= 0 || (width === lastReportedWidth && height === lastReportedHeight)) return;
+  if (width <= 0 || height <= 0 || height === lastReportedHeight) return;
   lastReportedWidth = width;
   lastReportedHeight = height;
+  const generation = ++resizeReportGeneration;
 
   if (window.openai?.notifyIntrinsicHeight) {
     try {
       const result = window.openai.notifyIntrinsicHeight(height);
-      if (result?.catch) result.catch(() => postSizeChanged(width, height));
+      if (result?.catch) {
+        result.catch(() => {
+          if (generation === resizeReportGeneration && height === lastReportedHeight) {
+            postSizeChanged(lastReportedWidth, lastReportedHeight);
+          }
+        });
+      }
       return;
     } catch {
       // Fall through to the portable MCP Apps notification.
@@ -63,7 +71,7 @@ function reportIntrinsicHeight() {
 }
 
 function scheduleIntrinsicHeight() {
-  if (resizeAnimationFrame) window.cancelAnimationFrame(resizeAnimationFrame);
+  if (resizeAnimationFrame) return;
   resizeAnimationFrame = window.requestAnimationFrame(reportIntrinsicHeight);
 }
 

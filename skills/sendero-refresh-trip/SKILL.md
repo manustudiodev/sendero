@@ -10,9 +10,9 @@ description: Refresh an existing Sendero itinerary using current weather, local 
 3. Verify unstable facts with current official sources: weather, events, opening hours, closures, strikes, transport, prices, and reservation rules. Record source URLs and check dates.
 4. Preserve confirmed reservations and locked activities. Propose alternatives before moving either one.
 5. Update only affected facts and activities, recalculate daily routes when locations or transport changed, then call `validate_itinerary`.
-6. Call `render_itinerary` once with the refreshed complete snapshot. Add at most one short sentence only for a material change or uncertainty that the component does not already show; otherwise end the turn after the component.
+6. Call `render_itinerary` once with the refreshed complete snapshot. For a saved trip, also pass its authoritative `tripId`, current `version`, and `role`. The initial render must already contain the updated reservation tracker and official links; do not produce a second reservation list in prose. Add at most one short sentence only for a material change or uncertainty that the component does not already show; otherwise end the turn after the component.
 7. Call `save_itinerary` only when the user explicitly asked to persist the refresh; include a concise revision reason.
 
-Label seasonal expectations, provisional events, and unconfirmed availability clearly. Never claim that a reservation was made.
+Label seasonal expectations, provisional events, and unconfirmed availability clearly. A Sendero status control updates only the trip's local tracker; never claim that a provider reservation was made or cancelled.
 
 Keep the conversation natural. Never expose internal tool names, stable IDs, serialized payloads, or JSON, and never instruct the user to type a bot-like phrase when a component action is available.

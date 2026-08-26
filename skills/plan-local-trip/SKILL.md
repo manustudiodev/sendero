@@ -56,12 +56,17 @@ Prefer official sources for operational facts. Use reputable local sources for d
 - Add one useful fallback for weather-sensitive or capacity-limited activities.
 - Keep departure and arrival days lighter unless the user requests otherwise.
 - Mark fixed activities as locked and preserve them during later changes.
+- Give every public venue or activity a precise, recognizable address. Add `latitude` and `longitude` only when both coordinates are backed by a current source; never guess coordinates. Do not add exact lodging coordinates merely to draw a map.
 
-Use the canonical structure in [itinerary-schema.md](references/itinerary-schema.md). Call `validate_itinerary` before presenting the result, correct blocking issues, then call `render_itinerary` once with the final snapshot.
+Use the canonical structure in [itinerary-schema.md](references/itinerary-schema.md). Call `validate_itinerary` before presenting the result and correct blocking issues. When the user asked to save the trip, save the validated snapshot before the final render so the response provides the authoritative `tripId`, `version`, and `role`; pass those three values with the final snapshot to `render_itinerary`. If the trip remains unsaved, render the complete snapshot without inventing persistence context.
 
 ### 4. Handle reservations safely
 
 For every reservable item, include status, official URL, recommended deadline, cancellation note when known, and what remains unconfirmed. Offer multiple restaurant, cafe, or activity options when the user has not selected one.
+
+The first final `render_itinerary` result must already contain the complete reservation tracker together with the list, calendar, and routes. Do not add a separate “review reservations” turn, reproduce the reservations as prose, or wait for another research pass merely because the user opens that view.
+
+Reservation controls inside Sendero change only Sendero's tracking status. **Marcar confirmada** records that the user says the reservation was completed; **Marcar cancelada en Sendero** records its local cancellation state. Neither action books, purchases, contacts, nor cancels with the provider. The official link is the explicit handoff to the external provider, and the component must state this boundary.
 
 Do not purchase, book, cancel, or send personal information without explicit confirmation immediately before the external action. A recommendation or draft itinerary is not permission to transact.
 

@@ -235,6 +235,145 @@ export const save = mutation({
   },
 });
 
+export const updateReservationStatus = mutation({
+  args: {
+    tripId: v.id("trips"),
+    dayDate: v.string(),
+    activityId: v.string(),
+    status: v.union(v.literal("pending"), v.literal("confirmed"), v.literal("cancelled")),
+    expectedVersion: v.number(),
+    operationId: v.string(),
+  },
+  handler: async (
+    ctx,
+    { tripId, dayDate, activityId, status, expectedVersion, operationId },
+  ) => {
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      throw new Error("A positive integer expectedVersion is required");
+    }
+    if (
+      operationId.length < 8 ||
+      operationId.length > 128 ||
+      !/^[A-Za-z0-9._:-]+$/.test(operationId)
+    ) {
+      throw new Error("Invalid reservation operation ID");
+    }
+    const user = await ensureCurrentUser(ctx);
+    const access = await requireAccess(ctx, tripId, "editor");
+    if (access.role !== "owner" && access.role !== "editor") {
+      throw new Error("Editor access required");
+    }
+
+    const requestFingerprint = JSON.stringify({
+      tripId,
+      dayDate,
+      activityId,
+      status,
+      expectedVersion,
+    });
+    const existingOperation = await ctx.db
+      .query("reservationOperations")
+      .withIndex("by_actor_and_operation", (q) =>
+        q.eq("actorId", user._id).eq("operationId", operationId),
+      )
+      .unique();
+
+    if (existingOperation) {
+      if (
+        existingOperation.tripId !== tripId ||
+        existingOperation.requestFingerprint !== requestFingerprint
+      ) {
+        throw new Error("Reservation operation ID was already used for a different request");
+      }
+      const currentTrip = await ctx.db.get(tripId);
+      if (!currentTrip) throw new Error("Trip not found");
+      return {
+        tripId,
+        // The durable operation record proves that this exact write already ran.
+        // Always return the authoritative current snapshot, though: a later edit
+        // must never be visually replaced by the historical operation result.
+        version: currentTrip.currentVersion,
+        role: access.role,
+        changed: existingOperation.changed,
+        itinerary: currentTrip.snapshot,
+      };
+    }
+
+    if (access.trip.currentVersion !== expectedVersion) {
+      throw new Error(
+        `Trip version changed. Expected ${expectedVersion}, found ${access.trip.currentVersion}. Refresh before updating the reservation.`,
+      );
+    }
+
+    const snapshot = structuredClone(access.trip.snapshot) as Record<string, unknown>;
+    const days = Array.isArray(snapshot.days) ? snapshot.days : undefined;
+    if (!days) throw new Error("Invalid itinerary snapshot");
+    const day = days.find(
+      (value) =>
+        value !== null &&
+        typeof value === "object" &&
+        (value as Record<string, unknown>).date === dayDate,
+    ) as Record<string, unknown> | undefined;
+    if (!day || !Array.isArray(day.activities)) throw new Error("Itinerary day not found");
+    const activity = day.activities.find(
+      (value) =>
+        value !== null &&
+        typeof value === "object" &&
+        (value as Record<string, unknown>).id === activityId,
+    ) as Record<string, unknown> | undefined;
+    if (!activity) throw new Error("Itinerary activity not found");
+    if (
+      activity.reservation === null ||
+      typeof activity.reservation !== "object" ||
+      Array.isArray(activity.reservation)
+    ) {
+      throw new Error("This activity does not have a reservation to track");
+    }
+
+    const reservation = activity.reservation as Record<string, unknown>;
+    const changed = reservation.status !== status;
+    let resultVersion = access.trip.currentVersion;
+    const now = Date.now();
+
+    if (changed) {
+      reservation.status = status;
+      resultVersion += 1;
+      await ctx.db.patch(tripId, {
+        snapshot,
+        currentVersion: resultVersion,
+        updatedAt: now,
+      });
+      await ctx.db.insert("tripRevisions", {
+        tripId,
+        version: resultVersion,
+        snapshot,
+        actorId: user._id,
+        reason: `Reservation tracker updated to ${status}`,
+        createdAt: now,
+      });
+    }
+
+    await ctx.db.insert("reservationOperations", {
+      tripId,
+      actorId: user._id,
+      operationId,
+      requestFingerprint,
+      targetStatus: status,
+      resultVersion,
+      changed,
+      createdAt: now,
+    });
+
+    return {
+      tripId,
+      version: resultVersion,
+      role: access.role,
+      changed,
+      itinerary: snapshot,
+    };
+  },
+});
+
 export const share = mutation({
   args: {
     tripId: v.id("trips"),

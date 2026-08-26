@@ -58,6 +58,8 @@ function privateItinerary() {
             location: {
               name: "Museo público",
               address: "Avenida Pública 456",
+              latitude: -34.5837,
+              longitude: -58.3932,
               coordinates: "PRIVATE COORDINATES",
             },
             sourceUrl: "https://museum.example/visit",
@@ -101,9 +103,18 @@ test("creates a strict, versionable public projection without known private fiel
   assert.deepEqual(published.transport, { modes: ["walk", "public_transit"] });
   assert.equal("locked" in published.days[0].activities[0], false);
   assert.equal("reservation" in published.days[0].activities[0], false);
-  assert.deepEqual(published.days[0].route.stops, ["Avenida Pública 456"]);
-  assert.equal(published.days[0].route.origin, "Palermo");
-  assert.match(published.days[0].route.mapUrl, /origin=Palermo/);
+  assert.equal(published.days[0].activities[0].location.latitude, -34.5837);
+  assert.equal(published.days[0].activities[0].location.longitude, -58.3932);
+  assert.deepEqual(published.days[0].route.stops, [
+    "Avenida Pública 456, Buenos Aires, Argentina",
+  ]);
+  assert.equal(
+    published.days[0].route.origin,
+    "Avenida Pública 456, Buenos Aires, Argentina",
+  );
+  assert.equal(published.days[0].route.returnToLodging, false);
+  assert.match(published.days[0].route.mapUrl, /maps\/search/);
+  assert.doesNotMatch(published.days[0].route.mapUrl, /origin=Palermo/);
 
   const serialized = JSON.stringify(published);
   for (const secret of [
@@ -174,17 +185,23 @@ test("redacts lodging variants from public copy, locations, routes, and map URLs
   assert.equal(published.sources?.[0]?.checkedAt, undefined);
   assert.equal("locked" in privateActivity, false);
   assert.equal("reservation" in privateActivity, false);
-  assert.deepEqual(published.days[0].route.stops, ["Avenida Pública 456"]);
+  assert.deepEqual(published.days[0].route.stops, [
+    "Avenida Pública 456, Buenos Aires, Argentina",
+  ]);
   assert.doesNotMatch(published.days[0].route.mapUrl, /hotel|secret|calle|privada|123/i);
   assert.doesNotMatch(serialized, /h[oô]tel[ -]s[eé]cret|calle[ -]privada[ -]123/i);
 });
 
-test("falls back to destination for public routes when lodging has no public area", () => {
+test("never uses the destination or lodging as a public route base", () => {
   const source = privateItinerary();
   delete source.lodging.area;
   const published = sanitizePublicSnapshot(source);
   assert.equal(published.baseArea, undefined);
-  assert.equal(published.days[0].route.origin, "Buenos Aires, Argentina");
+  assert.equal(
+    published.days[0].route.origin,
+    "Avenida Pública 456, Buenos Aires, Argentina",
+  );
+  assert.equal(published.days[0].route.returnToLodging, false);
   assert.doesNotMatch(published.days[0].route.mapUrl, /Secret|PRIVATE/);
 });
 
