@@ -58,6 +58,8 @@ Prefer official sources for operational facts. Use reputable local sources for d
 - Keep departure and arrival days lighter unless the user requests otherwise.
 - Mark fixed activities as locked and preserve them during later changes.
 - Give every public venue or activity a precise, recognizable address. Add `latitude` and `longitude` only when both coordinates are backed by a current source; never guess coordinates. Do not add exact lodging coordinates merely to draw a map.
+- Use `activity.description` only for the concise operational context needed to execute the plan: what the stop involves, arrival guidance, access or timing constraints, meeting details, or other logistics. Do not turn it into historical or destination-guide copy.
+- Put the source-backed visitor guide in `activity.guide`. Its `overview` must be 2–4 useful sentences about the place, its context, or why it matters for this trip; `highlights` is optional and may contain at most four concise items; `sources` must contain 1–4 sources that directly support the guide. Prefer official, institutional, or reputable cultural sources. Omit `guide` rather than inventing unsupported copy.
 
 Use the canonical structure in [itinerary-schema.md](references/itinerary-schema.md). Once research and itinerary construction are complete, finish through exactly one intent-level facade:
 
@@ -86,4 +88,4 @@ If the user moves, adds, removes, replaces, or reschedules activities in an exis
 - Cite time-sensitive sources near the relevant recommendation.
 - Avoid impossible overlaps, closed venues, excessive cross-city travel, and unlicensed driving.
 - Show approximate travel time and transport for each meaningful leg.
-- Keep the visible itinerary concise; place operational detail in activity notes, reservations, routes, and sources.
+- Keep the visible itinerary concise. Place operational detail in `activity.description`, reservations, routes, and operational sources; keep historical, cultural, and popular context in the separate source-backed `activity.guide`.

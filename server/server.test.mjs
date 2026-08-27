@@ -13,6 +13,8 @@ import {
   LEGACY_ITINERARY_V5_UI_URI,
   LEGACY_ITINERARY_V6_UI_URI,
   LEGACY_ITINERARY_V7_UI_URI,
+  LEGACY_ITINERARY_V8_UI_URI,
+  LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -65,7 +67,7 @@ test("pins a fresh URI for every current Sendero component bundle", () => {
       share: PUBLIC_SHARE_UI_URI,
     },
     {
-      itinerary: "ui://sendero/itinerary-v8.html",
+      itinerary: "ui://sendero/itinerary-v10.html",
       intake: "ui://sendero/trip-intake-v5.html",
       trips: "ui://sendero/trip-list-v4.html",
       requirements: "ui://sendero/trip-requirements-v6.html",
@@ -105,6 +107,17 @@ const itinerary = {
           category: "activity",
           locked: true,
           location: { name: "Mosteiro dos Jerónimos", address: "Praca do Imperio, Lisboa" },
+          guide: {
+            overview: "El monasterio es una obra central del gótico manuelino y un testimonio monumental de la Lisboa vinculada a los viajes marítimos portugueses.",
+            highlights: ["Observa la piedra tallada del claustro y sus motivos náuticos."],
+            sources: [
+              {
+                label: "Patrimonio Cultural de Portugal",
+                url: "https://www.patrimoniocultural.gov.pt/",
+                checkedAt: "2026-08-20",
+              },
+            ],
+          },
           reservation: { status: "confirmed", note: "Reserva existente" },
           travelToNext: { mode: "taxi", durationMinutes: 35 },
         },
@@ -143,6 +156,23 @@ test("validates realistic constraints and creates a daily route", () => {
   assert.equal(normalized.days[0].route.mapUrl, mapUrl);
   assert.equal(normalized.days[0].route.returnToLodging, true);
   assert.equal(normalized.days[0].route.origin, "Bairro Alto, Lisboa");
+  assert.deepEqual(normalized.days[0].activities[0].guide, itinerary.days[0].activities[0].guide);
+});
+
+test("keeps operational descriptions separate from source-backed place guides", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.days[0].activities[0].description = "Llegar quince minutos antes y presentar la entrada.";
+  assert.equal(validateItinerary(candidate).valid, true);
+
+  const legacy = structuredClone(candidate);
+  delete legacy.days[0].activities[0].guide;
+  assert.equal(validateItinerary(legacy).valid, true);
+
+  const unsafeGuide = structuredClone(candidate);
+  unsafeGuide.days[0].activities[0].guide.sources[0].url = "javascript:alert(1)";
+  const unsafeValidation = validateItinerary(unsafeGuide);
+  assert.equal(unsafeValidation.valid, false);
+  assert.ok(unsafeValidation.errors.some((message) => message.includes("HTTP(S)")));
 });
 
 test("rebuilds daily links from ordered public activities and excludes provisional bases", () => {
@@ -492,6 +522,12 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyItineraryV7Resource = await client.readResource({ uri: LEGACY_ITINERARY_V7_UI_URI });
   assertInlineWidgetResource(legacyItineraryV7Resource, LEGACY_ITINERARY_V7_UI_URI);
   assert.equal(legacyItineraryV7Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV8Resource = await client.readResource({ uri: LEGACY_ITINERARY_V8_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV8Resource, LEGACY_ITINERARY_V8_UI_URI);
+  assert.equal(legacyItineraryV8Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV9Resource = await client.readResource({ uri: LEGACY_ITINERARY_V9_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV9Resource, LEGACY_ITINERARY_V9_UI_URI);
+  assert.equal(legacyItineraryV9Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");

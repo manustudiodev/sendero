@@ -53,6 +53,23 @@ export function reservationRequirement(entry) {
   return entry?.reservation?.status === "suggested" ? "optional" : "required";
 }
 
+export function hasReservationManagement(activity) {
+  const status = activity?.reservation?.status;
+  return Boolean(status && status !== "not_needed");
+}
+
+export function reservationEntryKey(dayDate, activityId) {
+  const date = normalizedText(dayDate);
+  const id = normalizedText(activityId);
+  return date && id ? `${date}:${id}` : "";
+}
+
+export function reservationNavigationLabel(entry) {
+  const presentation = reservationPresentation(entry);
+  const title = normalizedText(entry?.activity?.title) || "esta actividad";
+  return `Abrir en Reservas: ${presentation.requirementLabel.toLocaleLowerCase("es")} para ${title}`;
+}
+
 export function reservationPresentation(entry) {
   const kind = reservationKind(entry);
   const requirement = reservationRequirement(entry);

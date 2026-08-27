@@ -7,7 +7,13 @@ import {
   monthKeysInRange,
   resolveMonthPage,
 } from "./calendar-model.js";
-import { contextualItineraryTitle, reservationPresentation } from "./presentation-utils.js";
+import {
+  contextualItineraryTitle,
+  hasReservationManagement,
+  reservationEntryKey,
+  reservationNavigationLabel,
+  reservationPresentation,
+} from "./presentation-utils.js";
 import {
   buildDayEmbedMapUrl,
   buildDayAppleRouteUrls,
@@ -27,14 +33,48 @@ const transportLabels = {
   other: "otro",
 };
 
-const privateViews = [
+const primaryViews = [
   { id: "list", label: "Lista" },
   { id: "calendar", label: "Calendario" },
   { id: "routes", label: "Rutas" },
-  { id: "reservations", label: "Reservas" },
 ];
 
-const publicViews = privateViews.filter((view) => view.id !== "reservations");
+function ViewIcon({ view }) {
+  if (view === "calendar") {
+    return (
+      <svg aria-hidden="true" className="view-icon" fill="none" focusable="false" viewBox="0 0 20 20">
+        <rect height="14" rx="2" stroke="currentColor" strokeWidth="1.5" width="15" x="2.5" y="3.5" />
+        <path d="M6 2.5v3M14 2.5v3M2.5 8h15M6 11h2M11 11h2M6 14h2M11 14h2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (view === "routes") {
+    return (
+      <svg aria-hidden="true" className="view-icon" fill="none" focusable="false" viewBox="0 0 20 20">
+        <circle cx="5" cy="5" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="15" cy="15" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M6.75 6.4c4.4 1.1 1.2 5.1 5.4 6.7" stroke="currentColor" strokeDasharray="2 2" strokeLinecap="round" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" className="view-icon" fill="none" focusable="false" viewBox="0 0 20 20">
+      <circle cx="4" cy="5" fill="currentColor" r="1" />
+      <circle cx="4" cy="10" fill="currentColor" r="1" />
+      <circle cx="4" cy="15" fill="currentColor" r="1" />
+      <path d="M7 5h9M7 10h9M7 15h9" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function TicketIcon() {
+  return (
+    <svg aria-hidden="true" className="activity-reservation-icon" fill="none" focusable="false" viewBox="0 0 20 20">
+      <path d="M3.5 6.25A2.75 2.75 0 0 0 6.25 3.5h7.25a1 1 0 0 1 1 1v2a2.75 2.75 0 0 0 0 5.5v2a1 1 0 0 1-1 1H6.25A2.75 2.75 0 0 0 3.5 12.25v-6Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5" />
+      <path d="M9.75 6.25v1.5m0 2v1.5m0 2v.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    </svg>
+  );
+}
 
 export function formatItineraryDate(value, options) {
   if (!value) return "";
@@ -48,18 +88,32 @@ export function formatItineraryDate(value, options) {
   }
 }
 
-function Activity({ activity, onOpenExternal, variant }) {
+function Activity({ activity, dayDate, onOpenExternal, onReservationOpen, variant }) {
   const showPrivateStatus = variant !== "public";
   const location = activity.location;
   const sourceUrl = safeExternalUrl(activity.sourceUrl);
-  const reservationView = activity.reservation?.status && activity.reservation.status !== "not_needed"
-    ? reservationPresentation({ activity, reservation: activity.reservation })
-    : null;
+  const hasReservation = showPrivateStatus && hasReservationManagement(activity);
+  const reservationEntry = hasReservation ? { activity, reservation: activity.reservation } : null;
+  const reservationLabel = reservationEntry ? reservationNavigationLabel(reservationEntry) : "";
+  const hasBadges = (showPrivateStatus && activity.locked) || activity.travelToNext;
   return (
     <li className="activity">
       <time className="activity-time" dateTime={activity.startTime}>{activity.startTime}</time>
       <div>
-        <strong>{activity.title}</strong>
+        <div className="activity-title-row">
+          <strong>{activity.title}</strong>
+          {hasReservation && onReservationOpen ? (
+            <button
+              aria-label={reservationLabel}
+              className="activity-reservation-link"
+              onClick={() => onReservationOpen({ activityId: activity.id, dayDate })}
+              title={reservationLabel}
+              type="button"
+            >
+              <TicketIcon />
+            </button>
+          ) : null}
+        </div>
         {activity.description ? <p>{activity.description}</p> : null}
         {location ? (
           <p className="activity-location">
@@ -73,18 +127,16 @@ function Activity({ activity, onOpenExternal, variant }) {
             onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(sourceUrl); } : undefined}
             rel="noreferrer noopener"
             target="_blank"
-          >Fuente oficial ↗</a>
+          >Ver fuente ↗</a>
         ) : null}
-        <div className="badges">
-          {showPrivateStatus && activity.locked ? <span className="badge badge-locked">Fijo</span> : null}
-          {showPrivateStatus && reservationView ? <span className="badge reservation-requirement">{reservationView.requirementLabel}</span> : null}
-          {showPrivateStatus && reservationView ? (
-            <span className={`badge reservation-status reservation-status-${reservationView.status}`}>{reservationView.statusLabel}</span>
-          ) : null}
-          {activity.travelToNext ? (
-            <span className="badge">{activity.travelToNext.durationMinutes} min · {transportLabels[activity.travelToNext.mode] || activity.travelToNext.mode}</span>
-          ) : null}
-        </div>
+        {hasBadges ? (
+          <div className="badges">
+            {showPrivateStatus && activity.locked ? <span className="badge badge-locked">Fijo</span> : null}
+            {activity.travelToNext ? (
+              <span className="badge">{activity.travelToNext.durationMinutes} min · {transportLabels[activity.travelToNext.mode] || activity.travelToNext.mode}</span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </li>
   );
@@ -105,7 +157,6 @@ function DayContext({ day, onOpenExternal }) {
       value: day.weather.summary,
     } : null,
     day.fallback ? { label: "Alternativa", value: day.fallback } : null,
-    day.summary ? { label: "En pocas palabras", value: day.summary } : null,
   ].filter(Boolean);
   if (!context.length) return null;
   return (
@@ -135,20 +186,158 @@ function DayContext({ day, onOpenExternal }) {
   );
 }
 
-function DayDetails({ day, labelledBy, onOpenExternal, variant }) {
+function DayGuide({ day, onOpenExternal }) {
+  const guideActivities = day.activities.filter((activity) =>
+    Boolean(activity.location?.name?.trim() || activity.guide),
+  );
+
   return (
-    <div aria-labelledby={labelledBy} className="day-details" role="region">
-      <ol className="timeline">
-        {day.activities.map((activity, index) => (
-          <Activity activity={activity} key={activity.id || `${day.date}-${index}`} onOpenExternal={onOpenExternal} variant={variant} />
-        ))}
+    <div className="day-guide">
+      <ol aria-label={`Guía de lugares para ${day.title}`} className="day-guide-stops">
+        {guideActivities.map((activity, index) => {
+          const placeTitle = activity.location?.name?.trim() || activity.title;
+          const guide = activity.guide;
+          const overview = typeof guide?.overview === "string" ? guide.overview.trim() : "";
+          const highlights = Array.isArray(guide?.highlights)
+            ? guide.highlights.filter((highlight) => typeof highlight === "string" && highlight.trim()).map((highlight) => highlight.trim())
+            : [];
+          const guideSources = Array.isArray(guide?.sources)
+            ? guide.sources.flatMap((source, sourceIndex) => {
+              const url = safeExternalUrl(typeof source === "string" ? source : source?.url);
+              if (!url) return [];
+              const sourceLabel = typeof source === "object" && source ? source.label || source.title : "";
+              const suppliedLabel = typeof sourceLabel === "string" ? sourceLabel.trim() : "";
+              return [{ label: suppliedLabel || `Fuente ${sourceIndex + 1}`, url }];
+            })
+            : [];
+          const officialSourceUrl = safeExternalUrl(activity.sourceUrl);
+          const sources = guideSources.length
+            ? guideSources
+            : officialSourceUrl
+              ? [{ label: "Fuente oficial", url: officialSourceUrl }]
+              : [];
+          const hasEditorialGuide = Boolean(overview || highlights.length);
+          return (
+            <li className="day-guide-stop" key={activity.id || `${day.date}-guide-${index}`}>
+              <article>
+                <h3>{placeTitle}</h3>
+                {overview ? <p className="day-guide-overview">{overview}</p> : null}
+                {highlights.length ? (
+                  <ul className="day-guide-highlights">
+                    {highlights.map((highlight, highlightIndex) => (
+                      <li key={`${activity.id || index}-highlight-${highlightIndex}`}>{highlight}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {!hasEditorialGuide ? (
+                  <p className="day-guide-legacy-note">Todavía no hay una reseña editorial verificada para este lugar.</p>
+                ) : null}
+                {sources.length ? (
+                  <ul aria-label={`Fuentes sobre ${placeTitle}`} className="day-guide-sources">
+                    {sources.map((source, sourceIndex) => (
+                      <li key={`${source.label}-${source.url}-${sourceIndex}`}>
+                        <a
+                          aria-label={`${source.label} sobre ${placeTitle}`}
+                          className="day-guide-source"
+                          href={source.url}
+                          onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(source.url); } : undefined}
+                          rel="noreferrer noopener"
+                          target="_blank"
+                        >{source.label} ↗</a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            </li>
+          );
+        })}
       </ol>
-      <DayContext day={day} onOpenExternal={onOpenExternal} />
     </div>
   );
 }
 
-function DayCard({ day, initiallyOpen, onOpenExternal, variant }) {
+function DayDetails({ day, labelledBy, onOpenExternal, onReservationOpen, variant }) {
+  const [detailView, setDetailView] = useState("route");
+  const detailId = useId();
+  const detailTabRefs = useRef([]);
+  const detailViews = [
+    { id: "route", label: "Recorrido" },
+    { id: "description", label: "Descripción" },
+  ];
+
+  function selectDetailView(view, focus = false) {
+    setDetailView(view.id);
+    if (focus) window.requestAnimationFrame(() => detailTabRefs.current[detailViews.indexOf(view)]?.focus());
+  }
+
+  function handleDetailTabKeyDown(event, index) {
+    let nextIndex;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % detailViews.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + detailViews.length) % detailViews.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = detailViews.length - 1;
+    else return;
+    event.preventDefault();
+    selectDetailView(detailViews[nextIndex], true);
+  }
+
+  return (
+    <div aria-labelledby={labelledBy} className="day-details" role="region">
+      <div aria-label={`Detalle de ${day.title}`} className="day-detail-tabs" role="tablist">
+        {detailViews.map((view, index) => (
+          <button
+            aria-controls={`${detailId}-${view.id}-panel`}
+            aria-selected={detailView === view.id}
+            className={detailView === view.id ? "is-active" : ""}
+            id={`${detailId}-${view.id}-tab`}
+            key={view.id}
+            onClick={() => selectDetailView(view)}
+            onKeyDown={(event) => handleDetailTabKeyDown(event, index)}
+            ref={(node) => { detailTabRefs.current[index] = node; }}
+            role="tab"
+            tabIndex={detailView === view.id ? 0 : -1}
+            type="button"
+          >{view.label}</button>
+        ))}
+      </div>
+      <div
+        aria-labelledby={`${detailId}-route-tab`}
+        className="day-detail-panel day-detail-panel-route"
+        hidden={detailView !== "route"}
+        id={`${detailId}-route-panel`}
+        role="tabpanel"
+      >
+        <div className="day-route-content">
+          <ol className="timeline">
+            {day.activities.map((activity, index) => (
+              <Activity
+                activity={activity}
+                dayDate={day.date}
+                key={activity.id || `${day.date}-${index}`}
+                onOpenExternal={onOpenExternal}
+                onReservationOpen={onReservationOpen}
+                variant={variant}
+              />
+            ))}
+          </ol>
+          <DayContext day={day} onOpenExternal={onOpenExternal} />
+        </div>
+      </div>
+      <div
+        aria-labelledby={`${detailId}-description-tab`}
+        className="day-detail-panel day-detail-panel-description"
+        hidden={detailView !== "description"}
+        id={`${detailId}-description-panel`}
+        role="tabpanel"
+      >
+        <DayGuide day={day} onOpenExternal={onOpenExternal} />
+      </div>
+    </div>
+  );
+}
+
+function DayCard({ day, initiallyOpen, onOpenExternal, onReservationOpen, variant }) {
   const [open, setOpen] = useState(initiallyOpen);
   const controlId = useId();
   const panelId = `${controlId}-panel`;
@@ -169,17 +358,17 @@ function DayCard({ day, initiallyOpen, onOpenExternal, variant }) {
         </button>
       </h2>
       <DisclosurePanel className="day-disclosure" id={panelId} open={open}>
-        <DayDetails day={day} labelledBy={controlId} onOpenExternal={onOpenExternal} variant={variant} />
+        <DayDetails day={day} labelledBy={controlId} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />
       </DisclosurePanel>
     </article>
   );
 }
 
-function ListView({ itinerary, onOpenExternal, variant }) {
-  return <div className="days">{itinerary.days.map((day, index) => <DayCard day={day} initiallyOpen={index === 0} key={day.date} onOpenExternal={onOpenExternal} variant={variant} />)}</div>;
+function ListView({ itinerary, onOpenExternal, onReservationOpen, variant }) {
+  return <div className="days">{itinerary.days.map((day, index) => <DayCard day={day} initiallyOpen={index === 0} key={day.date} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />)}</div>;
 }
 
-function CalendarWeek({ currentDate, onOpenExternal, selectDate, variant, week }) {
+function CalendarWeek({ currentDate, onOpenExternal, onReservationOpen, selectDate, variant, week }) {
   const expandedDay = week.find((cell) => cell.day?.date === currentDate)?.day;
   const lastExpandedDay = useRef(expandedDay || null);
   if (expandedDay) lastExpandedDay.current = expandedDay;
@@ -203,6 +392,7 @@ function CalendarWeek({ currentDate, onOpenExternal, selectDate, variant, week }
             <button
               aria-controls={`${controlId}-panel`}
               aria-expanded={open}
+              aria-label={`${formatItineraryDate(day.date, { weekday: "long", day: "numeric", month: "long" })}: ${day.title}`}
               className={`calendar-day ${open ? "is-selected" : ""}`}
               id={controlId}
               key={day.date}
@@ -213,7 +403,6 @@ function CalendarWeek({ currentDate, onOpenExternal, selectDate, variant, week }
                 <strong>{formatItineraryDate(day.date, { day: "numeric" })}</strong>
               </time>
               <p>{day.title}</p>
-              <small>{day.area}</small>
               <span aria-hidden="true" className="calendar-toggle disclosure-toggle" />
             </button>
           );
@@ -222,7 +411,13 @@ function CalendarWeek({ currentDate, onOpenExternal, selectDate, variant, week }
       {displayedDay ? (
         <DisclosurePanel className="calendar-disclosure" id={panelId} open={Boolean(expandedDay)}>
           <div className="calendar-day-detail">
-            <DayDetails day={displayedDay} labelledBy={`calendar-${displayedDay.date}`} onOpenExternal={onOpenExternal} variant={variant} />
+            <DayDetails
+              day={displayedDay}
+              labelledBy={`calendar-${displayedDay.date}`}
+              onOpenExternal={onOpenExternal}
+              onReservationOpen={onReservationOpen}
+              variant={variant}
+            />
           </div>
         </DisclosurePanel>
       ) : null}
@@ -233,6 +428,7 @@ function CalendarWeek({ currentDate, onOpenExternal, selectDate, variant, week }
 function CalendarView({
   itinerary,
   onOpenExternal,
+  onReservationOpen,
   onSelectedDateChange,
   onSelectedMonthChange,
   selectedDate,
@@ -301,6 +497,7 @@ function CalendarView({
           currentDate={currentDate}
           key={week[0]?.date}
           onOpenExternal={onOpenExternal}
+          onReservationOpen={onReservationOpen}
           selectDate={selectDate}
           variant={variant}
           week={week}
@@ -491,7 +688,7 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
 function reservationEntries(itinerary) {
   return itinerary.days.flatMap((day) => day.activities.flatMap((activity) => {
     const reservation = activity.reservation;
-    if (!reservation || !reservation.status || reservation.status === "not_needed") return [];
+    if (!hasReservationManagement(activity)) return [];
     return [{ activity, day, reservation }];
   }));
 }
@@ -531,8 +728,22 @@ function ReservationActions({ entry, onStatusChange, writable }) {
   );
 }
 
-function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable }) {
+function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedReservationKey, writable }) {
   const entries = reservationEntries(itinerary);
+  const targetReservationRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedReservationKey) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const target = targetReservationRef.current;
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedReservationKey]);
+
   if (!entries.length) {
     return (
       <div className="reservations-empty">
@@ -556,8 +767,17 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable 
         {entries.map((entry, index) => {
           const href = reservationUrl(entry);
           const presentation = reservationPresentation(entry);
+          const entryKey = reservationEntryKey(entry.day.date, entry.activity.id);
+          const isTargeted = Boolean(selectedReservationKey && selectedReservationKey === entryKey);
           return (
-            <article className="reservation-card" key={entry.activity.id || `${entry.day.date}-${index}`}>
+            <article
+              aria-current={isTargeted ? "true" : undefined}
+              className={`reservation-card ${isTargeted ? "is-targeted" : ""}`}
+              data-reservation-key={entryKey}
+              key={entry.activity.id || `${entry.day.date}-${index}`}
+              ref={isTargeted ? targetReservationRef : undefined}
+              tabIndex={isTargeted ? -1 : undefined}
+            >
               <div className="reservation-date">
                 <time dateTime={entry.day.date}>{formatItineraryDate(entry.day.date, { weekday: "short", day: "numeric", month: "short" })}</time>
                 <span>{entry.activity.startTime}</span>
@@ -566,7 +786,9 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable 
                 <div className="reservation-title-row">
                   <div className="reservation-name">
                     <h3>{entry.activity.title}</h3>
-                    <span className="reservation-requirement-pill">{presentation.requirementLabel}</span>
+                    <span className={`reservation-requirement-pill reservation-requirement-${presentation.requirement}`}>
+                      {presentation.requirementLabel}
+                    </span>
                   </div>
                   <span className={`reservation-pill reservation-status-${presentation.status}`}>{presentation.statusLabel}</span>
                 </div>
@@ -574,8 +796,14 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, writable 
                 {entry.reservation.deadline ? <p><strong>{presentation.deadlineLabel}:</strong> {entry.reservation.deadline}</p> : null}
                 {entry.reservation.note ? <p>{entry.reservation.note}</p> : null}
                 <div className="reservation-actions">
-                  {href ? <RouteLink href={href} label={presentation.externalActionLabel} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">Sin enlace oficial verificado</span>}
-                  <ReservationActions entry={entry} onStatusChange={onStatusChange} writable={writable} />
+                  <div className="reservation-provider-row">
+                    {href ? <RouteLink href={href} label={presentation.externalActionLabel} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">Sin enlace oficial verificado</span>}
+                  </div>
+                  {writable && onStatusChange ? (
+                    <div className="reservation-status-row">
+                      <ReservationActions entry={entry} onStatusChange={onStatusChange} writable={writable} />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </article>
@@ -613,41 +841,48 @@ function SourcesPanel({ itinerary, onOpenExternal }) {
 
 export function ItineraryViewer({
   activeView = "list",
-  actions,
   itinerary,
   onCalendarDayChange,
   onCalendarMonthChange,
   onOpenExternal,
+  onReservationOpen,
   onReservationStatusChange,
   onRouteDayChange,
   onViewChange,
   reservationWritable = false,
   selectedCalendarDate,
   selectedCalendarMonth,
+  selectedReservationKey,
   selectedRouteDate,
   variant = "chat",
 }) {
   const viewerId = useId();
   const tabRefs = useRef([]);
-  const views = variant === "public" ? publicViews : privateViews;
-  const currentView = views.some((view) => view.id === activeView) ? activeView : "list";
+  const supportsReservations = variant !== "public";
+  const availableViewIds = supportsReservations
+    ? [...primaryViews.map((view) => view.id), "reservations"]
+    : primaryViews.map((view) => view.id);
+  const currentView = availableViewIds.includes(activeView) ? activeView : "list";
+  const currentPanelLabelId = currentView === "reservations"
+    ? `${viewerId}-reservations-button`
+    : `${viewerId}-${currentView}-tab`;
   const contextualTitle = contextualItineraryTitle(itinerary.title, itinerary.destination);
   const meta = `${formatItineraryDate(itinerary.startDate, { day: "numeric", month: "long" })} — ${formatItineraryDate(itinerary.endDate, { day: "numeric", month: "long", year: "numeric" })} · ${itinerary.days.length} ${itinerary.days.length === 1 ? "día" : "días"}`;
 
   function selectView(view, focus = false) {
     onViewChange?.(view.id);
-    if (focus) window.requestAnimationFrame(() => tabRefs.current[views.indexOf(view)]?.focus());
+    if (focus) window.requestAnimationFrame(() => tabRefs.current[primaryViews.indexOf(view)]?.focus());
   }
 
   function handleTabKeyDown(event, index) {
     let nextIndex;
-    if (event.key === "ArrowRight") nextIndex = (index + 1) % views.length;
-    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + views.length) % views.length;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % primaryViews.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + primaryViews.length) % primaryViews.length;
     else if (event.key === "Home") nextIndex = 0;
-    else if (event.key === "End") nextIndex = views.length - 1;
+    else if (event.key === "End") nextIndex = primaryViews.length - 1;
     else return;
     event.preventDefault();
-    selectView(views[nextIndex], true);
+    selectView(primaryViews[nextIndex], true);
   }
 
   return (
@@ -658,39 +893,56 @@ export function ItineraryViewer({
           <h1>{contextualTitle}</h1>
           <p className="meta">{meta}</p>
         </div>
-        <nav aria-label="Vistas del itinerario" className="tabs">
-          <div role="tablist">
-            {views.map((view, index) => (
-              <button
-                aria-controls={`${viewerId}-${view.id}-panel`}
-                aria-selected={currentView === view.id}
-                className={currentView === view.id ? "is-active" : ""}
-                id={`${viewerId}-${view.id}-tab`}
-                key={view.id}
-                onClick={() => selectView(view)}
-                onKeyDown={(event) => handleTabKeyDown(event, index)}
-                ref={(node) => { tabRefs.current[index] = node; }}
-                role="tab"
-                tabIndex={currentView === view.id ? 0 : -1}
-                type="button"
-              >
-                {view.label}
-              </button>
-            ))}
-          </div>
-        </nav>
+        <div className="view-navigation">
+          <nav aria-label="Vistas del itinerario" className="tabs">
+            <div role="tablist">
+              {primaryViews.map((view, index) => (
+                <button
+                  aria-controls={`${viewerId}-${view.id}-panel`}
+                  aria-selected={currentView === view.id}
+                  className={currentView === view.id ? "is-active" : ""}
+                  id={`${viewerId}-${view.id}-tab`}
+                  key={view.id}
+                  onClick={() => selectView(view)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                  ref={(node) => { tabRefs.current[index] = node; }}
+                  role="tab"
+                  tabIndex={currentView === "reservations" ? (index === 0 ? 0 : -1) : (currentView === view.id ? 0 : -1)}
+                  type="button"
+                >
+                  <ViewIcon view={view.id} />
+                  <span className="view-label">{view.label}</span>
+                </button>
+              ))}
+            </div>
+          </nav>
+          {supportsReservations ? (
+            <button
+              aria-controls={`${viewerId}-reservations-panel`}
+              aria-current={currentView === "reservations" ? "page" : undefined}
+              className={`reservations-link ${currentView === "reservations" ? "is-active" : ""}`}
+              id={`${viewerId}-reservations-button`}
+              onClick={() => {
+                if (onReservationOpen) onReservationOpen(null);
+                else onViewChange?.("reservations");
+              }}
+              type="button"
+            >Reservas</button>
+          ) : null}
+        </div>
       </header>
       <section className="content">
         <div
-          aria-labelledby={`${viewerId}-${currentView}-tab`}
+          aria-labelledby={currentPanelLabelId}
           id={`${viewerId}-${currentView}-panel`}
-          role="tabpanel"
+          role={currentView === "reservations" ? "region" : "tabpanel"}
           tabIndex="0"
         >
           {currentView === "calendar" ? (
             <CalendarView
               itinerary={itinerary}
               onOpenExternal={onOpenExternal}
+              onReservationOpen={onReservationOpen}
               onSelectedDateChange={onCalendarDayChange}
               onSelectedMonthChange={onCalendarMonthChange}
               selectedDate={selectedCalendarDate}
@@ -700,11 +952,16 @@ export function ItineraryViewer({
           ) : currentView === "routes" ? (
             <RoutesView itinerary={itinerary} onOpenExternal={onOpenExternal} onSelectedDateChange={onRouteDayChange} selectedDate={selectedRouteDate} />
           ) : currentView === "reservations" ? (
-            <ReservationsView itinerary={itinerary} onOpenExternal={onOpenExternal} onStatusChange={onReservationStatusChange} writable={reservationWritable} />
-          ) : <ListView itinerary={itinerary} onOpenExternal={onOpenExternal} variant={variant} />}
+            <ReservationsView
+              itinerary={itinerary}
+              onOpenExternal={onOpenExternal}
+              onStatusChange={onReservationStatusChange}
+              selectedReservationKey={selectedReservationKey}
+              writable={reservationWritable}
+            />
+          ) : <ListView itinerary={itinerary} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />}
         </div>
         <SourcesPanel itinerary={itinerary} onOpenExternal={onOpenExternal} />
-        {actions ? <div className="action-bar">{actions}</div> : null}
       </section>
     </div>
   );

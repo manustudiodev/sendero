@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   contextualItineraryTitle,
+  hasReservationManagement,
+  reservationEntryKey,
+  reservationNavigationLabel,
   reservationPresentation,
 } from "./src/itinerary/presentation-utils.js";
 
@@ -45,4 +48,35 @@ test("uses ticket language for museums and concerts", () => {
     reservation: { kind: "ticket", status: "cancelled" },
   });
   assert.deepEqual(cancelled.nextAction, { label: "Aún no compré", status: "pending" });
+});
+
+test("uses the same reservation eligibility for itinerary links and the reservations view", () => {
+  for (const status of ["suggested", "pending", "confirmed", "cancelled"]) {
+    assert.equal(hasReservationManagement({ reservation: { status } }), true);
+  }
+  assert.equal(hasReservationManagement({ reservation: { status: "not_needed" } }), false);
+  assert.equal(hasReservationManagement({}), false);
+});
+
+test("builds a stable reservation target from the day and activity", () => {
+  assert.equal(reservationEntryKey("2026-08-13", "tortoni"), "2026-08-13:tortoni");
+  assert.equal(reservationEntryKey("", "tortoni"), "");
+  assert.equal(reservationEntryKey("2026-08-13", ""), "");
+});
+
+test("reservation navigation labels distinguish tickets and reservations", () => {
+  assert.equal(
+    reservationNavigationLabel({
+      activity: { title: "Café Tortoni" },
+      reservation: { kind: "reservation", requirement: "optional", status: "pending" },
+    }),
+    "Abrir en Reservas: reserva opcional para Café Tortoni",
+  );
+  assert.equal(
+    reservationNavigationLabel({
+      activity: { title: "Teatro Colón" },
+      reservation: { kind: "ticket", requirement: "required", status: "pending" },
+    }),
+    "Abrir en Reservas: requiere boleto para Teatro Colón",
+  );
 });

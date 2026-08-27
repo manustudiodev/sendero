@@ -184,25 +184,95 @@ test("embedded directions use complete public coordinates instead of ambiguous p
   assert.doesNotMatch(url.href, /Private|Museo|Mercado/);
 });
 
-test("embedded place maps support one coordinate and never render partial routes", () => {
+test("embedded place maps support a canonical address without coordinates", () => {
   const itinerary = { destination: "Buenos Aires, Argentina" };
-  const oneStop = {
+  const oneCoordinate = {
     activities: [
       { id: "malba", location: { name: "MALBA", latitude: -34.5768, longitude: -58.4034 } },
     ],
   };
-  const place = new URL(buildDayEmbedMapUrl("test-key", itinerary, oneStop));
-  assert.equal(place.pathname, "/maps/embed/v1/place");
-  assert.equal(place.searchParams.get("q"), "-34.5768,-58.4034");
+  const coordinatePlace = new URL(buildDayEmbedMapUrl("test-key", itinerary, oneCoordinate));
+  assert.equal(coordinatePlace.pathname, "/maps/embed/v1/place");
+  assert.equal(coordinatePlace.searchParams.get("q"), "-34.5768,-58.4034");
 
-  const partial = {
+  const oneAddress = {
     activities: [
-      ...oneStop.activities,
-      { id: "missing", location: { name: "Sin coordenadas", address: "Buenos Aires" } },
+      { id: "ateneo", location: { name: "El Ateneo Grand Splendid", address: "Av. Santa Fe 1860" } },
     ],
   };
-  assert.equal(buildDayEmbedMapUrl("test-key", itinerary, partial), "");
-  assert.equal(buildDayEmbedMapUrl("", itinerary, oneStop), "");
+  const place = new URL(buildDayEmbedMapUrl("test-key", itinerary, oneAddress));
+  assert.equal(place.pathname, "/maps/embed/v1/place");
+  assert.equal(
+    place.searchParams.get("q"),
+    "El Ateneo Grand Splendid, Av. Santa Fe 1860, Buenos Aires, Argentina",
+  );
+  assert.equal(buildDayEmbedMapUrl("", itinerary, oneAddress), "");
+});
+
+test("embedded directions allow a complete mix of coordinates and canonical addresses", () => {
+  const itinerary = {
+    destination: "Ciudad de México, México",
+    transport: { modes: ["public_transit"] },
+  };
+  const mixed = {
+    activities: [
+      {
+        id: "museum",
+        location: {
+          name: "Museo Nacional de Antropología",
+          address: "Av. Paseo de la Reforma s/n",
+          latitude: 19.426,
+          longitude: -99.1863,
+        },
+      },
+      {
+        id: "market",
+        location: { name: "Mercado de Coyoacán", address: "Ignacio Allende s/n, Coyoacán" },
+      },
+    ],
+  };
+
+  const url = new URL(buildDayEmbedMapUrl("test-key", itinerary, mixed));
+  assert.equal(url.pathname, "/maps/embed/v1/directions");
+  assert.equal(url.searchParams.get("origin"), "19.426,-99.1863");
+  assert.equal(
+    url.searchParams.get("destination"),
+    "Mercado de Coyoacán, Ignacio Allende s/n, Coyoacán, Ciudad de México, México",
+  );
+  assert.equal(url.searchParams.get("mode"), "transit");
+});
+
+test("embedded routes fail closed when a public stop has neither coordinates nor an address", () => {
+  const itinerary = { destination: "Buenos Aires, Argentina" };
+  const unusable = {
+    activities: [
+      { id: "located", location: { name: "MALBA", latitude: -34.5768, longitude: -58.4034 } },
+      { id: "missing", location: { name: "Lugar sin ubicación verificable" } },
+    ],
+  };
+  assert.equal(buildDayEmbedMapUrl("test-key", itinerary, unusable), "");
+});
+
+test("embedded routes never include confirmed lodging or provisional bases", () => {
+  const itinerary = {
+    destination: "Ciudad de México, México",
+    lodging: { status: "confirmed", address: "Dirección privada del alojamiento" },
+  };
+  const day = {
+    route: {
+      returnToLodging: true,
+      stops: ["Base provisional Roma Norte / Condesa", "Otra parada importada"],
+    },
+    activities: [
+      { id: "base", location: { name: "Base provisional Roma Norte", address: "Roma Norte" } },
+      { id: "museum", location: { name: "Museo Frida Kahlo", address: "Londres 247, Coyoacán" } },
+    ],
+  };
+
+  const url = new URL(buildDayEmbedMapUrl("test-key", itinerary, day));
+  assert.equal(url.pathname, "/maps/embed/v1/place");
+  assert.match(url.searchParams.get("q"), /Museo Frida Kahlo/);
+  assert.doesNotMatch(url.href, /privada|alojamiento|provisional|Roma\+Norte|importada/i);
 });
 
 test("embedded directions accept Google's 20-waypoint limit and reject larger routes", () => {

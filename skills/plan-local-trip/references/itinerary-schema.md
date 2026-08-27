@@ -38,6 +38,21 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
           "title": "Visit the museum",
           "category": "culture",
           "locked": true,
+          "description": "Arrive 10 minutes early and allow time for the cloakroom before the one-hour visit.",
+          "guide": {
+            "overview": "The museum presents a broad view of Portuguese art in a historic palace setting. This visit focuses on the works and rooms that best connect with the day's riverfront context.",
+            "highlights": [
+              "The museum's best-known collection rooms",
+              "Views toward the Tagus from the surrounding quarter"
+            ],
+            "sources": [
+              {
+                "label": "Official museum guide",
+                "url": "https://example.com/museum-guide",
+                "checkedAt": "2026-09-01T12:00:00Z"
+              }
+            ]
+          },
           "location": {
             "name": "Museu Nacional de Arte Antiga",
             "address": "Rua das Janelas Verdes, Lisbon",
@@ -73,6 +88,16 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
   ]
 }
 ```
+
+## Activity editorial fields
+
+- `activity.description` is concise logistics and operation: what happens during the stop, arrival or access guidance, timing constraints, meeting details, or other information needed to carry out the plan. Do not use it for historical background, general destination copy, or a mini travel guide.
+- `activity.guide` is the source-backed visitor guide for the activity. Omit it when reliable guide material is unavailable; never fill it with unsupported prose.
+  - `overview`: required when `guide` is present; 2–4 useful sentences explaining the place, its historical, cultural, architectural, or popular relevance, and why it fits the trip.
+  - `highlights`: optional; zero to four concise items worth noticing or understanding during the visit.
+  - `sources`: required when `guide` is present; one to four source objects with an absolute `url`, a useful `label`, and `checkedAt` when available. Every material guide claim must be supported by these sources.
+- Keep operational claims and their sources separate from guide content. A source may appear in both places only when it genuinely supports both kinds of information.
+- When revising an existing itinerary, preserve the complete `activity.guide` for retained activities unless guide content is explicitly verified. If explicit verification proves a claim stale or inaccurate, update only the affected overview, highlights, and supporting sources.
 
 ## Status values
 
@@ -115,6 +140,7 @@ Only `owner` and `editor` roles may receive reservation-status controls. An unsa
 - Use ISO dates and 24-hour times.
 - Keep every day within the trip range and order days chronologically.
 - Give every activity a stable ID that is unique within its day so follow-up changes and reservation controls target exactly one activity.
+- Keep `activity.description` operational and `activity.guide` editorial and source-backed according to the contract above.
 - Mark existing reservations and fixed commitments as locked.
 - Keep URLs absolute and user-openable.
 - Use only `http://` or `https://` URLs for sources, reservations, and maps.

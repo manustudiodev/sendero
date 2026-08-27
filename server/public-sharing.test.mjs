@@ -53,6 +53,17 @@ function privateItinerary() {
             endTime: "12:00",
             title: "Museo",
             description: "Visita a la colección",
+            guide: {
+              overview: "Un museo clave para comprender el arte argentino.",
+              highlights: ["Observar la colección de arte del siglo XIX."],
+              sources: [
+                {
+                  label: "Museo · colección",
+                  url: "https://museum.example/collection",
+                  checkedAt: "2027-08-10T10:00:00Z",
+                },
+              ],
+            },
             category: "museum",
             locked: true,
             location: {
@@ -105,6 +116,17 @@ test("creates a strict, versionable public projection without known private fiel
   assert.equal("reservation" in published.days[0].activities[0], false);
   assert.equal(published.days[0].activities[0].location.latitude, -34.5837);
   assert.equal(published.days[0].activities[0].location.longitude, -58.3932);
+  assert.deepEqual(published.days[0].activities[0].guide, {
+    overview: "Un museo clave para comprender el arte argentino.",
+    highlights: ["Observar la colección de arte del siglo XIX."],
+    sources: [
+      {
+        label: "Museo · colección",
+        url: "https://museum.example/collection",
+        checkedAt: "2027-08-10T10:00:00Z",
+      },
+    ],
+  });
   assert.deepEqual(published.days[0].route.stops, [
     "Avenida Pública 456, Buenos Aires, Argentina",
   ]);
@@ -147,10 +169,28 @@ test("redacts lodging variants from public copy, locations, routes, and map URLs
   source.days[0].fallback = "Descansar en Hôtel Sécret";
   source.days[0].weather.summary = "Pronóstico para HOTEL SECRET";
   source.days[0].weather.checkedAt = "Calle Privada 123";
+  source.days[0].activities[0].guide.highlights.push(
+    "Regresar a Calle Privada 123 después de la visita",
+  );
+  source.days[0].activities[0].guide.sources.push(
+    {
+      label: "Cómo llegar desde Hôtel Sécret",
+      url: "https://museum.example/directions",
+    },
+    {
+      label: "Fuente pública",
+      url: "https://museum.example/?origin=Calle+Privada+123",
+    },
+  );
   source.days[0].activities.push({
     startTime: "15:00",
     title: "Check-in en HOTEL SECRET",
     description: "Llegar a CALLE-PRIVADA 123",
+    guide: {
+      overview: "La visita comienza junto a Hôtel Sécret.",
+      highlights: ["Arquitectura pública"],
+      sources: [{ label: "Fuente", url: "https://example.com/guide" }],
+    },
     category: "logistics",
     locked: true,
     location: {
@@ -181,6 +221,18 @@ test("redacts lodging variants from public copy, locations, routes, and map URLs
 
   assert.equal(privateActivity.location, undefined);
   assert.equal(privateActivity.sourceUrl, undefined);
+  assert.equal(privateActivity.guide, undefined);
+  assert.deepEqual(published.days[0].activities[0].guide, {
+    overview: "Un museo clave para comprender el arte argentino.",
+    highlights: ["Observar la colección de arte del siglo XIX."],
+    sources: [
+      {
+        label: "Museo · colección",
+        url: "https://museum.example/collection",
+        checkedAt: "2027-08-10T10:00:00Z",
+      },
+    ],
+  });
   assert.equal(published.days[0].weather.checkedAt, undefined);
   assert.equal(published.sources?.[0]?.checkedAt, undefined);
   assert.equal("locked" in privateActivity, false);
@@ -190,6 +242,28 @@ test("redacts lodging variants from public copy, locations, routes, and map URLs
   ]);
   assert.doesNotMatch(published.days[0].route.mapUrl, /hotel|secret|calle|privada|123/i);
   assert.doesNotMatch(serialized, /h[oô]tel[ -]s[eé]cret|calle[ -]privada[ -]123/i);
+});
+
+test("omits an activity guide when no safe editorial source remains", () => {
+  const source = privateItinerary();
+  source.days[0].activities[0].guide = {
+    overview: "Historia pública del museo.",
+    highlights: ["Observar la arquitectura original."],
+    sources: [
+      {
+        label: "Indicaciones desde Secret Hotel",
+        url: "https://museum.example/history",
+      },
+      {
+        label: "Fuente pública",
+        url: "https://museum.example/?origin=PRIVATE+LODGING+ADDRESS+123",
+      },
+    ],
+  };
+
+  const published = sanitizePublicSnapshot(source);
+  assert.equal(published.days[0].activities[0].guide, undefined);
+  assert.doesNotMatch(JSON.stringify(published), /Secret Hotel|PRIVATE LODGING ADDRESS 123/i);
 });
 
 test("never uses the destination or lodging as a public route base", () => {

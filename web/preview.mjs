@@ -60,6 +60,14 @@ const itinerary = {
           description: "Casa Rosada, Catedral y Cabildo.",
           location: { name: "Plaza de Mayo", address: "Balcarce 50, Buenos Aires, Argentina", latitude: -34.6081, longitude: -58.3702 },
           sourceUrl: "https://turismo.buenosaires.gob.ar/es/otros-establecimientos/plaza-de-mayo",
+          guide: {
+            overview: "Plaza de Mayo es el centro cívico y simbólico de Buenos Aires: alrededor de ella se concentran la Casa Rosada, el Cabildo y la Catedral Metropolitana. Su forma actual nació al unirse las antiguas plazas de la Victoria y del Fuerte, y desde entonces fue escenario de celebraciones, protestas y momentos decisivos de la vida política argentina.",
+            highlights: [
+              "Busca la Pirámide de Mayo, el primer monumento patrio de la ciudad.",
+              "Las rondas de las Madres de Plaza de Mayo dejaron una marca permanente en este espacio.",
+            ],
+            sources: [{ label: "Turismo de Buenos Aires", url: "https://turismo.buenosaires.gob.ar/es/otros-establecimientos/plaza-de-mayo", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           travelToNext: { durationMinutes: 12, mode: "walk" },
         },
         {
@@ -69,6 +77,14 @@ const itinerary = {
           description: "Café Tortoni y una caminata por Avenida de Mayo.",
           location: { name: "Café Tortoni", address: "Av. de Mayo 825, Buenos Aires, Argentina", latitude: -34.6087, longitude: -58.3782 },
           sourceUrl: "https://www.cafetortoni.com.ar/",
+          guide: {
+            overview: "Fundado en 1858, el Tortoni es uno de los cafés históricos más reconocibles de Buenos Aires. Sus salones quedaron asociados a escritores, artistas y peñas culturales, y conservan vitrales, mármoles, maderas y retratos que cuentan buena parte de la vida intelectual porteña.",
+            highlights: [
+              "Mira el salón del fondo y la colección de fotografías antes de sentarte.",
+              "La experiencia importa tanto por el edificio y su memoria como por el café.",
+            ],
+            sources: [{ label: "Café Tortoni", url: "https://www.cafetortoni.com.ar/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           reservation: { kind: "reservation", requirement: "optional", status: "pending", url: "https://www.cafetortoni.com.ar/", note: "Consultar el canal oficial si prefieren evitar la espera." },
           travelToNext: { durationMinutes: 12, mode: "walk" },
         },
@@ -79,6 +95,14 @@ const itinerary = {
           description: "Recorrido por la sala, el foyer y las galerías.",
           location: { name: "Teatro Colón", address: "Cerrito 628, Buenos Aires, Argentina", latitude: -34.6011, longitude: -58.383 },
           sourceUrl: "https://teatrocolon.org.ar/es/visitas-guiadas",
+          guide: {
+            overview: "El edificio actual del Teatro Colón abrió en 1908 y combina influencias del academicismo europeo con una sala en forma de herradura. Es célebre por su acústica y por los talleres propios donde se producen escenografías, vestuario y utilería para ópera, ballet y conciertos.",
+            highlights: [
+              "Observa la cúpula pintada por Raúl Soldi y la disposición de los palcos.",
+              "El foyer y el Salón Dorado muestran el carácter ceremonial del teatro más allá de la sala principal.",
+            ],
+            sources: [{ label: "Teatro Colón", url: "https://teatrocolon.org.ar/es/visitas-guiadas", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           reservation: {
             kind: "ticket",
             requirement: "required",
@@ -112,6 +136,14 @@ const itinerary = {
           description: "Puestos históricos y comercios de barrio antes del horario más concurrido.",
           location: { name: "Mercado de San Telmo", address: "Carlos Calvo 495, Buenos Aires, Argentina", latitude: -34.621, longitude: -58.3716 },
           sourceUrl: "https://mercadodesantelmo.com/",
+          guide: {
+            overview: "El Mercado de San Telmo fue inaugurado en 1897 para abastecer a la población creciente del barrio. Su gran estructura de hierro, chapa y vidrio conserva el espíritu de los mercados urbanos de fines del siglo XIX, aunque hoy conviven verdulerías y anticuarios con cafés y cocinas contemporáneas.",
+            highlights: [
+              "Levanta la vista hacia la cúpula central y la modulación de hierro del edificio.",
+              "Los puestos tradicionales permiten ver la diferencia entre el mercado cotidiano y su capa turística más reciente.",
+            ],
+            sources: [{ label: "Mercado de San Telmo", url: "https://mercadodesantelmo.com/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           travelToNext: { durationMinutes: 8, mode: "walk" },
         },
         {
@@ -120,6 +152,14 @@ const itinerary = {
           title: "Museo de Arte Moderno",
           location: { name: "Museo de Arte Moderno de Buenos Aires", address: "Av. San Juan 350, Buenos Aires, Argentina", latitude: -34.622, longitude: -58.3703 },
           sourceUrl: "https://museomoderno.org/",
+          guide: {
+            overview: "El Museo de Arte Moderno de Buenos Aires nació en 1956 por iniciativa de Rafael Squirru y fue clave para legitimar nuevas prácticas artísticas en la ciudad. Su sede en una antigua fábrica de tabaco de San Telmo conecta patrimonio industrial con exposiciones de arte argentino e internacional de los siglos XX y XXI.",
+            highlights: [
+              "Presta atención al diálogo entre la envolvente de ladrillo histórica y la ampliación contemporánea.",
+              "La colección ayuda a leer cómo cambiaron las ideas de modernidad y vanguardia en Argentina.",
+            ],
+            sources: [{ label: "Museo Moderno", url: "https://museomoderno.org/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           reservation: { kind: "ticket", requirement: "required", status: "confirmed", url: "https://museomoderno.org/", note: "Entrada registrada en Sendero; conservar el comprobante del proveedor." },
           locked: true,
           travelToNext: { durationMinutes: 18, mode: "taxi" },
@@ -130,6 +170,14 @@ const itinerary = {
           title: "Programación en la Usina del Arte",
           location: { name: "Usina del Arte", address: "Agustín R. Caffarena 1, Buenos Aires, Argentina", latitude: -34.6282, longitude: -58.3578 },
           sourceUrl: "https://usinadelarte.ar/",
+          guide: {
+            overview: "La Usina del Arte ocupa una antigua central eléctrica levantada para la Compañía Ítalo Argentina de Electricidad en el área portuaria de La Boca. La recuperación del conjunto preservó su monumental fachada de ladrillo y lo convirtió en un centro cultural dedicado a música, artes visuales y actividades familiares.",
+            highlights: [
+              "La escala de las naves permite reconocer el pasado industrial incluso después de la reconversión.",
+              "Su arquitectura de inspiración florentina contrasta con los galpones y la historia obrera del entorno.",
+            ],
+            sources: [{ label: "Usina del Arte", url: "https://usinadelarte.ar/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           reservation: { kind: "ticket", requirement: "optional", status: "cancelled", url: "https://usinadelarte.ar/", note: "Marcada como cancelada en Sendero; verificar cualquier gestión real con el organizador." },
         },
       ],
@@ -153,6 +201,14 @@ const itinerary = {
           title: "Museo Nacional de Bellas Artes",
           location: { name: "Museo Nacional de Bellas Artes", address: "Av. del Libertador 1473, Buenos Aires, Argentina", latitude: -34.583, longitude: -58.3928 },
           sourceUrl: "https://www.bellasartes.gob.ar/",
+          guide: {
+            overview: "Creado en 1895, el Museo Nacional de Bellas Artes reúne una de las colecciones públicas más importantes de Argentina. Su sede de Recoleta fue adaptada por Alejandro Bustillo a partir de un antiguo edificio de servicios sanitarios, y permite recorrer arte europeo, latinoamericano y argentino en una misma visita.",
+            highlights: [
+              "Busca las salas de arte argentino para seguir la construcción visual del país entre los siglos XIX y XX.",
+              "La entrada principal y las proporciones interiores revelan la intervención racionalista de Bustillo.",
+            ],
+            sources: [{ label: "Museo Nacional de Bellas Artes", url: "https://www.bellasartes.gob.ar/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           travelToNext: { durationMinutes: 20, mode: "public_transit" },
         },
         {
@@ -161,6 +217,14 @@ const itinerary = {
           title: "Jardín Japonés",
           location: { name: "Jardín Japonés", address: "Av. Casares 3401, Buenos Aires, Argentina", latitude: -34.5753, longitude: -58.4093 },
           sourceUrl: "https://jardinjapones.org.ar/",
+          guide: {
+            overview: "El Jardín Japonés fue creado en 1967 como expresión de los vínculos entre Japón y Argentina. Más que un parque ornamental, organiza puentes, agua, rocas y vegetación según principios paisajísticos japoneses y funciona también como espacio de difusión cultural.",
+            highlights: [
+              "Recorre los puentes con calma: las vistas están compuestas para cambiar a medida que avanzas.",
+              "Las especies, faroles y elementos simbólicos ayudan a entender el jardín como una secuencia, no como una sola postal.",
+            ],
+            sources: [{ label: "Jardín Japonés", url: "https://jardinjapones.org.ar/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           reservation: { kind: "ticket", requirement: "recommended", status: "pending", url: "https://jardinjapones.org.ar/", deadline: "Revisar entradas durante la semana del viaje" },
           travelToNext: { durationMinutes: 18, mode: "taxi" },
         },
@@ -170,6 +234,14 @@ const itinerary = {
           title: "Cena de despedida en Chuí",
           location: { name: "Chuí", address: "Loyola 1250, Buenos Aires, Argentina", latitude: -34.5929, longitude: -58.4432 },
           sourceUrl: "https://www.instagram.com/chui.ba/",
+          guide: {
+            overview: "Chuí propone una cocina centrada en vegetales, fuego y productos de estación dentro de un jardín urbano en Villa Crespo. El espacio y la comida se piensan juntos: mesas al aire libre, vegetación abundante y una cocina visible construyen una experiencia muy distinta a la de un restaurante porteño tradicional.",
+            highlights: [
+              "Observa cómo el patio y la vegetación funcionan como parte del salón.",
+              "El menú cambia con la temporada, por lo que conviene leer la propuesta del día sin buscar platos fijos.",
+            ],
+            sources: [{ label: "Chuí", url: "https://www.instagram.com/chui.ba/", checkedAt: "2026-08-01T12:00:00Z" }],
+          },
           reservation: { kind: "reservation", requirement: "required", status: "pending", url: "https://www.instagram.com/chui.ba/", deadline: "Reservar una semana antes", note: "Confirmar el canal de reservas y la política de cancelación con el restaurante." },
           locked: true,
         },

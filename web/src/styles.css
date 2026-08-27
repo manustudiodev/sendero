@@ -1,5 +1,89 @@
 :root {
   color-scheme: light;
+  --sendero-off-white-50: #fffefe;
+  --sendero-off-white-100: #fefefc;
+  --sendero-off-white-200: #fdfcf8;
+  --sendero-off-white-300: #fbfaf4;
+  --sendero-off-white-400: #f9f6ec;
+  --sendero-off-white-500: #f6f2e4;
+  --sendero-off-white-600: #d8d5c9;
+  --sendero-off-white-700: #b1aea4;
+  --sendero-off-white-800: #87857d;
+  --sendero-off-white-900: #62615b;
+  --sendero-off-white-950: #3b3a37;
+  --sendero-forest-50: #f2f7f7;
+  --sendero-forest-100: #e6f0ef;
+  --sendero-forest-200: #bfd9d7;
+  --sendero-forest-300: #99c2bf;
+  --sendero-forest-400: #4d948e;
+  --sendero-forest-500: #00665e;
+  --sendero-forest-600: #005a53;
+  --sendero-forest-700: #004944;
+  --sendero-forest-800: #003834;
+  --sendero-forest-900: #002926;
+  --sendero-forest-950: #001817;
+  --sendero-teal-50: #fafdfd;
+  --sendero-teal-100: #f5fbfa;
+  --sendero-teal-200: #e6f5f3;
+  --sendero-teal-300: #d7efeb;
+  --sendero-teal-400: #b9e2dc;
+  --sendero-teal-500: #9bd6cd;
+  --sendero-teal-600: #88bcb4;
+  --sendero-teal-700: #709a94;
+  --sendero-teal-800: #557671;
+  --sendero-teal-900: #3e5652;
+  --sendero-teal-950: #253331;
+  --sendero-grass-50: #fafdf7;
+  --sendero-grass-100: #f6fbef;
+  --sendero-grass-200: #e8f4d7;
+  --sendero-grass-300: #daeebf;
+  --sendero-grass-400: #bee18e;
+  --sendero-grass-500: #a2d45e;
+  --sendero-grass-600: #8fbb53;
+  --sendero-grass-700: #759944;
+  --sendero-grass-800: #597534;
+  --sendero-grass-900: #415526;
+  --sendero-grass-950: #273317;
+  --sendero-awaken-50: #fffaf7;
+  --sendero-awaken-100: #fff5f0;
+  --sendero-awaken-200: #ffe5d8;
+  --sendero-awaken-300: #ffd5c1;
+  --sendero-awaken-400: #ffb693;
+  --sendero-awaken-500: #ff9664;
+  --sendero-awaken-600: #e08458;
+  --sendero-awaken-700: #b86c48;
+  --sendero-awaken-800: #8c5337;
+  --sendero-awaken-900: #663c28;
+  --sendero-awaken-950: #3d2418;
+  --sendero-connect-50: #fffdf7;
+  --sendero-connect-100: #fffbf0;
+  --sendero-connect-200: #fff6d8;
+  --sendero-connect-300: #fef0c1;
+  --sendero-connect-400: #fee593;
+  --sendero-connect-500: #fdda64;
+  --sendero-connect-600: #dfc058;
+  --sendero-connect-700: #b69d48;
+  --sendero-connect-800: #8b7837;
+  --sendero-connect-900: #655728;
+  --sendero-connect-950: #3d3418;
+  --sendero-exhale-50: #f9fbfe;
+  --sendero-exhale-100: #f3f8fd;
+  --sendero-exhale-200: #e2edfa;
+  --sendero-exhale-300: #d0e2f6;
+  --sendero-exhale-400: #adcdf0;
+  --sendero-exhale-500: #8ab7e9;
+  --sendero-exhale-600: #79a1cd;
+  --sendero-exhale-700: #6384a8;
+  --sendero-exhale-800: #4c6580;
+  --sendero-exhale-900: #37495d;
+  --sendero-exhale-950: #212c38;
+  --sendero-off-white: var(--sendero-off-white-500);
+  --sendero-forest: var(--sendero-forest-500);
+  --sendero-teal: var(--sendero-teal-500);
+  --sendero-grass: var(--sendero-grass-500);
+  --sendero-awaken: var(--sendero-awaken-500);
+  --sendero-connect: var(--sendero-connect-500);
+  --sendero-exhale: var(--sendero-exhale-500);
   --ink: #1f1f1d;
   --muted: #787873;
   --subtle: #a3a39e;
@@ -7,9 +91,9 @@
   --line-strong: #d8d8d4;
   --soft: #f7f7f5;
   --surface: #ffffff;
-  --accent: #d9ef62;
-  --accent-ink: #29320d;
-  --blue: #2f72c4;
+  --accent: var(--sendero-grass);
+  --accent-ink: var(--sendero-forest);
+  --blue: var(--sendero-forest);
   --danger: #a33c35;
   --surface-hover: #fbfbfa;
   --on-strong: #ffffff;
@@ -43,7 +127,7 @@ html.widget-document[data-theme="dark"] {
   --surface-hover: #2d2d29;
   --on-strong: #1b1b19;
   --strong-hover: #d8d8d3;
-  --blue: #7eb5f4;
+  --blue: var(--sendero-teal);
   --danger: #ff9c94;
   --focus-border: #85857e;
   --focus-ring: rgba(126, 181, 244, .45);
@@ -89,7 +173,7 @@ a { color: inherit; }
 :focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
 
 .app-shell { width: 100%; min-height: 340px; padding: 22px; }
-.app-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.app-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding-bottom: 0; }
 .header-copy { min-width: 0; }
 .eyebrow { margin: 0 0 7px; color: var(--muted); font-size: 14px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(27px, 5vw, 42px); font-weight: 650; letter-spacing: -.045em; line-height: 1.02; }
@@ -107,10 +191,15 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .button-accent { background: var(--accent); color: var(--accent-ink); }
 .button-ghost { background: transparent; color: var(--muted); }
 
-.tabs { display: flex; width: 100%; max-width: 100%; overflow: visible; padding: 3px; border-radius: 11px; background: var(--soft); }
-.tabs > [role="tablist"] { display: flex; width: 100%; gap: 3px; }
-.tabs button { min-width: 0; flex: 1; border: 0; border-radius: 8px; padding: 9px 13px; background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.view-navigation { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; }
+.tabs { display: inline-flex; width: fit-content; max-width: 100%; overflow: visible; padding: 3px; border-radius: 11px; background: var(--soft); }
+.tabs > [role="tablist"] { display: flex; width: auto; gap: 3px; }
+.tabs button { display: inline-flex; min-width: 0; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 8px; padding: 9px 13px; background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .tabs button.is-active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px var(--shadow); }
+.view-icon { display: none; width: 19px; height: 19px; flex: 0 0 auto; }
+.reservations-link { flex: 0 0 auto; border: 0; padding: 9px 0; background: transparent; color: var(--blue); cursor: pointer; font-weight: 650; text-decoration: none; }
+.reservations-link:hover { color: var(--ink); }
+.reservations-link.is-active { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 3px; text-underline-offset: 5px; }
 .content { padding-top: 19px; }
 
 .disclosure-panel {
@@ -174,21 +263,47 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .day-heading { display: grid; gap: 3px; min-width: 0; }
 .day-heading strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .day-heading span { color: var(--muted); font-size: 14px; }
-.day-details { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(210px, .65fr); gap: 18px; padding: 15px 15px 17px 104px; border-top: 1px solid var(--line); }
+.day-details { display: block; padding: 15px 15px 17px 104px; border-top: 1px solid var(--line); }
+.day-detail-tabs { display: inline-flex; width: fit-content; gap: 3px; margin-bottom: 14px; border-radius: 10px; padding: 3px; background: var(--soft); }
+.day-detail-tabs button { border: 0; border-radius: 7px; padding: 7px 11px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; }
+.day-detail-tabs button.is-active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px var(--shadow); }
+.day-detail-panel { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(210px, .65fr); gap: 18px; }
+.day-detail-panel[hidden] { display: none; }
+.day-route-content { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1.35fr) minmax(210px, .65fr); gap: 18px; }
+.day-guide { display: block; grid-column: 1 / -1; }
+.day-guide-stops { display: grid; gap: 20px; margin: 0; padding: 0; list-style: none; }
+.day-guide-stop { min-width: 0; margin: 0; padding: 0; }
+.day-guide-stop article { max-width: 74ch; }
+.day-guide-stop h3 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.3; }
+.day-guide-overview, .day-guide-legacy-note { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.day-guide-legacy-note { color: var(--subtle); font-style: italic; }
+.day-guide-highlights { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 19px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.day-guide-sources { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 8px 0 0; padding: 0; list-style: none; }
+.day-guide-source { display: inline-flex; color: var(--blue); font-size: 14px; text-decoration: none; }
+.day-guide-source:hover { text-decoration: underline; }
 .timeline { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .activity { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 9px; padding: 2px 0; }
+.activity > div { min-width: 0; }
 .activity-time { align-self: start; border-radius: 8px; padding: 6px 7px; background: var(--soft); text-align: center; font-size: 14px; }
 .activity strong { display: block; margin: 2px 0; font-size: 14px; }
+.activity-title-row { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.activity-title-row strong { min-width: 0; }
+.activity-reservation-link { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid var(--sendero-teal-400); border-radius: 8px; padding: 0; background: var(--sendero-teal-200); color: var(--sendero-teal-950); cursor: pointer; }
+.activity-reservation-link:hover { border-color: var(--sendero-teal-600); background: var(--sendero-teal-300); }
+.activity-reservation-link:focus-visible { outline: 2px solid var(--focus-border); outline-offset: 2px; box-shadow: 0 0 0 3px var(--focus-ring); }
+.activity-reservation-icon { width: 17px; height: 17px; }
 .activity p, .day-context p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
 .activity-source { display: inline-flex; margin-top: 4px; color: var(--blue); font-size: 14px; text-decoration: none; }
 .activity-source:hover { text-decoration: underline; }
 .badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
-.badge { border-radius: 99px; padding: 3px 7px; background: var(--soft); color: var(--muted); font-size: 14px; }
+.badge { display: inline-flex; min-height: 28px; box-sizing: border-box; align-items: center; justify-content: center; border-radius: 99px; padding: 5px 11px; background: var(--soft); color: var(--muted); font-size: 14px; line-height: 1; }
 .badge-locked { background: var(--locked-bg); color: var(--locked-ink); }
-.reservation-status-confirmed { background: var(--locked-bg); color: var(--locked-ink); }
-.reservation-status-cancelled { background: var(--danger-bg); color: var(--danger); }
-.day-context { display: grid; align-self: start; gap: 5px; background: transparent; }
-.day-context-item { border: 1px solid var(--line); border-radius: 12px; padding: 13px; background: var(--soft); }
+.reservation-status-pending { background: var(--sendero-connect); color: var(--sendero-connect-950); }
+.reservation-status-confirmed { background: var(--sendero-grass); color: var(--sendero-grass-950); }
+.reservation-status-cancelled { background: var(--sendero-awaken); color: var(--sendero-awaken-950); }
+.day-context { display: grid; align-self: start; gap: 0; background: transparent; }
+.day-context-item { position: relative; border: 1px solid var(--line); border-radius: 12px; padding: 13px; background: var(--soft); }
+.day-context-item + .day-context-item { margin-top: -1px; }
 .day-context b { font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
 .day-context-source, .day-context small { display: inline-block; margin-top: 7px; color: var(--blue); font-size: 14px; text-decoration: none; }
 .day-context-source:hover { text-decoration: underline; }
@@ -208,7 +323,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .calendar-row { min-width: 0; }
 .calendar-row + .calendar-row { border-top: 1px solid var(--line); }
 .calendar-cells { display: grid; width: 100%; min-width: 0; grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.calendar-day { position: relative; min-width: 0; min-height: 125px; overflow: hidden; border: 0; border-right: 1px solid var(--line); padding: 12px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.calendar-day { position: relative; display: flex; min-width: 0; min-height: 125px; overflow: hidden; flex-direction: column; align-items: stretch; border: 0; border-right: 1px solid var(--line); padding: 12px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
 .calendar-day:nth-child(7) { border-right: 0; }
 .calendar-day:hover { background: var(--surface-hover); }
 .calendar-day.is-inactive, .calendar-day.is-outside-month { cursor: default; }
@@ -217,9 +332,9 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .calendar-day.is-outside-month:hover { background: var(--soft); }
 .calendar-day.is-selected { background: var(--soft); box-shadow: inset 0 -3px 0 var(--accent); }
 .calendar-day span { color: var(--muted); font-size: 14px; }
-.calendar-day strong { display: block; margin: 8px 0 19px; font-size: 29px; letter-spacing: -.04em; }
-.calendar-day p { display: -webkit-box; overflow: hidden; margin: 0; font-size: 14px; font-weight: 650; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.calendar-day small { display: block; margin-top: 5px; color: var(--muted); font-size: 14px; }
+.calendar-day strong { display: block; align-self: flex-start; margin: 8px 0 19px; font-size: 29px; font-weight: 700; letter-spacing: -.04em; line-height: 1; }
+.calendar-day p { display: -webkit-box; overflow: hidden; margin: auto 0 0; padding-right: 25px; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.calendar-day small { display: none; }
 .calendar-toggle { position: absolute; right: 10px; bottom: 9px; width: 23px; height: 23px; }
 .calendar-day-detail { min-width: 0; overflow: hidden; border-top: 1px solid var(--line); background: var(--surface); }
 .calendar-day-detail .day-details { padding-left: 15px; border-top: 0; }
@@ -266,6 +381,8 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .reservations-header > span { flex: 0 0 auto; border-radius: 999px; padding: 6px 9px; background: var(--soft); color: var(--muted); font-size: 14px; }
 .reservation-list { display: grid; }
 .reservation-card { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 15px; padding: 15px 16px; }
+.reservation-card.is-targeted { background: var(--soft); box-shadow: inset 3px 0 0 var(--sendero-teal-600); }
+.reservation-card:focus-visible { outline: 2px solid var(--focus-border); outline-offset: -3px; box-shadow: inset 3px 0 0 var(--sendero-teal-600), 0 0 0 3px var(--focus-ring); }
 .reservation-card + .reservation-card { border-top: 1px solid var(--line); }
 .reservation-date { display: grid; align-content: start; gap: 4px; color: var(--muted); font-size: 14px; text-transform: capitalize; }
 .reservation-date span { color: var(--ink); font-size: 14px; font-weight: 650; }
@@ -273,18 +390,24 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .reservation-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .reservation-name { display: flex; min-width: 0; flex-wrap: wrap; gap: 7px; align-items: center; }
 .reservation-title-row h3 { margin: 0; font-size: 14px; }
-.reservation-requirement-pill { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; padding: 3px 7px; color: var(--muted); }
-.reservation-pill { flex: 0 0 auto; border-radius: 999px; padding: 4px 7px; background: var(--soft); color: var(--muted); font-size: 14px; }
+.reservation-requirement-pill { display: inline-flex; min-height: 28px; box-sizing: border-box; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--sendero-teal-400); border-radius: 7px; padding: 5px 11px; background: var(--sendero-teal-200); color: var(--sendero-teal-950); line-height: 1; }
+.reservation-requirement-required { border-color: var(--sendero-awaken-400); background: var(--sendero-awaken-200); color: var(--sendero-awaken-900); }
+.reservation-requirement-recommended { border-color: var(--sendero-teal-400); background: var(--sendero-teal-200); color: var(--sendero-teal-950); }
+.reservation-requirement-optional { border-color: var(--sendero-exhale-400); background: var(--sendero-exhale-200); color: var(--sendero-exhale-900); }
+.reservation-pill { display: inline-flex; min-height: 28px; box-sizing: border-box; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 999px; padding: 5px 12px; background: var(--sendero-connect); color: var(--sendero-connect-950); font-size: 14px; line-height: 1; }
+.reservation-pill.reservation-status-pending { background: var(--sendero-connect); color: var(--sendero-connect-950); }
+.reservation-pill.reservation-status-confirmed { background: var(--sendero-grass); color: var(--sendero-grass-950); }
+.reservation-pill.reservation-status-cancelled { background: var(--sendero-awaken); color: var(--sendero-awaken-950); }
 .reservation-copy > p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .reservation-copy > p strong { color: var(--ink); }
-.reservation-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 10px; }
+.reservation-actions { display: flex; flex-wrap: nowrap; gap: 7px; align-items: center; margin-top: 10px; }
 .reservation-actions .button { min-height: 32px; padding: 6px 9px; font-size: 14px; }
-.reservation-controls { display: flex; flex-wrap: wrap; gap: 7px; }
+.reservation-provider-row, .reservation-status-row { display: inline-flex; min-width: 0; flex: 0 1 auto; }
+.reservation-controls { display: inline-flex; width: auto; flex-wrap: wrap; gap: 7px; }
 .reservation-error { width: 100%; margin: 2px 0 0; color: var(--danger); font-size: 14px; }
 .reservation-missing-link { color: var(--muted); font-size: 14px; }
 .reservations-empty { border: 1px solid var(--line); border-radius: 14px; padding: 35px 18px; text-align: center; }
 .reservations-empty p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
-.action-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .itinerary-sources { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 14px; }
 .itinerary-sources summary { width: fit-content; cursor: pointer; color: var(--muted); }
 .itinerary-sources ul { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
@@ -401,7 +524,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .itinerary-viewer-public .day-context p { color: var(--public-muted); font-size: 14px; }
 .itinerary-viewer-public .activity strong { font-size: 14px; }
 .itinerary-viewer-public .activity-time { font-size: 14px; }
-.itinerary-viewer-public .badge { padding: 4px 8px; color: var(--public-muted); font-size: 14px; }
+.itinerary-viewer-public .badge { padding: 5px 11px; color: var(--public-muted); font-size: 14px; }
 .itinerary-viewer-public .day-context b { font-size: 14px; }
 .itinerary-viewer-public .calendar-day { min-height: 165px; padding: 16px; }
 .itinerary-viewer-public .calendar-day span,
@@ -432,8 +555,8 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .share-control-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .share-exact-preview { margin: 20px -4px 0; border-top: 1px solid var(--line); padding-top: 8px; }
 .share-exact-preview .app-header { align-items: flex-start; flex-direction: column; padding: 24px 0 18px; }
-.share-exact-preview .tabs { width: 100%; }
-.share-exact-preview .tabs button { flex: 1; }
+.share-exact-preview .tabs { width: fit-content; }
+.share-exact-preview .tabs button { flex: 0 0 auto; }
 .share-exact-preview .itinerary-viewer-public h1 { font-size: clamp(27px, 6vw, 38px); }
 .share-exact-preview .itinerary-viewer-public .content { padding-top: 18px; }
 
@@ -445,9 +568,17 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 @media (max-width: 720px) {
   .app-shell { padding: 16px; }
   .app-header { align-items: flex-start; flex-direction: column; }
-  .tabs { width: 100%; }
-  .tabs button { flex: 1; }
+  .view-navigation { width: 100%; gap: 12px; }
+  .tabs { width: fit-content; }
+  .tabs button { width: 40px; min-height: 40px; flex: 0 0 40px; padding: 9px; }
+  .view-icon { display: block; }
+  .view-label { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
+  .reservations-link { min-height: 40px; padding: 9px 0; }
   .day-details { grid-template-columns: 1fr; padding-left: 15px; }
+  .day-detail-panel { grid-template-columns: 1fr; }
+  .day-route-content { grid-template-columns: 1fr; }
+  .day-detail-tabs { margin-bottom: 12px; }
+  .day-guide-stops { gap: 16px; }
   .calendar-toolbar { gap: 8px; padding: 12px 10px; }
   .calendar-toolbar .eyebrow { letter-spacing: .04em; }
   .calendar-pagination { gap: 5px; }
@@ -455,7 +586,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
   .calendar-weekdays span { padding: 7px 1px; font-size: 14px; }
   .calendar-day,
   .itinerary-viewer-public .calendar-day { min-height: 62px; padding: 8px 4px; text-align: center; }
-  .calendar-day strong { margin: 0; font-size: 22px; }
+  .calendar-day strong { align-self: center; margin: 0; font-size: 22px; }
   .calendar-day p,
   .calendar-day small,
   .calendar-toggle { display: none; }
@@ -466,8 +597,9 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
   .route-map-panel { padding: 13px; }
   .route-map-empty, .route-map-graphic, .route-map-embed, .route-map-embed iframe, .route-map-loading { min-height: 210px; }
   .reservation-card { grid-template-columns: 1fr; gap: 8px; }
+  .reservation-actions { margin-top: 10px; }
   .reservation-date { grid-template-columns: 1fr auto; }
-  .reservation-title-row { align-items: flex-start; flex-direction: column; }
+  .reservation-title-row { align-items: flex-start; }
   .reservations-header { align-items: flex-start; }
   .launcher-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid { grid-template-columns: 1fr; }
@@ -501,7 +633,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 
 @media print {
   .public-share-shell { width: 100%; max-width: none; padding: 0; }
-  .public-share-topbar, .tabs, .public-share-footer, .route-link { display: none !important; }
+  .public-share-topbar, .view-navigation, .public-share-footer, .route-link { display: none !important; }
   .itinerary-viewer-public .app-header { padding: 0 0 20px; }
   .disclosure-panel { grid-template-rows: 1fr !important; opacity: 1 !important; }
   .disclosure-panel-inner > * { transform: none !important; }

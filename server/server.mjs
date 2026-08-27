@@ -9,6 +9,8 @@ import {
   LEGACY_ITINERARY_V5_UI_URI,
   LEGACY_ITINERARY_V6_UI_URI,
   LEGACY_ITINERARY_V7_UI_URI,
+  LEGACY_ITINERARY_V8_UI_URI,
+  LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -49,6 +51,8 @@ export {
   LEGACY_ITINERARY_V5_UI_URI,
   LEGACY_ITINERARY_V6_UI_URI,
   LEGACY_ITINERARY_V7_UI_URI,
+  LEGACY_ITINERARY_V8_UI_URI,
+  LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -145,6 +149,27 @@ const reservationSchema = z.object({
   note: z.string().optional(),
 });
 
+const activityGuideSchema = z.object({
+  overview: z
+    .string()
+    .min(1)
+    .max(1200)
+    .describe(
+      "Source-backed visitor context about the place: its history, cultural relevance, interesting facts, and what is worth noticing. Keep schedules and logistics in activity.description.",
+    ),
+  highlights: z.array(z.string().min(1).max(240)).max(4).optional(),
+  sources: z
+    .array(
+      z.object({
+        label: z.string().min(1),
+        url: httpUrl,
+        checkedAt: checkedAt.optional(),
+      }),
+    )
+    .min(1)
+    .max(4),
+});
+
 const activitySchema = z.object({
   id: z.string().min(1),
   startTime: isoTime,
@@ -155,6 +180,7 @@ const activitySchema = z.object({
   locked: z.boolean().optional(),
   location: locationSchema.optional(),
   sourceUrl: httpUrl.optional(),
+  guide: activityGuideSchema.optional(),
   reservation: reservationSchema.optional(),
   travelToNext: z
     .object({
@@ -231,6 +257,7 @@ const publicActivitySchema = z.object({
     .superRefine(requireCoordinatePairs)
     .optional(),
   sourceUrl: httpUrl.optional(),
+  guide: activityGuideSchema.optional(),
   travelToNext: z
     .object({
       mode: transportMode,
@@ -1004,6 +1031,7 @@ const SERVER_INSTRUCTIONS = [
   "For trip creation, extract every supplied fact into prepare_trip_brief. If critical fields are missing, render_trip_requirements once with all current gaps together and stop; otherwise research and build the plan before calling the appropriate final facade.",
   "Treat a rendered Sendero component as the complete answer. Do not restate its visible contents, tool names, stable IDs, JSON, or mechanics in prose.",
   "Use contextual non-redundant titles, preserve locked activities and confirmed reservations, distinguish reservation versus ticket and requirement versus lifecycle status, and never claim current facts without a source.",
+  "Keep activity.description concise and operational for Recorrido: what happens, practical context, and logistics. For every real public place, add activity.guide with a source-backed overview explaining its history, cultural relevance, interesting facts, and what a visitor should notice; include up to four useful highlights and one to four reliable sources. Do not invent guide facts, do not recycle logistics as guide copy, and omit guide for transit, rest, free time, or an unnamed placeholder.",
   "Reservation controls only update Sendero; they never book, buy, or cancel with a provider. Public sharing remains preview then explicit confirmation then publish or update, and rotating or revoking remains explicit.",
 ].join(" ");
 
@@ -1039,7 +1067,7 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.7.1" },
+    { name: "sendero", version: "0.8.0" },
     {
       instructions: SERVER_INSTRUCTIONS,
     },
@@ -1065,6 +1093,12 @@ export function createTripPlannerServer({
   );
   server.registerResource("itinerary-ui-v7", LEGACY_ITINERARY_V7_UI_URI, {}, async () =>
     itineraryResource(widgetOrigin, LEGACY_ITINERARY_V7_UI_URI, { mapsEmbedApiKey }),
+  );
+  server.registerResource("itinerary-ui-v8", LEGACY_ITINERARY_V8_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V8_UI_URI, { mapsEmbedApiKey }),
+  );
+  server.registerResource("itinerary-ui-v9", LEGACY_ITINERARY_V9_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V9_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),

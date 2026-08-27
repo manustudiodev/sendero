@@ -135,6 +135,37 @@ function publicTravel(value, privateValues) {
   });
 }
 
+function publicGuideSource(value, privateValues) {
+  if (!isRecord(value)) return undefined;
+  const label = optionalString(value.label);
+  const url = publicUrl(value.url, privateValues);
+  if (!label || containsPrivateText(label, privateValues) || !url) return undefined;
+  return compact({ label, url, checkedAt: optionalCheckedAt(value.checkedAt) });
+}
+
+function publicGuide(value, privateValues) {
+  if (!isRecord(value)) return undefined;
+  const overview = optionalString(value.overview);
+  if (!overview || containsPrivateText(overview, privateValues)) return undefined;
+
+  const sources = Array.isArray(value.sources)
+    ? value.sources.map((source) => publicGuideSource(source, privateValues)).filter(Boolean)
+    : [];
+  if (sources.length === 0) return undefined;
+
+  const highlights = Array.isArray(value.highlights)
+    ? value.highlights
+      .map(optionalString)
+      .filter((highlight) => highlight && !containsPrivateText(highlight, privateValues))
+    : [];
+
+  return compact({
+    overview,
+    highlights: highlights.length ? highlights : undefined,
+    sources,
+  });
+}
+
 function publicActivity(value, dayIndex, activityIndex, privateValues) {
   if (!isRecord(value)) {
     throw new Error(`Invalid public itinerary activity ${dayIndex + 1}.${activityIndex + 1}.`);
@@ -147,6 +178,7 @@ function publicActivity(value, dayIndex, activityIndex, privateValues) {
       privateValues,
     ),
     description: redactPrivateText(value.description, privateValues),
+    guide: publicGuide(value.guide, privateValues),
     category: redactPrivateText(value.category, privateValues),
     location: publicLocation(value.location, privateValues),
     sourceUrl: publicUrl(value.sourceUrl, privateValues),

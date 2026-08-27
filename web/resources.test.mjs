@@ -6,15 +6,19 @@ import {
   LEGACY_ITINERARY_V5_UI_URI,
   LEGACY_ITINERARY_V6_UI_URI,
   LEGACY_ITINERARY_V7_UI_URI,
+  LEGACY_ITINERARY_V8_UI_URI,
+  LEGACY_ITINERARY_V9_UI_URI,
   itineraryResource,
 } from "../server/ui/resources.mjs";
 
-test("pins itinerary v8 while keeping earlier component resources addressable", () => {
-  assert.equal(ITINERARY_UI_URI, "ui://sendero/itinerary-v8.html");
+test("pins itinerary v10 while keeping earlier component resources addressable", () => {
+  assert.equal(ITINERARY_UI_URI, "ui://sendero/itinerary-v10.html");
   assert.equal(LEGACY_ITINERARY_V4_UI_URI, "ui://sendero/itinerary-v4.html");
   assert.equal(LEGACY_ITINERARY_V5_UI_URI, "ui://sendero/itinerary-v5.html");
   assert.equal(LEGACY_ITINERARY_V6_UI_URI, "ui://sendero/itinerary-v6.html");
   assert.equal(LEGACY_ITINERARY_V7_UI_URI, "ui://sendero/itinerary-v7.html");
+  assert.equal(LEGACY_ITINERARY_V8_UI_URI, "ui://sendero/itinerary-v8.html");
+  assert.equal(LEGACY_ITINERARY_V9_UI_URI, "ui://sendero/itinerary-v9.html");
 
   const current = itineraryResource("https://sendero.example");
   const legacy = itineraryResource("https://sendero.example", LEGACY_ITINERARY_V5_UI_URI);
@@ -27,6 +31,7 @@ test("allows only the Google Maps iframe origin required by the itinerary", () =
   const [resource] = itineraryResource("https://sendero.example").contents;
   assert.match(resource._meta["openai/widgetDescription"], /calendar/i);
   assert.match(resource._meta["openai/widgetDescription"], /daily route/i);
+  assert.match(resource._meta["openai/widgetDescription"], /source-backed/i);
   assert.match(resource._meta["openai/widgetDescription"], /reservation and ticket tracker/i);
   assert.match(resource._meta["openai/widgetDescription"], /never book, purchase, or cancel/i);
   assert.deepEqual(resource._meta.ui.csp, {

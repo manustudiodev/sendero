@@ -90,6 +90,41 @@ function routeQueriesForDay(itinerary, day) {
   return shouldReturnToLodging ? [lodgingAddress, ...stops, lodgingAddress] : stops;
 }
 
+function inlineMapStopsForDay(itinerary, day) {
+  const seen = new Set();
+  const stops = [];
+
+  for (const activity of day?.activities || []) {
+    const location = activity?.location;
+    if (!location) continue;
+
+    const name = normalizedText(location.name);
+    const address = normalizedText(location.address);
+    const label = [name, address].filter(Boolean).join(" · ");
+    if (provisionalStopPattern.test(label)) continue;
+
+    const point = coordinatePoint(location, activity.id || label, name || address || "Parada");
+    const stop = point
+      ? `${point.latitude},${point.longitude}`
+      : address
+        ? googlePlaceQuery(label || address, itinerary?.destination)
+        : "";
+
+    // A named attraction without either coordinates or a canonical address is
+    // not precise enough for an embedded route. Returning no map is safer than
+    // drawing a plausible-looking route to the wrong place.
+    if (!stop) return { complete: false, stops: [] };
+
+    const key = stopKey(stop);
+    if (!seen.has(key)) {
+      seen.add(key);
+      stops.push(stop);
+    }
+  }
+
+  return { complete: stops.length > 0, stops };
+}
+
 function buildDirectionsUrl(stops, modes) {
   const params = new URLSearchParams({
     api: "1",
@@ -133,10 +168,8 @@ export function buildDayRouteUrl(itinerary, day) {
 
 export function buildDayEmbedMapUrl(apiKey, itinerary, day, { language = "es" } = {}) {
   const key = normalizedText(apiKey);
-  const coverage = coordinateCoverageForDay(itinerary, day);
-  const routeStops = coverage.complete
-    ? coverage.points.map(({ latitude, longitude }) => `${latitude},${longitude}`)
-    : [];
+  const inlineRoute = inlineMapStopsForDay(itinerary, day);
+  const routeStops = inlineRoute.complete ? inlineRoute.stops : [];
   if (!key || !routeStops.length || routeStops.length > 22) return "";
   if (routeStops.length === 1) {
     const params = new URLSearchParams({ key, q: routeStops[0], language });

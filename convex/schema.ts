@@ -30,11 +30,24 @@ const publicWeatherStatus = v.union(
   v.literal("unknown"),
 );
 
+const publicGuideSource = v.object({
+  label: v.string(),
+  url: v.string(),
+  checkedAt: v.optional(v.string()),
+});
+
 const publicActivity = v.object({
   startTime: v.string(),
   endTime: v.optional(v.string()),
   title: v.string(),
   description: v.optional(v.string()),
+  guide: v.optional(
+    v.object({
+      overview: v.string(),
+      highlights: v.optional(v.array(v.string())),
+      sources: v.array(publicGuideSource),
+    }),
+  ),
   category: v.optional(v.string()),
   location: v.optional(
     v.object({

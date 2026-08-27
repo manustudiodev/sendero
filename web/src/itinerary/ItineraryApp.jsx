@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../components.jsx";
-import { callTool, openExternal, sendFollowUpMessage, setWidgetState, useToolOutput, widgetState } from "../bridge.js";
+import { callTool, openExternal, setWidgetState, useToolOutput, widgetState } from "../bridge.js";
 import { ItineraryViewer } from "./ItineraryViewer.jsx";
+import { reservationEntryKey } from "./presentation-utils.js";
 
 function LoadingState({ failed, onRetry }) {
   return (
@@ -67,6 +68,7 @@ export function ItineraryApp({ initialOutput = null } = {}) {
   const [activeView, setActiveView] = useState(() => widgetState().activeView || "list");
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => widgetState().selectedCalendarDate || "");
   const [selectedCalendarMonth, setSelectedCalendarMonth] = useState(() => widgetState().selectedCalendarMonth || "");
+  const [selectedReservationKey, setSelectedReservationKey] = useState(() => widgetState().selectedReservationKey || "");
   const [selectedRouteDate, setSelectedRouteDate] = useState(() => widgetState().selectedRouteDate || "");
   const [itinerary, setItinerary] = useState(() => applyReservationReceipt(incomingItinerary, initialReceipt, incomingContext) || null);
   const [context, setContext] = useState(() => incomingContext);
@@ -105,7 +107,20 @@ export function ItineraryApp({ initialOutput = null } = {}) {
 
   function changeView(next) {
     setActiveView(next);
-    persistWidgetState({ activeView: next });
+    if (next !== "reservations") setSelectedReservationKey("");
+    persistWidgetState({
+      activeView: next,
+      ...(next !== "reservations" ? { selectedReservationKey: "" } : {}),
+    });
+  }
+
+  function openReservation(target) {
+    const nextKey = target
+      ? reservationEntryKey(target.dayDate, target.activityId)
+      : "";
+    setSelectedReservationKey(nextKey);
+    setActiveView("reservations");
+    persistWidgetState({ activeView: "reservations", selectedReservationKey: nextKey });
   }
 
   function changeCalendarDay(next) {
@@ -239,18 +254,19 @@ export function ItineraryApp({ initialOutput = null } = {}) {
   return (
     <main className="app-shell">
       <ItineraryViewer
-        actions={<Button onClick={() => sendFollowUpMessage(`Quiero ajustar el itinerario “${itinerary.title}” sin perder actividades fijas ni reservas confirmadas.`)}>Ajustar viaje</Button>}
         activeView={activeView}
         itinerary={itinerary}
         onCalendarDayChange={changeCalendarDay}
         onCalendarMonthChange={changeCalendarMonth}
         onOpenExternal={openExternal}
+        onReservationOpen={openReservation}
         onReservationStatusChange={updateReservationStatus}
         onRouteDayChange={changeRouteDay}
         onViewChange={changeView}
         reservationWritable={reservationWritable}
         selectedCalendarDate={selectedCalendarDate}
         selectedCalendarMonth={selectedCalendarMonth}
+        selectedReservationKey={selectedReservationKey}
         selectedRouteDate={selectedRouteDate}
         variant="chat"
       />

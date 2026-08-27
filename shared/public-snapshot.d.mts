@@ -36,10 +36,17 @@ export interface PublicActivity {
   endTime?: string;
   title: string;
   description?: string;
+  guide?: PublicGuide;
   category?: string;
   location?: PublicLocation;
   sourceUrl?: string;
   travelToNext?: PublicTravel;
+}
+
+export interface PublicGuide {
+  overview: string;
+  highlights?: string[];
+  sources: PublicSource[];
 }
 
 export interface PublicWeather {
