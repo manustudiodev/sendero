@@ -261,6 +261,8 @@ export function createApp({
       return context.json({
         share: {
           itinerary,
+          sourceVersion: result.share?.sourceVersion ?? result.sourceVersion,
+          generation: result.share?.generation ?? result.generation,
           publishedAt: result.share?.publishedAt ?? result.publishedAt,
           updatedAt: result.share?.updatedAt ?? result.updatedAt,
           expiresAt: result.share?.expiresAt ?? result.expiresAt,

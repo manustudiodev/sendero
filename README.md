@@ -90,6 +90,16 @@ La persona propietaria puede decir “comparte este viaje con un enlace”. Send
 - La proyección usa una allowlist: omite el alojamiento exacto, notas y URLs privadas de reservas, colaboradores, IDs internos e historial de versiones. Las rutas se reconstruyen desde una zona general o el destino.
 - Los enlaces vencidos, revocados, reemplazados o inexistentes muestran el mismo estado genérico. La página usa `no-store`, `no-referrer` y `noindex`, y no carga analytics.
 
+## Shared Trip Companion con WebMCP
+
+La página pública registra seis Site tools cuando el navegador ofrece la API imperativa de WebMCP. Una persona invitada puede pedirle a su agente que lea el viaje compartido, abra un día en el mapa, enfoque una actividad o previsualice cómo afecta su hora de llegada. El resultado se aplica únicamente a esa pestaña: atenúa actividades anteriores, resalta un punto de encuentro publicado y se puede limpiar sin modificar el itinerario del propietario.
+
+Las tools expuestas son `get_shared_trip_context`, `get_day_itinerary`, `preview_guest_arrival`, `show_day_on_map`, `focus_itinerary_item` y `clear_guest_preview`. Todas trabajan sobre la misma proyección pública que ve la página. No reciben el token del enlace, no llaman endpoints de mutación y no exponen códigos, notas o URLs privadas de reservas.
+
+Si WebMCP no está disponible, `/share` conserva exactamente su comportamiento de lectura normal. Las publicaciones antiguas sin timezone siguen permitiendo consultar el viaje; únicamente el preview de llegada queda deshabilitado hasta volver a publicar una copia con zona horaria IANA.
+
+El alcance, baseline, evidencia y limitaciones de la participación están documentados en [`CHALLENGE.md`](CHALLENGE.md).
+
 ## Persistencia y permisos
 
 Sendero usa Convex para doce colecciones relacionadas:
@@ -132,7 +142,7 @@ La página pública se sirve en `http://localhost:8788/share#TOKEN` y resuelve e
 
 La landing queda en `http://localhost:8788/`, la cuenta en `http://localhost:8788/app` y una invitación local usa `http://localhost:8788/invite/WEB_ID#token=TOKEN`.
 
-Para revisar los componentes con datos de muestra, ejecuta `npm run preview:ui` y abre `http://127.0.0.1:4173`. Las rutas `/itinerary`, `/itinerary-calendar`, `/itinerary-reservations`, `/itinerary-routes` e `/itinerary-warnings` permiten revisar directamente los estados principales del itinerario.
+Para revisar los componentes con datos de muestra, ejecuta `npm run preview:ui` y abre `http://127.0.0.1:4173`. Las rutas `/itinerary`, `/itinerary-calendar`, `/itinerary-reservations`, `/itinerary-routes` e `/itinerary-warnings` permiten revisar directamente los estados principales del itinerario. La muestra pública del challenge está en `http://127.0.0.1:4173/share#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`; funciona como página normal sin WebMCP y expone las seis tools cuando el navegador soporta `document.modelContext.registerTool`.
 
 Copia `.env.example` como `.env.local` para desarrollo. La configuración pública actual es:
 

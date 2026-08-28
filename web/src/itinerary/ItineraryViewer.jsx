@@ -25,6 +25,7 @@ import {
   reservationPresentation,
 } from "./presentation-utils.js";
 import {
+  buildActivityEmbedMapUrl,
   buildDayEmbedMapUrl,
   buildDayAppleRouteUrls,
   buildDayRouteUrls,
@@ -91,16 +92,42 @@ export function formatItineraryDate(value, options, locale = globalThis.document
   }
 }
 
-function Activity({ activity, dayDate, locale, onOpenExternal, onReservationOpen, variant }) {
+function Activity({
+  activity,
+  dayDate,
+  dimmed,
+  focused,
+  highlighted,
+  locale,
+  onOpenExternal,
+  onReservationOpen,
+  variant,
+}) {
   const showPrivateStatus = variant !== "public";
+  const activityRef = useRef(null);
   const location = activity.location;
   const sourceUrl = safeExternalUrl(activity.sourceUrl);
   const hasReservation = showPrivateStatus && hasReservationManagement(activity);
   const reservationEntry = hasReservation ? { activity, reservation: activity.reservation } : null;
   const reservationLabel = reservationEntry ? reservationNavigationLabel(reservationEntry, locale) : "";
   const hasBadges = (showPrivateStatus && activity.locked) || activity.travelToNext;
+  useEffect(() => {
+    if (!focused) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      activityRef.current?.focus({ preventScroll: true });
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      activityRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focused]);
   return (
-    <li className="activity">
+    <li
+      aria-current={focused ? "true" : undefined}
+      className={`activity ${dimmed ? "is-dimmed" : ""} ${highlighted ? "is-highlighted" : ""} ${focused ? "is-focused" : ""}`}
+      data-public-item-id={activity.publicId || undefined}
+      ref={activityRef}
+      tabIndex={focused ? -1 : undefined}
+    >
       <time className="activity-time" dateTime={activity.startTime}>{activity.startTime}</time>
       <div>
         <div className="activity-title-row">
@@ -260,7 +287,17 @@ function DayGuide({ day, locale, onOpenExternal }) {
   );
 }
 
-function DayDetails({ day, labelledBy, locale, onOpenExternal, onReservationOpen, variant }) {
+function DayDetails({
+  day,
+  dimmedItemIds = [],
+  focusedItemId = null,
+  highlightedItemIds = [],
+  labelledBy,
+  locale,
+  onOpenExternal,
+  onReservationOpen,
+  variant,
+}) {
   const [detailView, setDetailView] = useState("route");
   const detailId = useId();
   const detailTabRefs = useRef([]);
@@ -317,6 +354,9 @@ function DayDetails({ day, labelledBy, locale, onOpenExternal, onReservationOpen
               <Activity
                 activity={activity}
                 dayDate={day.date}
+                dimmed={dimmedItemIds.includes(activity.publicId)}
+                focused={focusedItemId === activity.publicId}
+                highlighted={highlightedItemIds.includes(activity.publicId)}
                 key={activity.id || `${day.date}-${index}`}
                 locale={locale}
                 onOpenExternal={onOpenExternal}
@@ -341,10 +381,24 @@ function DayDetails({ day, labelledBy, locale, onOpenExternal, onReservationOpen
   );
 }
 
-function DayCard({ day, initiallyOpen, locale, onOpenExternal, onReservationOpen, variant }) {
+function DayCard({
+  day,
+  dimmedItemIds,
+  focusedItemId,
+  forceOpen,
+  highlightedItemIds,
+  initiallyOpen,
+  locale,
+  onOpenExternal,
+  onReservationOpen,
+  variant,
+}) {
   const [open, setOpen] = useState(initiallyOpen);
   const controlId = useId();
   const panelId = `${controlId}-panel`;
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
   return (
     <article className={`day-card ${open ? "is-open" : ""}`}>
       <h2 className="day-card-title">
@@ -362,14 +416,52 @@ function DayCard({ day, initiallyOpen, locale, onOpenExternal, onReservationOpen
         </button>
       </h2>
       <DisclosurePanel className="day-disclosure" id={panelId} open={open}>
-        <DayDetails day={day} labelledBy={controlId} locale={locale} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />
+        <DayDetails
+          day={day}
+          dimmedItemIds={dimmedItemIds}
+          focusedItemId={focusedItemId}
+          highlightedItemIds={highlightedItemIds}
+          labelledBy={controlId}
+          locale={locale}
+          onOpenExternal={onOpenExternal}
+          onReservationOpen={onReservationOpen}
+          variant={variant}
+        />
       </DisclosurePanel>
     </article>
   );
 }
 
-function ListView({ itinerary, locale, onOpenExternal, onReservationOpen, variant }) {
-  return <div className="days">{itinerary.days.map((day, index) => <DayCard day={day} initiallyOpen={index === 0} key={day.date} locale={locale} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />)}</div>;
+function ListView({
+  dimmedItemIds,
+  focusedItemId,
+  highlightedItemIds,
+  itinerary,
+  locale,
+  onOpenExternal,
+  onReservationOpen,
+  selectedDate,
+  variant,
+}) {
+  return (
+    <div className="days">
+      {itinerary.days.map((day, index) => (
+        <DayCard
+          day={day}
+          dimmedItemIds={dimmedItemIds}
+          focusedItemId={focusedItemId}
+          forceOpen={selectedDate === day.date}
+          highlightedItemIds={highlightedItemIds}
+          initiallyOpen={index === 0}
+          key={day.date}
+          locale={locale}
+          onOpenExternal={onOpenExternal}
+          onReservationOpen={onReservationOpen}
+          variant={variant}
+        />
+      ))}
+    </div>
+  );
 }
 
 function CalendarWeek({ currentDate, locale, onOpenExternal, onReservationOpen, selectDate, variant, week }) {
@@ -449,7 +541,7 @@ function CalendarView({
       ? monthKeyFromDate(selectedDate)
       : monthKeys[0];
   const [localMonth, setLocalMonth] = useState(requestedMonth || "");
-  const currentDate = selectedDate ?? localDate;
+  const currentDate = localDate;
   const monthState = resolveMonthPage(monthKeys, selectedMonth || localMonth || requestedMonth);
   const page = buildMonthPage({
     days: itinerary.days,
@@ -460,6 +552,10 @@ function CalendarView({
   useEffect(() => {
     if (selectedMonth && monthKeys.includes(selectedMonth)) setLocalMonth(selectedMonth);
   }, [monthKeys.join("|"), selectedMonth]);
+
+  useEffect(() => {
+    if (selectedDate !== undefined) setLocalDate(selectedDate || "");
+  }, [selectedDate]);
 
   useEffect(() => {
     const dateMonth = monthKeyFromDate(selectedDate);
@@ -535,7 +631,7 @@ function RouteLink({ href, label, locale, onOpenExternal }) {
   );
 }
 
-function RouteSchematic({ day, itinerary, locale }) {
+function RouteSchematic({ day, focusedItemId, itinerary, locale }) {
   const coverage = coordinateCoverageForDay(itinerary, day);
   if (!coverage.complete) {
     const coverageCopy = coverage.requiredCount
@@ -567,7 +663,7 @@ function RouteSchematic({ day, itinerary, locale }) {
         <path className="route-map-grid" d="M0 25H100M0 50H100M0 75H100M25 0V100M50 0V100M75 0V100" />
         {projected.length > 1 ? <polyline className="route-map-line" points={projected.map((point) => `${point.x},${point.y}`).join(" ")} /> : null}
         {projected.map((point, index) => (
-          <g key={point.id}>
+          <g className={focusedItemId === point.id ? "is-focused" : ""} key={point.id}>
             <circle className="route-map-point" cx={point.x} cy={point.y} r="4.5" />
             <text className="route-map-number" dominantBaseline="middle" textAnchor="middle" x={point.x} y={point.y}>{index + 1}</text>
           </g>
@@ -582,7 +678,7 @@ function mapsEmbedApiKey() {
   return document.querySelector('meta[name="sendero-google-maps-embed-key"]')?.content?.trim() || "";
 }
 
-function GoogleRouteMap({ day, embedUrl, itinerary, locale }) {
+function GoogleRouteMap({ day, embedUrl, focusedItemId, itinerary, locale }) {
   const [state, setState] = useState("loading");
   const timeoutRef = useRef();
 
@@ -596,7 +692,7 @@ function GoogleRouteMap({ day, embedUrl, itinerary, locale }) {
     setState(nextState);
   }
 
-  if (state === "failed") return <RouteSchematic day={day} itinerary={itinerary} locale={locale} />;
+  if (state === "failed") return <RouteSchematic day={day} focusedItemId={focusedItemId} itinerary={itinerary} locale={locale} />;
   return (
     <div className={`route-map-embed route-map-embed-${state}`}>
       {state === "loading" ? <div aria-live="polite" className="route-map-loading" role="status">{t(locale, "viewer.loadingMap")}</div> : null}
@@ -613,20 +709,24 @@ function GoogleRouteMap({ day, embedUrl, itinerary, locale }) {
   );
 }
 
-function RoutesView({ itinerary, locale, onOpenExternal, onSelectedDateChange, selectedDate }) {
+function RoutesView({ focusedItemId, itinerary, locale, onOpenExternal, onSelectedDateChange, selectedDate }) {
   const [localDate, setLocalDate] = useState(itinerary.days[0]?.date || "");
   const validSelectedDate = itinerary.days.some((day) => day.date === selectedDate) ? selectedDate : "";
-  const currentDate = validSelectedDate || localDate || itinerary.days[0]?.date;
+  const currentDate = localDate || itinerary.days[0]?.date;
   const day = itinerary.days.find((candidate) => candidate.date === currentDate) || itinerary.days[0];
+  const focusedActivity = day?.activities.find((activity) => activity.publicId === focusedItemId);
   const stops = routeStopsForDay(day);
   const googleRouteUrls = buildDayRouteUrls(itinerary, day);
   const appleRouteUrls = buildDayAppleRouteUrls(itinerary, day);
-  const embedUrl = buildDayEmbedMapUrl(
-    mapsEmbedApiKey(),
-    itinerary,
-    day,
-    { language: localeLanguage(locale) || "en" },
-  );
+  const embedOptions = { language: localeLanguage(locale) || "en" };
+  const embedUrl = focusedActivity
+    ? buildActivityEmbedMapUrl(mapsEmbedApiKey(), itinerary, focusedActivity, embedOptions)
+      || buildDayEmbedMapUrl(mapsEmbedApiKey(), itinerary, day, embedOptions)
+    : buildDayEmbedMapUrl(mapsEmbedApiKey(), itinerary, day, embedOptions);
+
+  useEffect(() => {
+    if (validSelectedDate) setLocalDate(validSelectedDate);
+  }, [validSelectedDate]);
 
   function selectDate(date) {
     setLocalDate(date);
@@ -663,9 +763,9 @@ function RoutesView({ itinerary, locale, onOpenExternal, onSelectedDateChange, s
             {day.route?.totalMinutes ? <span className="route-duration">{t(locale, "viewer.approxMinutes", { minutes: day.route.totalMinutes })}</span> : null}
           </header>
           {embedUrl ? (
-            <GoogleRouteMap day={day} embedUrl={embedUrl} itinerary={itinerary} key={embedUrl} locale={locale} />
+            <GoogleRouteMap day={day} embedUrl={embedUrl} focusedItemId={focusedItemId} itinerary={itinerary} key={embedUrl} locale={locale} />
           ) : (
-            <RouteSchematic day={day} itinerary={itinerary} locale={locale} />
+            <RouteSchematic day={day} focusedItemId={focusedItemId} itinerary={itinerary} locale={locale} />
           )}
           {stops.length ? (
             <ol className="route-stops">
@@ -854,6 +954,9 @@ function SourcesPanel({ itinerary, locale, onOpenExternal }) {
 
 export function ItineraryViewer({
   activeView = "list",
+  dimmedItemIds = [],
+  focusedItemId = null,
+  highlightedItemIds = [],
   itinerary,
   onCalendarDayChange,
   onCalendarMonthChange,
@@ -865,6 +968,7 @@ export function ItineraryViewer({
   reservationWritable = false,
   selectedCalendarDate,
   selectedCalendarMonth,
+  selectedListDate,
   selectedReservationKey,
   selectedRouteDate,
   variant = "chat",
@@ -970,7 +1074,7 @@ export function ItineraryViewer({
               variant={variant}
             />
           ) : currentView === "routes" ? (
-            <RoutesView itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} onSelectedDateChange={onRouteDayChange} selectedDate={selectedRouteDate} />
+            <RoutesView focusedItemId={focusedItemId} itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} onSelectedDateChange={onRouteDayChange} selectedDate={selectedRouteDate} />
           ) : currentView === "reservations" ? (
             <ReservationsView
               itinerary={itinerary}
@@ -980,7 +1084,19 @@ export function ItineraryViewer({
               selectedReservationKey={selectedReservationKey}
               writable={reservationWritable}
             />
-          ) : <ListView itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />}
+          ) : (
+            <ListView
+              dimmedItemIds={dimmedItemIds}
+              focusedItemId={focusedItemId}
+              highlightedItemIds={highlightedItemIds}
+              itinerary={itinerary}
+              locale={locale}
+              onOpenExternal={onOpenExternal}
+              onReservationOpen={onReservationOpen}
+              selectedDate={selectedListDate}
+              variant={variant}
+            />
+          )}
         </div>
         <SourcesPanel itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} />
       </section>

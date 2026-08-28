@@ -230,6 +230,8 @@ test("resolves an active public snapshot without Auth0 and returns no private en
         return {
           status: "active",
           itinerary: resolverItinerary,
+          sourceVersion: 7,
+          generation: 2,
           publishedAt: 1788200000000,
           updatedAt: 1788300000000,
           expiresAt: 1790800000000,
@@ -247,6 +249,8 @@ test("resolves an active public snapshot without Auth0 and returns no private en
   assert.deepEqual(await response.json(), {
     share: {
       itinerary: { ...safePublicItinerary, locale: "en" },
+      sourceVersion: 7,
+      generation: 2,
       publishedAt: 1788200000000,
       updatedAt: 1788300000000,
       expiresAt: 1790800000000,

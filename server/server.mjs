@@ -13,6 +13,7 @@ import {
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
+  LEGACY_ITINERARY_V11_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -67,6 +68,7 @@ export {
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
+  LEGACY_ITINERARY_V11_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -248,6 +250,19 @@ const daySchema = z.object({
   route: routeSchema.optional(),
 });
 
+const ianaTimezone = z
+  .string()
+  .min(1)
+  .refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: value }).format(0);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Use an IANA timezone such as America/Argentina/Buenos_Aires")
+  .describe("IANA timezone for the trip destination, used to interpret every local itinerary time.");
+
 export const itinerarySchema = z.object({
   id: z.string().optional(),
   locale: localeSchema.default(DEFAULT_LOCALE),
@@ -255,6 +270,7 @@ export const itinerarySchema = z.object({
   destination: z.string().min(1),
   startDate: isoDate,
   endDate: isoDate,
+  timezone: ianaTimezone.optional(),
   lodging: lodgingSchema.optional(),
   transport: z.object({
     modes: z.array(transportMode).min(1),
@@ -274,6 +290,7 @@ export const itinerarySchema = z.object({
 });
 
 const publicActivitySchema = z.object({
+  publicId: z.string().min(1).optional(),
   startTime: isoTime,
   endTime: isoTime.optional(),
   title: z.string().min(1),
@@ -289,6 +306,12 @@ const publicActivitySchema = z.object({
     .optional(),
   sourceUrl: httpUrl.optional(),
   guide: activityGuideSchema.optional(),
+  booking: z
+    .object({
+      required: z.boolean(),
+      confirmed: z.boolean(),
+    })
+    .optional(),
   travelToNext: z
     .object({
       mode: transportMode,
@@ -305,6 +328,7 @@ export const publicItinerarySchema = z.object({
   destination: z.string().min(1),
   startDate: isoDate,
   endDate: isoDate,
+  timezone: ianaTimezone.optional(),
   baseArea: z.string().min(1).optional(),
   transport: z.object({ modes: z.array(transportMode).min(1) }),
   days: z.array(
@@ -1366,6 +1390,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("itinerary-ui-v10", LEGACY_ITINERARY_V10_UI_URI, {}, async () =>
     itineraryResource(widgetOrigin, LEGACY_ITINERARY_V10_UI_URI, { mapsEmbedApiKey }),
+  );
+  server.registerResource("itinerary-ui-v11", LEGACY_ITINERARY_V11_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V11_UI_URI, { mapsEmbedApiKey }),
   );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),

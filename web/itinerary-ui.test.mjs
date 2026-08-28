@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildActivityEmbedMapUrl,
   buildDayAppleRouteUrl,
   buildDayAppleRouteUrls,
   buildDayEmbedMapUrl,
@@ -207,6 +208,24 @@ test("embedded place maps support a canonical address without coordinates", () =
     "El Ateneo Grand Splendid, Av. Santa Fe 1860, Buenos Aires, Argentina",
   );
   assert.equal(buildDayEmbedMapUrl("", itinerary, oneAddress), "");
+});
+
+test("an agent-focused public item gets a place map without exposing an internal id", () => {
+  const href = buildActivityEmbedMapUrl(
+    "test-key",
+    { destination: "Buenos Aires, Argentina" },
+    {
+      id: "private-activity-id",
+      publicId: "2027-08-13:activity:2",
+      location: { name: "MALBA", latitude: -34.5768, longitude: -58.4034 },
+    },
+    { language: "es" },
+  );
+  const url = new URL(href);
+  assert.equal(url.pathname, "/maps/embed/v1/place");
+  assert.equal(url.searchParams.get("q"), "-34.5768,-58.4034");
+  assert.equal(url.searchParams.get("language"), "es");
+  assert.doesNotMatch(url.href, /private-activity-id/);
 });
 
 test("embedded directions allow a complete mix of coordinates and canonical addresses", () => {

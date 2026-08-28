@@ -100,6 +100,7 @@ const publicGuideSource = v.object({
 });
 
 const publicActivity = v.object({
+  publicId: v.optional(v.string()),
   startTime: v.string(),
   endTime: v.optional(v.string()),
   title: v.string(),
@@ -123,6 +124,12 @@ const publicActivity = v.object({
     }),
   ),
   sourceUrl: v.optional(v.string()),
+  booking: v.optional(
+    v.object({
+      required: v.boolean(),
+      confirmed: v.boolean(),
+    }),
+  ),
   travelToNext: v.optional(
     v.object({
       mode: transportMode,
@@ -165,6 +172,7 @@ export const publicSnapshotValidator = v.object({
   destination: v.string(),
   startDate: v.string(),
   endDate: v.string(),
+  timezone: v.optional(v.string()),
   baseArea: v.optional(v.string()),
   transport: v.object({ modes: v.array(transportMode) }),
   days: v.array(publicDay),

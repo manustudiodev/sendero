@@ -5,6 +5,7 @@ export interface PublicItinerarySnapshot {
   destination: string;
   startDate: string;
   endDate: string;
+  timezone?: string;
   baseArea?: string;
   transport: { modes: PublicTransportMode[] };
   days: PublicDay[];
@@ -33,6 +34,7 @@ export interface PublicTravel {
 }
 
 export interface PublicActivity {
+  publicId: string;
   startTime: string;
   endTime?: string;
   title: string;
@@ -41,6 +43,10 @@ export interface PublicActivity {
   category?: string;
   location?: PublicLocation;
   sourceUrl?: string;
+  booking?: {
+    required: boolean;
+    confirmed: boolean;
+  };
   travelToNext?: PublicTravel;
 }
 

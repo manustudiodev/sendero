@@ -21,6 +21,7 @@ function privateItinerary() {
     destination: "Buenos Aires, Argentina",
     startDate: "2027-08-13",
     endDate: "2027-08-14",
+    timezone: "America/Argentina/Buenos_Aires",
     lodging: {
       name: "Secret Hotel",
       address: "PRIVATE LODGING ADDRESS 123",
@@ -76,6 +77,7 @@ function privateItinerary() {
             },
             sourceUrl: "https://museum.example/visit",
             reservation: {
+              requirement: "required",
               status: "confirmed",
               url: "https://booking.example/PRIVATE-TOKEN",
               deadline: "2027-08-01",
@@ -111,10 +113,16 @@ test("creates a strict, versionable public projection without known private fiel
   const published = sanitizePublicSnapshot(source);
 
   assert.equal(published.schemaVersion, 1);
+  assert.equal(published.timezone, "America/Argentina/Buenos_Aires");
   assert.equal(published.baseArea, "Palermo");
   assert.deepEqual(published.transport, { modes: ["walk", "public_transit"] });
   assert.equal("locked" in published.days[0].activities[0], false);
   assert.equal("reservation" in published.days[0].activities[0], false);
+  assert.equal(published.days[0].activities[0].publicId, "2027-08-13:activity:1");
+  assert.deepEqual(published.days[0].activities[0].booking, {
+    required: true,
+    confirmed: true,
+  });
   assert.equal(published.days[0].activities[0].location.latitude, -34.5837);
   assert.equal(published.days[0].activities[0].location.longitude, -58.3932);
   assert.deepEqual(published.days[0].activities[0].guide, {
@@ -159,6 +167,24 @@ test("creates a strict, versionable public projection without known private fiel
   }
 
   assert.equal(source.days[0].route.origin, "PRIVATE LODGING ADDRESS 123");
+});
+
+test("keeps recommended booking public without claiming that it is required", () => {
+  const source = privateItinerary();
+  source.days[0].activities[0].reservation.requirement = "recommended";
+  source.days[0].activities[0].reservation.status = "pending";
+  const published = sanitizePublicSnapshot(source);
+  assert.deepEqual(published.days[0].activities[0].booking, {
+    required: false,
+    confirmed: false,
+  });
+});
+
+test("omits an invalid timezone instead of publishing misleading local-time context", () => {
+  const source = privateItinerary();
+  source.timezone = "Buenos Aires local time";
+  const published = sanitizePublicSnapshot(source);
+  assert.equal(published.timezone, undefined);
 });
 
 test("uses English public redaction labels by default and preserves explicit Spanish or Portuguese", () => {

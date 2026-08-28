@@ -16,6 +16,7 @@ import {
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
+  LEGACY_ITINERARY_V11_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
@@ -72,7 +73,7 @@ test("pins a fresh URI for every current Sendero component bundle", () => {
       share: PUBLIC_SHARE_UI_URI,
     },
     {
-      itinerary: "ui://sendero/itinerary-v11.html",
+      itinerary: "ui://sendero/itinerary-v12.html",
       intake: "ui://sendero/trip-intake-v6.html",
       trips: "ui://sendero/trip-list-v5.html",
       requirements: "ui://sendero/trip-requirements-v7.html",
@@ -575,6 +576,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyItineraryV10Resource = await client.readResource({ uri: LEGACY_ITINERARY_V10_UI_URI });
   assertInlineWidgetResource(legacyItineraryV10Resource, LEGACY_ITINERARY_V10_UI_URI);
   assert.equal(legacyItineraryV10Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV11Resource = await client.readResource({ uri: LEGACY_ITINERARY_V11_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV11Resource, LEGACY_ITINERARY_V11_UI_URI);
+  assert.equal(legacyItineraryV11Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");

@@ -103,7 +103,11 @@ function inlineMapStopsForDay(itinerary, day) {
     const label = [name, address].filter(Boolean).join(" · ");
     if (provisionalStopPattern.test(label)) continue;
 
-    const point = coordinatePoint(location, activity.id || label, name || address || "Parada");
+    const point = coordinatePoint(
+      location,
+      activity.publicId || activity.id || label,
+      name || address || "Parada",
+    );
     const stop = point
       ? `${point.latitude},${point.longitude}`
       : address
@@ -187,6 +191,29 @@ export function buildDayEmbedMapUrl(apiKey, itinerary, day, { language = "en" } 
   return `https://www.google.com/maps/embed/v1/directions?${params}`;
 }
 
+export function buildActivityEmbedMapUrl(apiKey, itinerary, activity, { language = "en" } = {}) {
+  const key = normalizedText(apiKey);
+  const location = activity?.location;
+  if (!key || !location) return "";
+  const label = [normalizedText(location.name), normalizedText(location.address)]
+    .filter(Boolean)
+    .join(" · ");
+  if (!label || provisionalStopPattern.test(label)) return "";
+  const point = coordinatePoint(
+    location,
+    activity.publicId || activity.id || label,
+    normalizedText(location.name) || normalizedText(location.address) || "Parada",
+  );
+  const query = point
+    ? `${point.latitude},${point.longitude}`
+    : normalizedText(location.address)
+      ? googlePlaceQuery(label, itinerary?.destination)
+      : "";
+  if (!query) return "";
+  const params = new URLSearchParams({ key, q: query, language });
+  return `https://www.google.com/maps/embed/v1/place?${params}`;
+}
+
 export function buildDayAppleRouteUrls(itinerary, day) {
   const routeStops = routeQueriesForDay(itinerary, day);
   if (!routeStops.length) return [];
@@ -228,7 +255,7 @@ export function coordinateStopsForDay(day) {
       || "Parada";
     const point = coordinatePoint(
       location,
-      activity.id || `${location?.latitude ?? location?.lat}:${location?.longitude ?? location?.lng}`,
+      activity.publicId || activity.id || `${location?.latitude ?? location?.lat}:${location?.longitude ?? location?.lng}`,
       label,
     );
     return point ? [point] : [];
@@ -241,7 +268,7 @@ export function coordinateCoverageForDay(_itinerary, day) {
   const activityPoints = activityEntries.flatMap(({ activity, label, location }) => {
     const point = coordinatePoint(
       location,
-      activity.id || `${location.latitude ?? location.lat}:${location.longitude ?? location.lng}`,
+      activity.publicId || activity.id || `${location.latitude ?? location.lat}:${location.longitude ?? location.lng}`,
       normalizedText(location.name) || normalizedText(activity.title) || label || "Parada",
     );
     return point ? [point] : [];

@@ -9,11 +9,12 @@ import {
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
+  LEGACY_ITINERARY_V11_UI_URI,
   itineraryResource,
 } from "../server/ui/resources.mjs";
 
-test("pins itinerary v11 while keeping earlier component resources addressable", () => {
-  assert.equal(ITINERARY_UI_URI, "ui://sendero/itinerary-v11.html");
+test("pins itinerary v12 while keeping earlier component resources addressable", () => {
+  assert.equal(ITINERARY_UI_URI, "ui://sendero/itinerary-v12.html");
   assert.equal(LEGACY_ITINERARY_V4_UI_URI, "ui://sendero/itinerary-v4.html");
   assert.equal(LEGACY_ITINERARY_V5_UI_URI, "ui://sendero/itinerary-v5.html");
   assert.equal(LEGACY_ITINERARY_V6_UI_URI, "ui://sendero/itinerary-v6.html");
@@ -21,6 +22,7 @@ test("pins itinerary v11 while keeping earlier component resources addressable",
   assert.equal(LEGACY_ITINERARY_V8_UI_URI, "ui://sendero/itinerary-v8.html");
   assert.equal(LEGACY_ITINERARY_V9_UI_URI, "ui://sendero/itinerary-v9.html");
   assert.equal(LEGACY_ITINERARY_V10_UI_URI, "ui://sendero/itinerary-v10.html");
+  assert.equal(LEGACY_ITINERARY_V11_UI_URI, "ui://sendero/itinerary-v11.html");
 
   const current = itineraryResource("https://sendero.example");
   const legacy = itineraryResource("https://sendero.example", LEGACY_ITINERARY_V5_UI_URI);

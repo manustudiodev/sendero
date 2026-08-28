@@ -34,6 +34,7 @@ const itinerary = {
   destination: "Buenos Aires, Argentina",
   startDate: "2026-08-13",
   endDate: "2026-08-15",
+  timezone: "America/Argentina/Buenos_Aires",
   lodging: {
     name: "Base provisional en Palermo",
     area: "Palermo, Buenos Aires",
@@ -500,7 +501,7 @@ createServer(async (request, response) => {
       return;
     }
     response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-    response.end(JSON.stringify({ share: { itinerary: publicItinerary, publishedAt: 1787600000000, updatedAt: 1787800000000, expiresAt: 1790200000000 } }));
+    response.end(JSON.stringify({ share: { itinerary: publicItinerary, sourceVersion: 4, generation: 1, publishedAt: 1787600000000, updatedAt: 1787800000000, expiresAt: 1790200000000 } }));
     return;
   }
   const page = pages[path];

@@ -55,6 +55,17 @@ function optionalCheckedAt(value) {
   return Number.isNaN(Date.parse(checkedAt)) ? undefined : checkedAt;
 }
 
+function optionalTimezone(value) {
+  const timezone = optionalString(value);
+  if (!timezone) return undefined;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone }).format(0);
+    return timezone;
+  } catch {
+    return undefined;
+  }
+}
+
 function optionalHttpUrl(value) {
   if (typeof value !== "string") return undefined;
   try {
@@ -187,11 +198,21 @@ function publicGuide(value, privateValues) {
   });
 }
 
-function publicActivity(value, dayIndex, activityIndex, privateValues) {
+function publicBooking(value) {
+  if (!isRecord(value) || value.status === "not_needed") return undefined;
+  const required = value.requirement === "required" || !value.requirement;
+  return {
+    required,
+    confirmed: value.status === "confirmed",
+  };
+}
+
+function publicActivity(value, dayIndex, activityIndex, dayDate, privateValues) {
   if (!isRecord(value)) {
     throw new Error(`Invalid public itinerary activity ${dayIndex + 1}.${activityIndex + 1}.`);
   }
   return compact({
+    publicId: `${dayDate}:activity:${activityIndex + 1}`,
     startTime: requiredString(value.startTime, "activity start time"),
     endTime: optionalString(value.endTime),
     title: redactPrivateText(
@@ -203,6 +224,7 @@ function publicActivity(value, dayIndex, activityIndex, privateValues) {
     category: redactPrivateText(value.category, privateValues),
     location: publicLocation(value.location, privateValues),
     sourceUrl: publicUrl(value.sourceUrl, privateValues),
+    booking: publicBooking(value.reservation),
     travelToNext: publicTravel(value.travelToNext, privateValues),
   });
 }
@@ -302,13 +324,14 @@ function publicDay(value, dayIndex, { destination, baseArea, modes, privateValue
   if (!isRecord(value) || !Array.isArray(value.activities)) {
     throw new Error(`Invalid public itinerary day ${dayIndex + 1}.`);
   }
+  const date = requiredString(value.date, "day date");
   const activities = value.activities.map((activity, activityIndex) =>
-    publicActivity(activity, dayIndex, activityIndex, privateValues),
+    publicActivity(activity, dayIndex, activityIndex, date, privateValues),
   );
   const stops = orderedPublicStops(activities, destination, baseArea);
 
   return compact({
-    date: requiredString(value.date, "day date"),
+    date,
     title: redactPrivateText(requiredString(value.title, "day title"), privateValues),
     area: redactPrivateText(requiredString(value.area, "day area"), privateValues),
     summary: redactPrivateText(value.summary, privateValues),
@@ -371,6 +394,7 @@ export function sanitizePublicSnapshot(snapshot) {
     destination,
     startDate: requiredString(snapshot.startDate, "start date"),
     endDate: requiredString(snapshot.endDate, "end date"),
+    timezone: optionalTimezone(snapshot.timezone),
     baseArea,
     transport: { modes },
     days: snapshot.days.map((day, dayIndex) =>

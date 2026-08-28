@@ -529,6 +529,8 @@ export const resolveByTokenHash = internalQuery({
       status: "active" as const,
       itinerary: share.publicSnapshot,
       share: {
+        sourceVersion: share.sourceVersion,
+        generation: share.generation,
         publishedAt: share.publishedAt,
         updatedAt: share.updatedAt,
         expiresAt: share.expiresAt,
