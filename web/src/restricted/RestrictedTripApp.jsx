@@ -7,6 +7,7 @@ import {
   normalizeSession,
   requestJson,
 } from "../account/web-client.js";
+import { localeLanguage, resolveContentLocale, setDocumentLocale } from "../i18n/index.js";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
 import { reservationEntryKey } from "../itinerary/presentation-utils.js";
 import { AccessPanel } from "./AccessPanel.jsx";
@@ -79,7 +80,69 @@ const restrictedStyles = `
 @media (max-width: 640px) { .restricted-page { width: min(100% - 14px, 1500px); } .restricted-context { align-items: flex-start; flex-direction: column; } .restricted-context-actions { width: 100%; justify-content: space-between; } .restricted-viewer { border-radius: 16px; } }
 `;
 
-const ROLE_LABEL = { editor: "Colaborador", owner: "Propietario", viewer: "Viewer" };
+const COPY = {
+  en: {
+    roles: { editor: "Collaborator", owner: "Owner", viewer: "Viewer" },
+    conflict: "The itinerary changed somewhere else. We loaded the latest version; review the status before trying again.",
+    reservationError: "We couldn't update this booking. Try again.",
+    loading: "Opening the itinerary…",
+    signIn: "Sign in",
+    signedOutDetail: "This itinerary is available only to invited people.",
+    signedOutTitle: "Sign in to view it",
+    forbiddenDetail: "Ask the owner to invite the email address you use for your Sendero account.",
+    forbiddenTitle: "You don't have access to this trip",
+    back: "Back to my trips",
+    notFoundDetail: "It may have been deleted or the link may be incorrect.",
+    notFoundTitle: "We couldn't find this trip",
+    retry: "Try again",
+    errorDetail: "Your data is still saved; try again.",
+    errorTitle: "We couldn't open the itinerary",
+    restricted: "Restricted access",
+    continue: "Continue this trip in ChatGPT ↗",
+  },
+  es: {
+    roles: { editor: "Colaborador", owner: "Propietario", viewer: "Viewer" },
+    conflict: "El itinerario cambió en otro lugar. Ya cargamos la versión más reciente; revisa el estado antes de intentar otra vez.",
+    reservationError: "No pudimos actualizar esta reserva. Intenta nuevamente.",
+    loading: "Abriendo el itinerario…",
+    signIn: "Iniciar sesión",
+    signedOutDetail: "Este itinerario está disponible solo para personas invitadas.",
+    signedOutTitle: "Inicia sesión para verlo",
+    forbiddenDetail: "Pide a la persona propietaria que te invite con el correo de tu cuenta de Sendero.",
+    forbiddenTitle: "No tienes acceso a este viaje",
+    back: "Volver a mis viajes",
+    notFoundDetail: "Puede haber sido eliminado o el enlace no es correcto.",
+    notFoundTitle: "No encontramos este viaje",
+    retry: "Intentar de nuevo",
+    errorDetail: "Tus datos siguen guardados; vuelve a intentarlo.",
+    errorTitle: "No pudimos abrir el itinerario",
+    restricted: "Acceso restringido",
+    continue: "Continuar este viaje en ChatGPT ↗",
+  },
+  pt: {
+    roles: { editor: "Colaborador", owner: "Proprietário", viewer: "Visualizador" },
+    conflict: "O roteiro mudou em outro lugar. Carregamos a versão mais recente; revise o status antes de tentar novamente.",
+    reservationError: "Não foi possível atualizar esta reserva. Tente novamente.",
+    loading: "Abrindo o roteiro…",
+    signIn: "Entrar",
+    signedOutDetail: "Este roteiro está disponível apenas para pessoas convidadas.",
+    signedOutTitle: "Entre para visualizá-lo",
+    forbiddenDetail: "Peça ao proprietário para convidar o e-mail da sua conta do Sendero.",
+    forbiddenTitle: "Você não tem acesso a esta viagem",
+    back: "Voltar às minhas viagens",
+    notFoundDetail: "A viagem pode ter sido excluída ou o link pode estar incorreto.",
+    notFoundTitle: "Não encontramos esta viagem",
+    retry: "Tentar novamente",
+    errorDetail: "Seus dados continuam salvos; tente novamente.",
+    errorTitle: "Não foi possível abrir o roteiro",
+    restricted: "Acesso restrito",
+    continue: "Continuar esta viagem no ChatGPT ↗",
+  },
+};
+
+function copyFor(locale) {
+  return COPY[localeLanguage(locale)] || COPY.en;
+}
 
 export function restrictedWebId(locationLike = globalThis.location) {
   const fromMeta = globalThis.document?.querySelector('meta[name="sendero-trip-web-id"]')?.content?.trim();
@@ -116,6 +179,8 @@ export function RestrictedTripApp({ initialWebId = "" }) {
   const [updateError, setUpdateError] = useState("");
   const reservationQueue = useRef(Promise.resolve());
   const reservationOperations = useRef(createStableOperationRegistry());
+  const locale = resolveContentLocale(state.kind === "ready" ? state.trip.itinerary.locale : undefined);
+  const copy = copyFor(locale);
 
   const commitState = useCallback((next) => {
     latestStateRef.current = next;
@@ -142,6 +207,7 @@ export function RestrictedTripApp({ initialWebId = "" }) {
   }, [commitState, webId]);
 
   useEffect(() => { loadTrip(); }, [loadTrip]);
+  useEffect(() => { setDocumentLocale(locale); }, [locale]);
 
   function openReservation(target) {
     setSelectedReservationKey(target ? reservationEntryKey(target.dayDate, target.activityId) : "");
@@ -180,8 +246,8 @@ export function RestrictedTripApp({ initialWebId = "" }) {
         if (error?.status === 409) {
           reservationOperations.current.clear(operationKey);
           await loadTrip({ preserveSession: current.session });
-          setUpdateError("El itinerario cambió en otro lugar. Ya cargamos la versión más reciente; revisa el estado antes de intentar otra vez.");
-        } else setUpdateError("No pudimos actualizar esta reserva. Intenta nuevamente.");
+          setUpdateError(copy.conflict);
+        } else setUpdateError(copy.reservationError);
         throw error;
       }
     };
@@ -190,11 +256,11 @@ export function RestrictedTripApp({ initialWebId = "" }) {
     return queued;
   }
 
-  if (state.kind === "loading") return <WebState kind="loading" title="Abriendo el itinerario…" />;
-  if (state.kind === "signed_out") return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, `/app/trips/${encodeURIComponent(webId)}`)}>Iniciar sesión</a>} detail="Este itinerario está disponible solo para personas invitadas." title="Inicia sesión para verlo" />;
-  if (state.kind === "forbidden") return <WebState detail="Pide a la persona propietaria que te invite con el correo de tu cuenta de Sendero." title="No tienes acceso a este viaje" />;
-  if (state.kind === "not_found") return <WebState action={<a className="web-button" href="/app">Volver a mis viajes</a>} detail="Puede haber sido eliminado o el enlace no es correcto." kind="error" title="No encontramos este viaje" />;
-  if (state.kind === "error") return <WebState action={<WebButton onClick={() => loadTrip()}>Intentar de nuevo</WebButton>} detail="Tus datos siguen guardados; vuelve a intentarlo." kind="error" title="No pudimos abrir el itinerario" />;
+  if (state.kind === "loading") return <WebState kind="loading" title={copy.loading} />;
+  if (state.kind === "signed_out") return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, `/app/trips/${encodeURIComponent(webId)}`)}>{copy.signIn}</a>} detail={copy.signedOutDetail} title={copy.signedOutTitle} />;
+  if (state.kind === "forbidden") return <WebState detail={copy.forbiddenDetail} title={copy.forbiddenTitle} />;
+  if (state.kind === "not_found") return <WebState action={<a className="web-button" href="/app">{copy.back}</a>} detail={copy.notFoundDetail} kind="error" title={copy.notFoundTitle} />;
+  if (state.kind === "error") return <WebState action={<WebButton onClick={() => loadTrip()}>{copy.retry}</WebButton>} detail={copy.errorDetail} kind="error" title={copy.errorTitle} />;
 
   const { session, trip } = state;
   const chatgptUrl = configuredChatgptUrl();
@@ -202,10 +268,10 @@ export function RestrictedTripApp({ initialWebId = "" }) {
     <WebPageFrame className="restricted-page" csrfToken={session.csrfToken} user={session.user}>
       <style>{restrictedStyles}</style>
       <div className="restricted-context">
-        <p>Acceso restringido</p>
+        <p>{copy.restricted}</p>
         <div className="restricted-context-actions">
-          {trip.permissions.editInSendero && chatgptUrl ? <a className="restricted-chat-link" href={chatgptUrl} rel="noreferrer" target="_blank">Continuar este viaje en ChatGPT ↗</a> : null}
-          <span className="web-role-badge">{ROLE_LABEL[trip.role]}</span>
+          {trip.permissions.editInSendero && chatgptUrl ? <a className="restricted-chat-link" href={chatgptUrl} rel="noreferrer" target="_blank">{copy.continue}</a> : null}
+          <span className="web-role-badge">{copy.roles[trip.role]}</span>
         </div>
       </div>
       {updateError ? <p className="restricted-update-error" role="alert">{updateError}</p> : null}
@@ -228,7 +294,7 @@ export function RestrictedTripApp({ initialWebId = "" }) {
           variant="restricted"
         />
       </div>
-      {trip.permissions.manageAccess ? <AccessPanel csrfToken={session.csrfToken} webId={trip.webId} /> : null}
+      {trip.permissions.manageAccess ? <AccessPanel csrfToken={session.csrfToken} locale={locale} webId={trip.webId} /> : null}
     </WebPageFrame>
   );
 }

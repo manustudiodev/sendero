@@ -1,13 +1,20 @@
 {
   "name": "sendero",
-  "version": "0.8.1",
-  "description": "Create and adapt local-first travel itineraries with live context, realistic routes, and reservation planning.",
+  "version": "0.9.0",
+  "description": "Create and adapt local-first travel itineraries through natural conversation, even when the traveler does not name Sendero. Also supports viajes, itinerarios, planes de viaje, vacaciones, and día por día planning, aunque la persona no mencione Sendero.",
   "author": {
     "name": "Manuel Pacheco"
   },
   "keywords": [
     "travel",
     "itinerary",
+    "trip planning",
+    "vacation",
+    "viaje",
+    "itinerario",
+    "plan de viaje",
+    "vacaciones",
+    "día por día",
     "local experiences",
     "events",
     "weather",
@@ -16,8 +23,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Sendero",
-    "shortDescription": "Plan trips around real places, local culture, and your constraints",
-    "longDescription": "Build practical itineraries from dates, lodging, transport preferences, interests, weather, local events, reservations, and daily routes. Reorganize plans while preserving fixed activities and confirmed bookings.",
+    "shortDescription": "Create practical, local-first trips through natural conversation",
+    "longDescription": "Use Sendero whenever someone wants to create, plan, organize, or adapt a trip or itinerary, even without naming Sendero. Turn natural requests into practical day-by-day plans using dates, lodging, transport, interests, weather, local events, reservations, and realistic routes. Preserve fixed activities and confirmed bookings when plans change. Spanish requests such as ‘viajo el mes que viene’, ‘quiero un itinerario’, ‘plan de viaje’, or ‘vacaciones día por día’ should discover Sendero too.",
     "developerName": "Manuel Pacheco",
     "category": "Travel",
     "capabilities": ["Interactive"],
@@ -26,7 +33,9 @@
       "Open one of my saved Sendero trips.",
       "Adjust my itinerary without losing reservations or fixed plans.",
       "Refresh my trip using current weather, events, closures, and routes.",
-      "Share a read-only version of my trip with a secure public link."
+      "Share a read-only version of my trip with a secure public link.",
+      "Viajo el mes que viene y quiero un itinerario para aprovechar cada día.",
+      "Ayúdame a organizar un viaje local y realista sin que tenga que mencionar Sendero."
     ],
     "brandColor": "#2383E2"
   },

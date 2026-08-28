@@ -42,18 +42,20 @@ export function mergeBrief(brief = {}, draft) {
   };
 }
 
-export function initialRequirementsStatus(saved = {}) {
+export function initialRequirementsStatus(saved = {}, localeValue) {
+  const locale = resolveContentLocale(localeValue || saved.baseBrief?.locale);
   if (saved.continuation?.phase === "sent") {
-    return { state: "success", message: "Listo. Sendero continúa en la conversación." };
+    return { state: "success", message: t(locale, "status.success") };
   }
   if (["dispatching", "uncertain", "delivery_failed"].includes(saved.continuation?.phase)) {
     return {
       state: "error",
-      message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+      message: t(locale, "status.deliveryUncertain"),
     };
   }
   if (saved.status?.state === "loading") {
-    return { state: "error", message: "La validación quedó pendiente. Puedes intentarlo otra vez." };
+    return { state: "error", message: t(locale, "status.validationPending") };
   }
   return saved.status || { state: "idle", message: "" };
 }
+import { resolveContentLocale, t } from "../i18n/index.js";

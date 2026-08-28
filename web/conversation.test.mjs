@@ -33,11 +33,11 @@ test("keeps grouped requirements mechanics out of the visible continuation", () 
   assert.doesNotMatch(continuation.fallbackMessage, forbiddenVisibleMechanics);
   assert.equal(continuation.visibleMessage, continuation.fallbackMessage);
   assert.match(continuation.visibleMessage, /Buenos Aires, Argentina/);
-  assert.match(continuation.visibleMessage, /2027-08-13/);
-  assert.match(continuation.visibleMessage, /2027-08-26/);
-  assert.match(continuation.visibleMessage, /3 adultos/);
-  assert.match(continuation.visibleMessage, /a pie, transporte público, taxi o app/);
-  assert.match(continuation.visibleMessage, /no vuelvas a pedirme estos datos/);
+  assert.match(continuation.visibleMessage, /Aug 13, 2027/);
+  assert.match(continuation.visibleMessage, /Aug 26, 2027/);
+  assert.match(continuation.visibleMessage, /3 adults/);
+  assert.match(continuation.visibleMessage, /on foot, public transport, and taxi or ride app/);
+  assert.match(continuation.visibleMessage, /do not ask me for these details again/);
   assert.equal(continuation.context.structuredContent.sendero.stage, "brief_ready");
   assert.equal(continuation.context.structuredContent.sendero.interactionId, "interaction-secret");
   assert.deepEqual(
@@ -58,8 +58,8 @@ test("keeps guided intake data natural while preserving the complete brief priva
   assert.doesNotMatch(continuation.fallbackMessage, forbiddenVisibleMechanics);
   assert.equal(continuation.visibleMessage, continuation.fallbackMessage);
   assert.match(continuation.visibleMessage, /Buenos Aires, Argentina/);
-  assert.match(continuation.visibleMessage, /2027-08-13/);
-  assert.match(continuation.visibleMessage, /3 adultos/);
+  assert.match(continuation.visibleMessage, /Aug 13, 2027/);
+  assert.match(continuation.visibleMessage, /3 adults/);
   assert.equal(continuation.context.structuredContent.sendero.stage, "brief_ready");
   assert.deepEqual(
     continuation.context.structuredContent.sendero.validation,
@@ -100,4 +100,33 @@ test("does not confuse saved trips that share the same title", () => {
     first.context.structuredContent.sendero.tripId,
     second.context.structuredContent.sendero.tripId,
   );
+});
+
+test("uses the brief locale for English and Portuguese continuations", () => {
+  const english = tripIntakeContinuation({ ...brief, locale: "en-US" });
+  assert.match(english.visibleMessage, /I want to create a trip/);
+  assert.match(english.visibleMessage, /Aug 13, 2027/);
+  assert.match(english.visibleMessage, /3 adults/);
+  assert.doesNotMatch(english.visibleMessage, /Listo|adultos|ago 2027/);
+
+  const portuguese = tripRequirementsContinuation({
+    brief: { ...brief, locale: "pt-BR" },
+    fields: ["startDate", "endDate"],
+  });
+  assert.match(portuguese.visibleMessage, /Pronto: destino/);
+  assert.match(portuguese.visibleMessage, /13 de ago\. de 2027/);
+  assert.match(portuguese.visibleMessage, /transporte público e táxi ou aplicativo/);
+  assert.doesNotMatch(portuguese.visibleMessage, /Continúa|no vuelvas/);
+});
+
+test("keeps legacy briefs in English and localizes saved-trip selection from trip locale", () => {
+  assert.match(tripIntakeContinuation(brief).visibleMessage, /^Done:/);
+  assert.match(tripSelectionContinuation({
+    purpose: "open",
+    trip: { id: "trip-en", title: "London", locale: "en-GB" },
+  }).visibleMessage, /^I chose the trip/);
+  assert.match(tripSelectionContinuation({
+    purpose: "open",
+    trip: { id: "trip-pt", title: "Lisboa", locale: "pt-BR" },
+  }).visibleMessage, /^Escolhi a viagem/);
 });

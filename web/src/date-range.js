@@ -1,3 +1,5 @@
+import { localeWeekStartsOnMonday, t, uiLocale } from "./i18n/index.js";
+
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function parseISODate(value) {
@@ -59,20 +61,29 @@ export function mondayIndex(value) {
   return (date.getUTCDay() + 6) % 7;
 }
 
-export function monthMatrix(value) {
+export function weekStartIndex(value, locale = "en") {
+  const date = parseISODate(value);
+  if (!date) return 0;
+  return localeWeekStartsOnMonday(locale)
+    ? (date.getUTCDay() + 6) % 7
+    : date.getUTCDay();
+}
+
+export function monthMatrix(value, locale = "en") {
   const monthStart = startOfMonthISO(value);
   if (!monthStart) return [];
-  const gridStart = addDaysISO(monthStart, -mondayIndex(monthStart));
+  const gridStart = addDaysISO(monthStart, -weekStartIndex(monthStart, locale));
   return Array.from({ length: 42 }, (_, index) => {
     const iso = addDaysISO(gridStart, index);
     return { iso, inMonth: iso.slice(0, 7) === monthStart.slice(0, 7) };
   });
 }
 
-export function formatDateLabel(value, locale = "es") {
+export function formatDateLabel(value, locale = "en") {
+  const resolvedLocale = uiLocale(locale);
   const date = parseISODate(value);
-  if (!date) return "Elegir";
-  return new Intl.DateTimeFormat(locale, {
+  if (!date) return t(resolvedLocale, "date.choose");
+  return new Intl.DateTimeFormat(resolvedLocale, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -80,10 +91,11 @@ export function formatDateLabel(value, locale = "es") {
   }).format(date);
 }
 
-export function formatLongDateLabel(value, locale = "es") {
+export function formatLongDateLabel(value, locale = "en") {
+  const resolvedLocale = uiLocale(locale);
   const date = parseISODate(value);
   if (!date) return "";
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(resolvedLocale, {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -92,15 +104,16 @@ export function formatLongDateLabel(value, locale = "es") {
   }).format(date);
 }
 
-export function formatMonthLabel(value, locale = "es") {
+export function formatMonthLabel(value, locale = "en") {
+  const resolvedLocale = uiLocale(locale);
   const date = parseISODate(value);
   if (!date) return "";
-  const label = new Intl.DateTimeFormat(locale, {
+  const label = new Intl.DateTimeFormat(resolvedLocale, {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(date);
-  return `${label.charAt(0).toLocaleUpperCase(locale)}${label.slice(1)}`;
+  return `${label.charAt(0).toLocaleUpperCase(resolvedLocale)}${label.slice(1)}`;
 }
 
 export function rangeState(value, startDate, endDate) {
@@ -126,13 +139,13 @@ export function selectRangeDate({ startDate = "", endDate = "", endpoint = "star
   return { startDate, endDate: value, endpoint: "complete" };
 }
 
-export function moveCalendarFocus(value, key, shiftKey = false) {
+export function moveCalendarFocus(value, key, shiftKey = false, locale = "en") {
   if (key === "ArrowLeft") return addDaysISO(value, -1);
   if (key === "ArrowRight") return addDaysISO(value, 1);
   if (key === "ArrowUp") return addDaysISO(value, -7);
   if (key === "ArrowDown") return addDaysISO(value, 7);
-  if (key === "Home") return addDaysISO(value, -mondayIndex(value));
-  if (key === "End") return addDaysISO(value, 6 - mondayIndex(value));
+  if (key === "Home") return addDaysISO(value, -weekStartIndex(value, locale));
+  if (key === "End") return addDaysISO(value, 6 - weekStartIndex(value, locale));
   if (key === "PageUp") return addMonthsISO(value, shiftKey ? -12 : -1);
   if (key === "PageDown") return addMonthsISO(value, shiftKey ? 12 : 1);
   return "";

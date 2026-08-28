@@ -1,18 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, ChoiceChips, Field, InlineNotice, SelectionReceipt } from "../components.jsx";
 import { DateRangePicker } from "../DateRangePicker.jsx";
-import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
+import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useComponentLocale, useToolOutput, widgetState } from "../bridge.js";
 import { briefReceiptSummary, tripRequirementsContinuation } from "../conversation.js";
+import { resolveContentLocale, t } from "../i18n/index.js";
 import { normalizeToolOutput } from "../tool-output.js";
 import { draftFromBrief, initialRequirementsStatus, mergeBrief, requestedFields } from "./state.js";
 
-const transportOptions = [
-  { value: "walk", label: "A pie" },
-  { value: "public_transit", label: "Transporte público" },
-  { value: "taxi", label: "Taxi / app" },
-  { value: "bike", label: "Bicicleta" },
-  { value: "car", label: "Auto" },
-];
+const transportValues = ["walk", "public_transit", "taxi", "bike", "car"];
 
 export function TripRequirementsApp() {
   const { output } = useToolOutput();
@@ -23,10 +18,13 @@ export function TripRequirementsApp() {
   const draftTouchedRef = useRef(false);
   const [fields, setFields] = useState(() => saved.fields || requestedFields(output));
   const [baseBrief, setBaseBrief] = useState(() => saved.baseBrief || output?.brief || null);
+  const localeBrief = baseBrief || output?.brief;
+  const locale = useComponentLocale(localeBrief ? resolveContentLocale(localeBrief.locale) : undefined);
   const [draft, setDraft] = useState(() => saved.draft || draftFromBrief(output?.brief));
   const [completed, setCompleted] = useState(saved.completed || null);
   const [continuation, setContinuation] = useState(saved.continuation || null);
-  const [status, setStatus] = useState(() => initialRequirementsStatus(saved));
+  const [status, setStatus] = useState(() => initialRequirementsStatus(saved, saved.baseBrief?.locale || output?.brief?.locale));
+  const transportOptions = transportValues.map((value) => ({ value, label: t(locale, `transport.${value}`) }));
 
   useEffect(() => {
     if (!output?.brief || outputHydratedRef.current) return;
@@ -62,19 +60,19 @@ export function TripRequirementsApp() {
   }
 
   function validate() {
-    if (fields.includes("destination") && !draft.destination.trim()) return "Indica el destino del viaje.";
-    if (fields.includes("startDate") && !draft.startDate) return "Indica la fecha de llegada.";
-    if (fields.includes("endDate") && !draft.endDate) return "Indica la fecha de regreso.";
-    if (draft.startDate && draft.endDate && draft.startDate > draft.endDate) return "La fecha de regreso debe ser posterior a la de llegada.";
-    if (fields.includes("travellers.adults") && (!Number.isInteger(Number(draft.adults)) || Number(draft.adults) < 1)) return "Indica cuántos adultos viajan.";
-    if (fields.includes("transport.modes") && !draft.transportModes.length) return "Elige al menos una forma de moverse.";
-    if (draft.transportModes.includes("car") && !draft.hasLicense) return "Para planificar con auto, confirma que alguien tenga una licencia válida.";
+    if (fields.includes("destination") && !draft.destination.trim()) return t(locale, "requirements.validation.destination");
+    if (fields.includes("startDate") && !draft.startDate) return t(locale, "requirements.validation.startDate");
+    if (fields.includes("endDate") && !draft.endDate) return t(locale, "requirements.validation.endDate");
+    if (draft.startDate && draft.endDate && draft.startDate > draft.endDate) return t(locale, "requirements.validation.dateOrder");
+    if (fields.includes("travellers.adults") && (!Number.isInteger(Number(draft.adults)) || Number(draft.adults) < 1)) return t(locale, "requirements.validation.adults");
+    if (fields.includes("transport.modes") && !draft.transportModes.length) return t(locale, "requirements.validation.transport");
+    if (draft.transportModes.includes("car") && !draft.hasLicense) return t(locale, "requirements.validation.license");
     return "";
   }
 
   async function deliverContinuation(nextContinuation, receipt) {
     const dispatching = { ...nextContinuation, phase: "dispatching" };
-    const sending = { state: "loading", message: "Continuando con tu viaje…" };
+    const sending = { state: "loading", message: t(locale, "status.continuing") };
     setContinuation(dispatching);
     setStatus(sending);
     await Promise.resolve(setWidgetState({
@@ -99,7 +97,7 @@ export function TripRequirementsApp() {
         // The self-contained follow-up below carries the same critical details.
       }
       await sendFollowUpMessage(next.visibleMessage);
-      const success = { state: "success", message: "Listo. Sendero continúa en la conversación." };
+      const success = { state: "success", message: t(locale, "status.success") };
       const sent = { ...dispatching, phase: "sent" };
       setContinuation(sent);
       setStatus(success);
@@ -119,7 +117,7 @@ export function TripRequirementsApp() {
     } catch {
       const uncertainStatus = {
         state: "error",
-        message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+        message: t(locale, "status.deliveryUncertain"),
       };
       const uncertain = { ...dispatching, phase: "uncertain" };
       setContinuation(uncertain);
@@ -143,7 +141,7 @@ export function TripRequirementsApp() {
   async function continueConversation(candidateBrief) {
     if (pendingRef.current) return;
     pendingRef.current = true;
-    const validating = { state: "loading", message: "Validando tus datos…" };
+    const validating = { state: "loading", message: t(locale, "status.validating") };
     setStatus(validating);
     try {
       const prepared = normalizeToolOutput(await callTool("prepare_trip_brief", { brief: candidateBrief }));
@@ -153,7 +151,7 @@ export function TripRequirementsApp() {
         const nextDraft = draftFromBrief(normalizedBrief);
         const failure = {
           state: "error",
-          message: "Todavía falta corregir algún dato esencial. Revísalo y vuelve a continuar.",
+          message: t(locale, "status.essentialCorrection"),
         };
         setFields(nextFields);
         setBaseBrief(normalizedBrief);
@@ -183,7 +181,7 @@ export function TripRequirementsApp() {
     } catch {
       const failure = {
         state: "error",
-        message: "No pudimos validar tus datos todavía. Tus respuestas siguen aquí; inténtalo de nuevo.",
+        message: t(locale, "status.validationFailed"),
       };
       setCompleted(null);
       setContinuation(null);
@@ -211,7 +209,7 @@ export function TripRequirementsApp() {
       return;
     }
     if (!baseBrief) {
-      setStatus({ state: "error", message: "Estamos recuperando el contexto del viaje. Inténtalo de nuevo en un momento." });
+      setStatus({ state: "error", message: t(locale, "status.contextLoading") });
       return;
     }
     await continueConversation(mergeBrief(baseBrief, draft));
@@ -222,9 +220,9 @@ export function TripRequirementsApp() {
       <main className="app-shell requirements-shell compact-shell">
         <SelectionReceipt
           description={completed.description}
-          eyebrow="Datos del viaje completados"
+          eyebrow={t(locale, "requirements.receipt.eyebrow")}
           status={status.message}
-          title="Ya tenemos lo esencial"
+          title={t(locale, "requirements.receipt.title")}
         />
       </main>
     );
@@ -233,7 +231,7 @@ export function TripRequirementsApp() {
   if (!fields.length) {
     return (
       <main className="app-shell requirements-shell compact-shell">
-        <InlineNotice tone="warning">No recibimos los datos que faltan. Puedes continuar describiendo el viaje en el chat.</InlineNotice>
+        <InlineNotice tone="warning">{t(locale, "requirements.empty")}</InlineNotice>
       </main>
     );
   }
@@ -242,19 +240,19 @@ export function TripRequirementsApp() {
     <main className="app-shell requirements-shell">
       <form className="requirements-card" onSubmit={submit}>
         <header className="requirements-heading">
-          <p className="eyebrow">{fields.length === 1 ? "Un dato más" : "Completemos lo esencial"}</p>
-          <h1>{fields.length === 1 ? "Solo falta esto" : "Faltan estos datos"}</h1>
-          <p>Respóndelos juntos y seguimos con el itinerario.</p>
+          <p className="eyebrow">{t(locale, fields.length === 1 ? "requirements.eyebrow.one" : "requirements.eyebrow.many")}</p>
+          <h1>{t(locale, fields.length === 1 ? "requirements.title.one" : "requirements.title.many")}</h1>
+          <p>{t(locale, "requirements.description")}</p>
         </header>
         <div className="requirements-grid">
-          {fields.includes("destination") ? <Field className="field-wide" label="¿A dónde quieren viajar?"><input autoComplete="off" autoFocus onChange={(event) => update("destination", event.target.value)} placeholder="Sevilla, España" required value={draft.destination} /></Field> : null}
-          {fields.includes("startDate") || fields.includes("endDate") ? <DateRangePicker endDate={draft.endDate} onChange={updateDates} startDate={draft.startDate} /> : null}
-          {fields.includes("travellers.adults") ? <Field className={fields.length === 1 ? "field-wide" : ""} label="Adultos"><input inputMode="numeric" min="1" onChange={(event) => update("adults", event.target.value)} required type="number" value={draft.adults} /></Field> : null}
-          {fields.includes("transport.modes") ? <div className="field-wide"><ChoiceChips label="¿Cómo quieren moverse?" onChange={(value) => update("transportModes", value)} options={transportOptions} values={draft.transportModes} /></div> : null}
-          {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />Al menos una persona tiene licencia válida y quiere conducir</label> : null}
+          {fields.includes("destination") ? <Field className="field-wide" label={t(locale, "requirements.destinationLabel")}><input autoComplete="off" autoFocus onChange={(event) => update("destination", event.target.value)} placeholder={t(locale, "requirements.destinationPlaceholder")} required value={draft.destination} /></Field> : null}
+          {fields.includes("startDate") || fields.includes("endDate") ? <DateRangePicker endDate={draft.endDate} locale={locale} onChange={updateDates} startDate={draft.startDate} /> : null}
+          {fields.includes("travellers.adults") ? <Field className={fields.length === 1 ? "field-wide" : ""} label={t(locale, "requirements.adultsLabel")}><input inputMode="numeric" min="1" onChange={(event) => update("adults", event.target.value)} required type="number" value={draft.adults} /></Field> : null}
+          {fields.includes("transport.modes") ? <div className="field-wide"><ChoiceChips label={t(locale, "requirements.transportLabel")} onChange={(value) => update("transportModes", value)} options={transportOptions} values={draft.transportModes} /></div> : null}
+          {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />{t(locale, "requirements.licenseLabel")}</label> : null}
         </div>
         {status.message ? <InlineNotice tone={status.state === "error" ? "error" : "neutral"}>{status.message}</InlineNotice> : null}
-        <footer className="form-footer"><p>Esto completa el contexto; todavía no guarda ni reserva nada.</p><Button disabled={status.state === "loading"} variant="primary" type="submit">{status.state === "loading" ? "Continuando…" : "Continuar"}</Button></footer>
+        <footer className="form-footer"><p>{t(locale, "requirements.footer")}</p><Button disabled={status.state === "loading"} variant="primary" type="submit">{t(locale, status.state === "loading" ? "requirements.continuing" : "requirements.continue")}</Button></footer>
       </form>
     </main>
   );

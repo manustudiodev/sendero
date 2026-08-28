@@ -1,4 +1,4 @@
-const provisionalStopPattern = /\b(?:por decidir|undecided|(?:base|zona|alojamiento|hospedaje|lodging)\s+provisional|provisional\s+(?:base|zona|alojamiento|hospedaje|lodging))\b/i;
+const provisionalStopPattern = /\b(?:por decidir|undecided|a definir|(?:base|zona|alojamiento|hospedaje|lodging|hospedagem|area)\s+provisional|provisional\s+(?:base|zona|alojamiento|hospedaje|lodging|hospedagem|area)|(?:base|zona|hospedagem|area)\s+provisoria|provisoria\s+(?:base|zona|hospedagem|area))\b/i;
 
 function normalizedText(value) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
@@ -8,7 +8,7 @@ function searchKey(value) {
   return normalizedText(value)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("es");
+    .toLowerCase();
 }
 
 function stopKey(value) {
@@ -166,7 +166,7 @@ export function buildDayRouteUrl(itinerary, day) {
   return buildDayRouteUrls(itinerary, day)[0] || "";
 }
 
-export function buildDayEmbedMapUrl(apiKey, itinerary, day, { language = "es" } = {}) {
+export function buildDayEmbedMapUrl(apiKey, itinerary, day, { language = "en" } = {}) {
   const key = normalizedText(apiKey);
   const inlineRoute = inlineMapStopsForDay(itinerary, day);
   const routeStops = inlineRoute.complete ? inlineRoute.stops : [];

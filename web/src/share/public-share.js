@@ -1,3 +1,5 @@
+import { resolveContentLocale } from "../i18n/index.js";
+
 export const PUBLIC_SHARE_TOKEN_LENGTH = 43;
 
 export function normalizePublicShareToken(value) {
@@ -26,5 +28,11 @@ export function publicShareFromPayload(payload, now = Date.now()) {
   const share = payload?.share;
   if (!share || !validItinerary(share.itinerary)) return null;
   if (share.expiresAt && Number(share.expiresAt) <= now) return null;
-  return share;
+  return {
+    ...share,
+    itinerary: {
+      ...share.itinerary,
+      locale: resolveContentLocale(share.itinerary.locale || share.locale),
+    },
+  };
 }

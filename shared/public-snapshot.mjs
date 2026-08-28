@@ -1,3 +1,5 @@
+import { canonicalLocale, localeLanguage } from "./locale.mjs";
+
 const TRANSPORT_MODES = new Set([
   "walk",
   "bike",
@@ -12,6 +14,25 @@ const TRANSPORT_MODES = new Set([
 const WEATHER_STATUSES = new Set(["forecast", "seasonal", "unknown"]);
 const ISO_CHECKED_AT_PATTERN =
   /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z)?$/;
+
+const PUBLIC_SNAPSHOT_COPY = {
+  en: {
+    destination: "Destination",
+    sharedTrip: "Shared trip",
+  },
+  es: {
+    destination: "Destino",
+    sharedTrip: "Viaje compartido",
+  },
+  pt: {
+    destination: "Destino",
+    sharedTrip: "Viagem compartilhada",
+  },
+};
+
+function publicSnapshotCopy(locale) {
+  return PUBLIC_SNAPSHOT_COPY[localeLanguage(locale)] || PUBLIC_SNAPSHOT_COPY.en;
+}
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -320,10 +341,12 @@ export function sanitizePublicSnapshot(snapshot) {
   const privateValues = isRecord(snapshot.lodging)
     ? [snapshot.lodging.name, snapshot.lodging.address].map(optionalString).filter(Boolean)
     : [];
+  const locale = canonicalLocale(snapshot.locale);
+  const copy = publicSnapshotCopy(locale);
   const destination = redactPrivateText(
     requiredString(snapshot.destination, "destination"),
     privateValues,
-    "Destino",
+    copy.destination,
   );
   const rawBaseArea = isRecord(snapshot.lodging) ? optionalString(snapshot.lodging.area) : undefined;
   const baseArea = rawBaseArea && !containsPrivateText(rawBaseArea, privateValues)
@@ -339,10 +362,11 @@ export function sanitizePublicSnapshot(snapshot) {
 
   return compact({
     schemaVersion: 1,
+    locale,
     title: redactPrivateText(
       requiredString(snapshot.title, "title"),
       privateValues,
-      "Viaje compartido",
+      copy.sharedTrip,
     ),
     destination,
     startDate: requiredString(snapshot.startDate, "start date"),

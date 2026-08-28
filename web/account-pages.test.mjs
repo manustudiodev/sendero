@@ -18,6 +18,7 @@ test("account contracts do not expose internal ids as web links", () => {
   ] }), [{
     destination: "",
     endDate: "",
+    locale: "en",
     role: "editor",
     startDate: "",
     title: "Lisboa local",

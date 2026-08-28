@@ -161,6 +161,26 @@ test("creates a strict, versionable public projection without known private fiel
   assert.equal(source.days[0].route.origin, "PRIVATE LODGING ADDRESS 123");
 });
 
+test("uses English public redaction labels by default and preserves explicit Spanish or Portuguese", () => {
+  const cases = [
+    { locale: undefined, expectedLocale: "en", title: "Shared trip", destination: "Destination" },
+    { locale: "es-AR", expectedLocale: "es-AR", title: "Viaje compartido", destination: "Destino" },
+    { locale: "pt-BR", expectedLocale: "pt-BR", title: "Viagem compartilhada", destination: "Destino" },
+  ];
+
+  for (const item of cases) {
+    const source = privateItinerary();
+    source.locale = item.locale;
+    source.title = source.lodging.name;
+    source.destination = source.lodging.address;
+
+    const published = sanitizePublicSnapshot(source);
+    assert.equal(published.locale, item.expectedLocale);
+    assert.equal(published.title, item.title);
+    assert.equal(published.destination, item.destination);
+  }
+});
+
 test("redacts lodging variants from public copy, locations, routes, and map URLs", () => {
   const source = privateItinerary();
   source.lodging.name = "Hôtel Sécret";

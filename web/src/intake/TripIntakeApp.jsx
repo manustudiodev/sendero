@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, ChoiceChips, Field, InlineNotice, SegmentedControl, SelectionReceipt } from "../components.jsx";
 import { DateRangePicker } from "../DateRangePicker.jsx";
-import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useToolOutput, widgetState } from "../bridge.js";
+import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useComponentLocale, useToolOutput, widgetState } from "../bridge.js";
 import { tripIntakeContinuation } from "../conversation.js";
+import { resolveContentLocale, t } from "../i18n/index.js";
 import { normalizeToolOutput } from "../tool-output.js";
 
-const launcherActions = [
-  { id: "new", title: "Nuevo viaje", description: "Fechas, gustos y logística" },
-  { id: "open", title: "Mis viajes", description: "Abrir un plan guardado" },
-  { id: "adjust", title: "Ajustar", description: "Reorganizar sin perder reservas" },
-  { id: "refresh", title: "Actualizar", description: "Clima, eventos y cierres" },
-];
+const launcherActionIds = ["new", "open", "adjust", "refresh"];
+const transportValues = ["walk", "public_transit", "taxi", "bike", "car"];
 
 const defaultDraft = {
   destination: "",
@@ -44,14 +41,16 @@ function draftFromBrief(brief = {}) {
   };
 }
 
-function toBrief(draft, baseBrief = {}) {
+function toBrief(draft, baseBrief = {}, localeValue) {
+  const locale = resolveContentLocale(baseBrief.locale || localeValue);
   const lodging = draft.lodgingStatus === "confirmed"
-    ? { status: "confirmed", name: "Alojamiento", address: draft.lodgingValue.trim() }
+    ? { status: "confirmed", name: t(locale, "intake.lodgingName"), address: draft.lodgingValue.trim() }
     : draft.lodgingStatus === "area_only"
-      ? { status: "area_only", name: "Zona provisional", area: draft.lodgingValue.trim() }
-      : { status: "undecided", name: "Alojamiento por definir" };
+      ? { status: "area_only", name: t(locale, "intake.lodgingAreaName"), area: draft.lodgingValue.trim() }
+      : { status: "undecided", name: t(locale, "intake.lodgingUndecidedName") };
   return {
     ...baseBrief,
+    locale,
     destination: draft.destination.trim(),
     startDate: draft.startDate,
     endDate: draft.endDate,
@@ -72,18 +71,18 @@ function toBrief(draft, baseBrief = {}) {
   };
 }
 
-function initialStatus(saved) {
+function initialStatus(saved, locale) {
   if (saved.continuation?.phase === "sent") {
-    return { state: "sent", message: "Datos enviados. Sendero continúa en la conversación." };
+    return { state: "sent", message: t(locale, "intake.actionSent") };
   }
   if (["dispatching", "uncertain", "delivery_failed"].includes(saved.continuation?.phase)) {
     return {
       state: "error",
-      message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+      message: t(locale, "status.deliveryUncertain"),
     };
   }
   if (saved.status?.state === "sending") {
-    return { state: "error", message: "La validación quedó pendiente. Puedes intentarlo otra vez." };
+    return { state: "error", message: t(locale, "status.validationPending") };
   }
   return saved.status || { state: "idle", message: "" };
 }
@@ -97,9 +96,17 @@ export function TripIntakeApp() {
   const [view, setView] = useState(saved.view || output?.mode || "new");
   const [completedAction, setCompletedAction] = useState(saved.completedAction || null);
   const [baseBrief, setBaseBrief] = useState(() => saved.baseBrief || output?.brief || null);
+  const localeBrief = baseBrief || output?.brief;
+  const locale = useComponentLocale(localeBrief ? resolveContentLocale(localeBrief.locale) : undefined);
   const [draft, setDraft] = useState(() => saved.draft || draftFromBrief(output?.brief));
   const [continuation, setContinuation] = useState(saved.continuation || null);
-  const [status, setStatus] = useState(() => initialStatus(saved));
+  const [status, setStatus] = useState(() => initialStatus(saved, locale));
+  const launcherActions = launcherActionIds.map((id) => ({
+    id,
+    title: t(locale, `intake.launcher.${id}.title`),
+    description: t(locale, `intake.launcher.${id}.description`),
+  }));
+  const transportOptions = transportValues.map((value) => ({ value, label: t(locale, `transport.${value}`) }));
 
   useEffect(() => {
     if (!output?.brief || outputHydratedRef.current) return;
@@ -156,17 +163,17 @@ export function TripIntakeApp() {
     setView("complete");
     setWidgetState({ view: "complete", baseBrief, draft, completedAction: receipt, continuation: null });
     const prompts = {
-      open: "Muéstrame mis viajes guardados como opciones para elegir.",
-      adjust: "Quiero elegir uno de mis viajes guardados para ajustarlo sin perder reservas confirmadas ni actividades fijas.",
-      refresh: "Quiero elegir uno de mis viajes guardados para actualizar su clima, eventos, cierres, transporte y reservas vigentes.",
+      open: t(locale, "intake.actionOpen"),
+      adjust: t(locale, "intake.actionAdjust"),
+      refresh: t(locale, "intake.actionRefresh"),
     };
     pendingRef.current = true;
-    setStatus({ state: "sending", message: "Continuando en la conversación…" });
+    setStatus({ state: "sending", message: t(locale, "status.continuing") });
     try {
       await sendFollowUpMessage(prompts[action]);
-      setStatus({ state: "sent", message: "Selección enviada." });
+      setStatus({ state: "sent", message: t(locale, "intake.actionSent") });
     } catch {
-      setStatus({ state: "error", message: "No pudimos continuar todavía. Inténtalo de nuevo." });
+      setStatus({ state: "error", message: t(locale, "intake.validation.failed") });
     } finally {
       pendingRef.current = false;
     }
@@ -174,7 +181,7 @@ export function TripIntakeApp() {
 
   async function deliverContinuation(nextContinuation, receipt) {
     const dispatching = { ...nextContinuation, phase: "dispatching" };
-    const sending = { state: "sending", message: "Preparando el itinerario…" };
+    const sending = { state: "sending", message: t(locale, "intake.status.preparing") };
     setContinuation(dispatching);
     setStatus(sending);
     await Promise.resolve(setWidgetState({
@@ -195,7 +202,7 @@ export function TripIntakeApp() {
       }
       await sendFollowUpMessage(next.visibleMessage);
       const sent = { ...dispatching, phase: "sent" };
-      const success = { state: "sent", message: "Datos enviados. Sendero continúa en la conversación." };
+      const success = { state: "sent", message: t(locale, "intake.actionSent") };
       setContinuation(sent);
       setStatus(success);
       try {
@@ -214,7 +221,7 @@ export function TripIntakeApp() {
       const uncertain = { ...dispatching, phase: "uncertain" };
       const uncertainStatus = {
         state: "error",
-        message: "No pudimos confirmar la entrega. Si el chat no continúa, dímelo con tus palabras.",
+        message: t(locale, "status.deliveryUncertain"),
       };
       setContinuation(uncertain);
       setStatus(uncertainStatus);
@@ -237,37 +244,37 @@ export function TripIntakeApp() {
     event.preventDefault();
     if (pendingRef.current) return;
     if (!draft.destination || !draft.startDate || !draft.endDate || !draft.transportModes.length) {
-      setStatus({ state: "error", message: "Completa destino, fechas y al menos un medio de transporte." });
+      setStatus({ state: "error", message: t(locale, "intake.validation.required") });
       return;
     }
     if (!Number.isInteger(Number(draft.adults)) || Number(draft.adults) < 1 || !Number.isInteger(Number(draft.children)) || Number(draft.children) < 0) {
-      setStatus({ state: "error", message: "Indica una cantidad válida de adultos y niños." });
+      setStatus({ state: "error", message: t(locale, "intake.validation.travellers") });
       return;
     }
     if (draft.startDate > draft.endDate) {
-      setStatus({ state: "error", message: "La fecha de regreso debe ser posterior a la de salida." });
+      setStatus({ state: "error", message: t(locale, "intake.validation.dateOrder") });
       return;
     }
     if (draft.lodgingStatus !== "undecided" && !draft.lodgingValue.trim()) {
-      setStatus({ state: "error", message: "Indica la dirección o zona, o selecciona “Todavía no lo elegí”." });
+      setStatus({ state: "error", message: t(locale, "intake.validation.lodging") });
       return;
     }
     if (draft.transportModes.includes("car") && !draft.hasLicense) {
-      setStatus({ state: "error", message: "Marcaste auto, pero todavía no confirmaste una licencia válida." });
+      setStatus({ state: "error", message: t(locale, "intake.validation.license") });
       return;
     }
 
     pendingRef.current = true;
-    setStatus({ state: "sending", message: "Validando tus datos…" });
+    setStatus({ state: "sending", message: t(locale, "status.validating") });
     try {
       const prepared = normalizeToolOutput(await callTool("prepare_trip_brief", {
-        brief: toBrief(draft, baseBrief || {}),
+        brief: toBrief(draft, baseBrief || {}, locale),
       }));
       if (!prepared?.brief || prepared.ready !== true || prepared.criticalFields?.length) {
-        const normalizedBrief = prepared?.brief || toBrief(draft, baseBrief || {});
+        const normalizedBrief = prepared?.brief || toBrief(draft, baseBrief || {}, locale);
         const failure = {
           state: "error",
-          message: "Todavía falta corregir algún dato esencial antes de crear el itinerario.",
+          message: t(locale, "intake.validation.essential"),
         };
         setBaseBrief(normalizedBrief);
         setDraft(draftFromBrief(normalizedBrief));
@@ -287,7 +294,7 @@ export function TripIntakeApp() {
       const receipt = {
         id: "new",
         title: brief.destination,
-        description: `${brief.startDate} — ${brief.endDate} · ${Number(brief.travellers.adults) + Number(brief.travellers.children || 0)} viajero${Number(brief.travellers.adults) + Number(brief.travellers.children || 0) === 1 ? "" : "s"}`,
+        description: `${brief.startDate} — ${brief.endDate} · ${t(locale, "intake.receipt.travellers", { count: Number(brief.travellers.adults) + Number(brief.travellers.children || 0) })}`,
       };
       const nextContinuation = { brief, phase: "validated" };
       setBaseBrief(brief);
@@ -296,7 +303,7 @@ export function TripIntakeApp() {
       setContinuation(nextContinuation);
       await deliverContinuation(nextContinuation, receipt);
     } catch {
-      const failure = { state: "error", message: "No pudimos validar tus datos todavía. Inténtalo de nuevo." };
+      const failure = { state: "error", message: t(locale, "intake.validation.failed") };
       setView("new");
       setCompletedAction(null);
       setContinuation(null);
@@ -319,7 +326,7 @@ export function TripIntakeApp() {
       <main className="app-shell intake-shell compact-shell">
         <SelectionReceipt
           description={completedAction.description}
-          eyebrow={completedAction.id === "new" ? "Viaje solicitado" : "Opción elegida"}
+          eyebrow={t(locale, completedAction.id === "new" ? "intake.receipt.requested" : "intake.receipt.selected")}
           status={status.message}
           title={completedAction.title}
         />
@@ -332,9 +339,9 @@ export function TripIntakeApp() {
       {view === "menu" ? (
         <>
           <header className="app-header">
-            <div className="header-copy"><p className="eyebrow">Planifica a tu manera</p><h1>¿Qué quieres hacer?</h1><p className="meta">Organiza viajes reales con contexto local, rutas y reservas.</p></div>
+            <div className="header-copy"><p className="eyebrow">{t(locale, "intake.menu.eyebrow")}</p><h1>{t(locale, "intake.menu.title")}</h1><p className="meta">{t(locale, "intake.menu.description")}</p></div>
           </header>
-          <nav aria-label="Acciones de Sendero" className="launcher-grid">
+          <nav aria-label={t(locale, "intake.menu.aria")} className="launcher-grid">
             {launcherActions.map((action) => (
               <button className="launcher-card" key={action.id} onClick={() => sendAction(action.id)} type="button">
                 <strong>{action.title}</strong><span>{action.description}</span>
@@ -344,27 +351,27 @@ export function TripIntakeApp() {
         </>
       ) : (
         <form className="form-card" onSubmit={submit}>
-          <div className="form-heading"><div><p className="eyebrow">Nuevo viaje</p><h1>Cuéntanos lo esencial</h1><p>Puedes completar el resto conversando después.</p></div></div>
+          <div className="form-heading"><div><p className="eyebrow">{t(locale, "intake.form.eyebrow")}</p><h1>{t(locale, "intake.form.title")}</h1><p>{t(locale, "intake.form.description")}</p></div></div>
           <div className="form-grid">
-            <Field label="Destino"><input onChange={(event) => update("destination", event.target.value)} placeholder="Sevilla, España" required value={draft.destination} /></Field>
+            <Field label={t(locale, "intake.destination")}><input onChange={(event) => update("destination", event.target.value)} placeholder={t(locale, "intake.destinationPlaceholder")} required value={draft.destination} /></Field>
             <div className="number-row">
-              <Field label="Adultos"><input min="1" onChange={(event) => update("adults", event.target.value)} type="number" value={draft.adults} /></Field>
-              <Field label="Niños"><input min="0" onChange={(event) => update("children", event.target.value)} type="number" value={draft.children} /></Field>
+              <Field label={t(locale, "intake.adults")}><input min="1" onChange={(event) => update("adults", event.target.value)} type="number" value={draft.adults} /></Field>
+              <Field label={t(locale, "intake.children")}><input min="0" onChange={(event) => update("children", event.target.value)} type="number" value={draft.children} /></Field>
             </div>
-            <DateRangePicker endDate={draft.endDate} onChange={updateDates} startDate={draft.startDate} />
+            <DateRangePicker endDate={draft.endDate} locale={locale} onChange={updateDates} startDate={draft.startDate} />
 
             <div className="lodging-fields">
-              <SegmentedControl label="Alojamiento" onChange={(value) => update("lodgingStatus", value)} options={[{ value: "confirmed", label: "Tengo dirección" }, { value: "area_only", label: "Solo sé la zona" }, { value: "undecided", label: "Todavía no lo elegí" }]} value={draft.lodgingStatus} />
-              {draft.lodgingStatus !== "undecided" ? <Field label={draft.lodgingStatus === "confirmed" ? "Dirección o nombre" : "Barrio o zona"}><input onChange={(event) => update("lodgingValue", event.target.value)} placeholder={draft.lodgingStatus === "confirmed" ? "Hotel, calle y número" : "Prado / San Bernardo"} value={draft.lodgingValue} /></Field> : <InlineNotice>Usaremos una base provisional y la ajustaremos cuando elijas dónde quedarte.</InlineNotice>}
+              <SegmentedControl label={t(locale, "intake.lodging")} onChange={(value) => update("lodgingStatus", value)} options={[{ value: "confirmed", label: t(locale, "intake.lodging.confirmed") }, { value: "area_only", label: t(locale, "intake.lodging.area") }, { value: "undecided", label: t(locale, "intake.lodging.undecided") }]} value={draft.lodgingStatus} />
+              {draft.lodgingStatus !== "undecided" ? <Field label={t(locale, draft.lodgingStatus === "confirmed" ? "intake.lodging.confirmedLabel" : "intake.lodging.areaLabel")}><input onChange={(event) => update("lodgingValue", event.target.value)} placeholder={t(locale, draft.lodgingStatus === "confirmed" ? "intake.lodging.confirmedPlaceholder" : "intake.lodging.areaPlaceholder")} value={draft.lodgingValue} /></Field> : <InlineNotice>{t(locale, "intake.lodging.notice")}</InlineNotice>}
             </div>
 
-            <div className="field-wide"><ChoiceChips label="Cómo quieren moverse" onChange={(value) => update("transportModes", value)} options={[{ value: "walk", label: "A pie" }, { value: "public_transit", label: "Transporte público" }, { value: "taxi", label: "Taxi / app" }, { value: "bike", label: "Bicicleta" }, { value: "car", label: "Auto" }]} values={draft.transportModes} /></div>
-            {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />Al menos una persona tiene licencia válida y quiere conducir</label> : null}
-            <div className="field-wide"><SegmentedControl label="Ritmo del viaje" onChange={(value) => update("pace", value)} options={[{ value: "relaxed", label: "Tranquilo" }, { value: "balanced", label: "Equilibrado" }, { value: "intense", label: "Intenso" }]} value={draft.pace} /></div>
-            <Field className="field-wide" hint="Separados por comas" label="Intereses"><textarea onChange={(event) => update("interests", event.target.value)} placeholder="Arquitectura, comida local, música en vivo…" value={draft.interests} /></Field>
+            <div className="field-wide"><ChoiceChips label={t(locale, "intake.transport")} onChange={(value) => update("transportModes", value)} options={transportOptions} values={draft.transportModes} /></div>
+            {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />{t(locale, "intake.license")}</label> : null}
+            <div className="field-wide"><SegmentedControl label={t(locale, "intake.pace")} onChange={(value) => update("pace", value)} options={[{ value: "relaxed", label: t(locale, "intake.pace.relaxed") }, { value: "balanced", label: t(locale, "intake.pace.balanced") }, { value: "intense", label: t(locale, "intake.pace.intense") }]} value={draft.pace} /></div>
+            <Field className="field-wide" hint={t(locale, "intake.interestsHint")} label={t(locale, "intake.interests")}><textarea onChange={(event) => update("interests", event.target.value)} placeholder={t(locale, "intake.interestsPlaceholder")} value={draft.interests} /></Field>
           </div>
           {status.message ? <InlineNotice tone={status.state === "error" ? "error" : "neutral"}>{status.message}</InlineNotice> : null}
-          <footer className="form-footer"><p>Ninguna reserva se realizará sin tu confirmación.</p><Button disabled={status.state === "sending"} variant="primary" type="submit">{status.state === "sending" ? "Preparando…" : "Crear itinerario"}</Button></footer>
+          <footer className="form-footer"><p>{t(locale, "intake.footer")}</p><Button disabled={status.state === "sending"} variant="primary" type="submit">{t(locale, status.state === "sending" ? "intake.creating" : "intake.create")}</Button></footer>
         </form>
       )}
     </main>

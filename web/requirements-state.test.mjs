@@ -8,6 +8,7 @@ import {
 } from "./src/requirements/state.js";
 
 const baseBrief = {
+  locale: "pt-BR",
   destination: "",
   travellers: { children: 1 },
   lodging: { status: "area_only", area: "Roma Norte" },
@@ -30,6 +31,7 @@ test("merges requirements into the durable base brief without losing prior conte
   const merged = mergeBrief(baseBrief, draft);
 
   assert.equal(merged.destination, "Ciudad de México");
+  assert.equal(merged.locale, "pt-BR");
   assert.deepEqual(merged.travellers, { children: 1, adults: 2 });
   assert.deepEqual(merged.lodging, baseBrief.lodging);
   assert.deepEqual(merged.interests, baseBrief.interests);
@@ -66,12 +68,26 @@ test("restores requested fields and their editable projection from a normalized 
 test("does not resend or claim success for an ambiguous dispatch after remount", () => {
   assert.deepEqual(initialRequirementsStatus({ continuation: { phase: "sent" } }), {
     state: "success",
-    message: "Listo. Sendero continúa en la conversación.",
+    message: "Done. Sendero is continuing in the conversation.",
   });
 
   for (const phase of ["dispatching", "uncertain", "delivery_failed"]) {
     const status = initialRequirementsStatus({ continuation: { phase } });
     assert.equal(status.state, "error");
-    assert.match(status.message, /No pudimos confirmar la entrega/);
+    assert.match(status.message, /We could not confirm delivery/);
   }
+});
+
+test("localizes restored requirements delivery state from the brief locale", () => {
+  assert.deepEqual(initialRequirementsStatus({
+    baseBrief: { locale: "en-US" },
+    continuation: { phase: "sent" },
+  }), {
+    state: "success",
+    message: "Done. Sendero is continuing in the conversation.",
+  });
+  assert.match(initialRequirementsStatus({
+    baseBrief: { locale: "pt-BR" },
+    continuation: { phase: "uncertain" },
+  }).message, /Não foi possível confirmar/);
 });

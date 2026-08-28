@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "kind": "indirect",
+      "prompt": "Viajo para Santiago de Chile el mes que viene y me gustaría crear un itinerario para visitar lo más que pueda durante el día.",
+      "expectedTool": "prepare_trip_brief"
+    },
+    {
+      "kind": "indirect",
+      "prompt": "Quiero organizar cinco días en Lisboa y aprovechar bien cada jornada.",
+      "expectedTool": "prepare_trip_brief"
+    },
+    {
+      "kind": "direct",
+      "prompt": "Ayúdame a planear mis vacaciones con actividades por día, traslados y reservas.",
+      "expectedTool": "prepare_trip_brief"
+    },
+    {
+      "kind": "indirect",
+      "prompt": "I am visiting Mexico City next month and want a realistic day-by-day itinerary.",
+      "expectedTool": "prepare_trip_brief"
+    },
+    {
+      "kind": "different-sendero-intent",
+      "prompt": "Abre mi último viaje guardado sin modificarlo.",
+      "expectedTool": "open_trip"
+    },
+    {
+      "kind": "negative",
+      "prompt": "¿Cuál es la capital de Chile?",
+      "expectedTool": null
+    },
+    {
+      "kind": "negative",
+      "prompt": "Recomiéndame un solo restaurante en Santiago para cenar hoy.",
+      "expectedTool": null
+    },
+    {
+      "kind": "negative",
+      "prompt": "¿Cuánto dura un vuelo directo de Buenos Aires a Santiago?",
+      "expectedTool": null
+    }
+  ]
+}

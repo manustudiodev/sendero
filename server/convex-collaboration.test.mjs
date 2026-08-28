@@ -1071,6 +1071,7 @@ test("public invitation inspection reveals safe trip context without making inva
     inviterName: "Owner",
     trip: {
       webId: db.tables.trips[0].webId,
+      locale: "en",
       title: "Friends in Buenos Aires",
       destination: "Buenos Aires, Argentina",
       startDate: "2026-08-13",

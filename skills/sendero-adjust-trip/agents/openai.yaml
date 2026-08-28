@@ -1,4 +1,4 @@
 interface:
-  display_name: "Sendero · Ajustar viaje"
-  short_description: "Reorganiza sin perder reservas ni planes fijos"
-  default_prompt: "Usa $sendero-adjust-trip para reorganizar mi itinerario preservando actividades fijas y reservas confirmadas."
+  display_name: "Sendero · Adjust trip"
+  short_description: "Reorganize a trip without losing fixed plans"
+  default_prompt: "Use $sendero-adjust-trip to reorganize my itinerary while preserving fixed activities and confirmed reservations."

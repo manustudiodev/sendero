@@ -1,3 +1,5 @@
+import { formatDate, localeLanguage, resolveContentLocale } from "../i18n/index.js";
+
 const ROLE_VALUES = new Set(["owner", "editor", "viewer"]);
 
 function unwrapData(payload) {
@@ -97,6 +99,7 @@ export function normalizeTripSummary(value) {
     destination: stringValue(value.destination),
     startDate: stringValue(value.startDate),
     endDate: stringValue(value.endDate),
+    locale: resolveContentLocale(value.locale),
     role: roleValue(value.role),
     updatedAt: stringValue(value.updatedAt),
   };
@@ -128,7 +131,10 @@ export function normalizeRestrictedTrip(payload) {
     role,
     version: Number.isInteger(trip.version) ? trip.version : Number(trip.version) || 0,
     updatedAt: stringValue(trip.updatedAt),
-    itinerary: trip.itinerary,
+    itinerary: {
+      ...trip.itinerary,
+      locale: resolveContentLocale(trip.itinerary.locale || trip.locale),
+    },
     permissions: {
       editInSendero: hasExplicitPermissions
         ? permissions.editInSendero === true
@@ -256,16 +262,16 @@ export function loginUrl(session, returnTo, { reauthenticate = false } = {}) {
   }
 }
 
-export function readableTripDates(startDate, endDate, locale = "es") {
-  if (!startDate || !endDate) return "Fechas por confirmar";
+export function readableTripDates(startDate, endDate, locale = "en") {
+  const resolvedLocale = resolveContentLocale(locale);
+  const pending = {
+    en: "Dates to be confirmed",
+    es: "Fechas por confirmar",
+    pt: "Datas a confirmar",
+  }[localeLanguage(resolvedLocale)];
+  if (!startDate || !endDate) return pending;
   try {
-    const formatter = new Intl.DateTimeFormat(locale, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    });
-    return `${formatter.format(new Date(`${startDate}T00:00:00Z`))} — ${formatter.format(new Date(`${endDate}T00:00:00Z`))}`;
+    return `${formatDate(resolvedLocale, startDate, { day: "numeric", month: "short", year: "numeric" })} — ${formatDate(resolvedLocale, endDate, { day: "numeric", month: "short", year: "numeric" })}`;
   } catch {
     return `${startDate} — ${endDate}`;
   }

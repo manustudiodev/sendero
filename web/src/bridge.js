@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  localeLanguage,
+  resolveContentLocale,
+  setDocumentLocale,
+  t,
+  uiLocale,
+} from "./i18n/index.js";
 import { initialToolOutput, normalizeToolOutput } from "./tool-output.js";
 
 const pendingRequests = new Map();
@@ -8,6 +15,9 @@ let resizeObserver;
 let lastReportedHeight = 0;
 let lastReportedWidth = 0;
 let resizeReportGeneration = 0;
+let activeContentLocale = "";
+let currentHostLocale = "en";
+const localeSubscribers = new Set();
 
 function normalizedTheme(value) {
   return value === "dark" || value === "light" ? value : "";
@@ -29,6 +39,28 @@ function installThemeSync() {
   window.addEventListener("openai:set_globals", (event) => {
     const theme = normalizedTheme(event.detail?.globals?.theme);
     if (theme) applyHostTheme(theme);
+  }, { passive: true });
+}
+
+function supportedHostLocale(value) {
+  return ["es", "en", "pt"].includes(localeLanguage(value)) ? uiLocale(value) : "";
+}
+
+function applyHostLocale(value) {
+  const locale = supportedHostLocale(value);
+  if (!locale) return;
+  currentHostLocale = locale;
+  setDocumentLocale(activeContentLocale || locale);
+  for (const subscriber of localeSubscribers) subscriber(locale);
+}
+
+function installLocaleSync() {
+  const initialLocale = supportedHostLocale(window.openai?.locale)
+    || supportedHostLocale(document.documentElement?.lang)
+    || "en";
+  applyHostLocale(initialLocale);
+  window.addEventListener("openai:set_globals", (event) => {
+    applyHostLocale(event.detail?.globals?.locale);
   }, { passive: true });
 }
 
@@ -112,6 +144,7 @@ function handleBridgeResponse(event) {
 
 window.addEventListener("message", handleBridgeResponse, { passive: true });
 installThemeSync();
+installLocaleSync();
 installIntrinsicHeightSync();
 
 function request(method, params, timeoutMs = 8000) {
@@ -120,7 +153,7 @@ function request(method, params, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const timeout = window.setTimeout(() => {
       pendingRequests.delete(id);
-      reject(new Error("Sendero no recibió respuesta de ChatGPT."));
+      reject(new Error(t(activeContentLocale || currentHostLocale, "bridge.timeout")));
     }, timeoutMs);
     pendingRequests.set(id, { resolve, reject, timeout });
   });
@@ -159,6 +192,34 @@ export function useToolOutput() {
   }, [refresh]);
 
   return { output, refresh };
+}
+
+export function hostLocale() {
+  return currentHostLocale;
+}
+
+export function useHostLocale() {
+  const [locale, setLocale] = useState(() => currentHostLocale);
+  useEffect(() => {
+    localeSubscribers.add(setLocale);
+    setLocale(currentHostLocale);
+    return () => localeSubscribers.delete(setLocale);
+  }, []);
+  return locale;
+}
+
+export function useComponentLocale(contentLocale) {
+  const fallbackLocale = useHostLocale();
+  const hasContentLocale = ["es", "en", "pt"].includes(localeLanguage(contentLocale));
+  const locale = hasContentLocale ? resolveContentLocale(contentLocale) : uiLocale(fallbackLocale);
+  useEffect(() => {
+    activeContentLocale = hasContentLocale ? locale : "";
+    setDocumentLocale(locale);
+    return () => {
+      if (activeContentLocale === locale) activeContentLocale = "";
+    };
+  }, [hasContentLocale, locale]);
+  return locale;
 }
 
 export function widgetState() {

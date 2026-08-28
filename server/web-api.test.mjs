@@ -21,6 +21,7 @@ function trip(overrides = {}) {
     updatedAt: Date.UTC(2026, 7, 27, 12),
     itinerary: {
       schemaVersion: 1,
+      locale: "es-MX",
       title: "CDMX entre mercados y diseño",
       destination: "Ciudad de México, México",
       startDate: "2026-09-02",
@@ -33,7 +34,13 @@ function trip(overrides = {}) {
   };
 }
 
-function fixture({ authenticated = true, emailVerified = true, storage = {}, sendInvitationEmail } = {}) {
+function fixture({
+  authenticated = true,
+  emailVerified = true,
+  inspectionTrip,
+  storage = {},
+  sendInvitationEmail,
+} = {}) {
   let sessionEnabled = authenticated;
   let pending;
   const calls = [];
@@ -44,6 +51,7 @@ function fixture({ authenticated = true, emailVerified = true, storage = {}, sen
       return [{
         id: currentTrip.id,
         webId: currentTrip.webId,
+        locale: currentTrip.itinerary.locale,
         title: currentTrip.itinerary.title,
         destination: currentTrip.itinerary.destination,
         startDate: currentTrip.itinerary.startDate,
@@ -153,8 +161,10 @@ function fixture({ authenticated = true, emailVerified = true, storage = {}, sen
         inviterName: "Owner",
         trip: {
           webId: WEB_ID,
+          locale: currentTrip.itinerary.locale,
           title: currentTrip.itinerary.title,
           destination: currentTrip.itinerary.destination,
+          ...inspectionTrip,
         },
       };
     },
@@ -217,6 +227,7 @@ test("lists only safe trip summaries for an authenticated account", async () => 
     data: {
       trips: [{
         webId: WEB_ID,
+        locale: "es-MX",
         title: "CDMX entre mercados y diseño",
         destination: "Ciudad de México, México",
         startDate: "2026-09-02",
@@ -229,9 +240,57 @@ test("lists only safe trip summaries for an authenticated account", async () => 
   });
 });
 
+test("returns the saved locale with an authenticated trip envelope", async () => {
+  const { app } = fixture();
+  const response = await app.request(`/api/trips/${WEB_ID}`);
+  assert.equal(response.status, 200);
+  const payload = (await response.json()).data.trip;
+  assert.equal(payload.locale, "es-MX");
+  assert.equal(payload.itinerary.locale, "es-MX");
+});
+
+test("uses English for legacy trip summaries and envelopes without a locale", async () => {
+  const legacy = trip();
+  delete legacy.itinerary.locale;
+  const { app } = fixture({
+    storage: {
+      async list() {
+        return [{
+          id: legacy.id,
+          webId: legacy.webId,
+          title: legacy.itinerary.title,
+          destination: legacy.itinerary.destination,
+          startDate: legacy.itinerary.startDate,
+          endDate: legacy.itinerary.endDate,
+          currentVersion: legacy.version,
+          role: legacy.role,
+          updatedAt: legacy.updatedAt,
+        }];
+      },
+      async getByWebId() {
+        return legacy;
+      },
+    },
+  });
+
+  const listPayload = (await (await app.request("/api/trips")).json()).data;
+  assert.equal(listPayload.trips[0].locale, "en");
+  const tripPayload = (await (await app.request(`/api/trips/${WEB_ID}`)).json()).data.trip;
+  assert.equal(tripPayload.locale, "en");
+  assert.equal(tripPayload.itinerary.locale, "en");
+});
+
 test("requires a session and exact same-origin CSRF for browser mutations", async () => {
   const signedOut = fixture({ authenticated: false });
-  assert.equal((await signedOut.app.request("/api/trips")).status, 401);
+  const signedOutResponse = await signedOut.app.request("/api/trips");
+  assert.equal(signedOutResponse.status, 401);
+  assert.deepEqual(await signedOutResponse.json(), {
+    error: {
+      code: "authentication_required",
+      message: "Sign in to continue.",
+      retryable: false,
+    },
+  });
 
   const { app, calls } = fixture();
   const response = await app.request(jsonRequest(
@@ -246,6 +305,13 @@ test("requires a session and exact same-origin CSRF for browser mutations", asyn
     { csrf: "wrong", method: "PATCH" },
   ));
   assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "invalid_csrf",
+      message: "Refresh and try again.",
+      retryable: false,
+    },
+  });
   assert.equal(calls.some(([name]) => name === "updateReservation"), false);
 });
 
@@ -575,6 +641,7 @@ test("preserves an invitation through login and accepts it only after an explici
   }, { csrf: undefined }));
   const signedOut = (await inspect.json()).data;
   assert.equal(signedOut.state, "signed_out");
+  assert.equal(signedOut.invitation.locale, "es-MX");
   assert.equal(signedOut.invitation.inviterName, "Owner");
   assert.equal(signedOut.invitation.invitedEmail, "");
   assert.equal(typeof pending()?.tokenHash, "string");
@@ -586,6 +653,7 @@ test("preserves an invitation through login and accepts it only after an explici
   }, { csrf: undefined }));
   const readyState = (await ready.json()).data;
   assert.equal(readyState.state, "ready");
+  assert.equal(readyState.invitation.locale, "es-MX");
   assert.equal(readyState.invitation.inviterName, "Owner");
   assert.equal(readyState.invitation.invitedEmail, "guest@example.com");
 
@@ -598,6 +666,28 @@ test("preserves an invitation through login and accepts it only after an explici
   });
   assert.equal(pending(), undefined);
   assert.equal(calls.filter(([name]) => name === "acceptInvitation").length, 1);
+});
+
+test("uses English invitation fallback copy by default and preserves Spanish or Portuguese", async () => {
+  const cases = [
+    { locale: undefined, expectedLocale: "en", expectedTitle: "Shared trip" },
+    { locale: "es-AR", expectedLocale: "es-AR", expectedTitle: "Viaje compartido" },
+    { locale: "pt-BR", expectedLocale: "pt-BR", expectedTitle: "Viagem compartilhada" },
+  ];
+
+  for (const item of cases) {
+    const { app } = fixture({
+      authenticated: false,
+      inspectionTrip: { locale: item.locale, title: "" },
+    });
+    const response = await app.request(jsonRequest("/api/invitations/inspect", {
+      token: "f".repeat(43),
+      webId: WEB_ID,
+    }, { csrf: undefined }));
+    const invitation = (await response.json()).data.invitation;
+    assert.equal(invitation.locale, item.expectedLocale);
+    assert.equal(invitation.title, item.expectedTitle);
+  }
 });
 
 test("shows the inviter name but never the invited address on an email mismatch", async () => {
@@ -618,6 +708,7 @@ test("shows the inviter name but never the invited address on an email mismatch"
       expiresAt: "2026-09-03T12:00:00.000Z",
       invitedEmail: "",
       inviterName: "Owner",
+      locale: "es-MX",
       role: "viewer",
       title: "CDMX entre mercados y diseño",
       webId: WEB_ID,
@@ -647,7 +738,7 @@ test("never reports an invitation as accepted when it expires during the decisio
   assert.deepEqual(await response.json(), {
     error: {
       code: "invitation_unavailable",
-      message: "La invitación ya no está disponible.",
+      message: "The invitation is no longer available.",
       retryable: false,
     },
   });

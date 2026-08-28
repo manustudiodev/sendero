@@ -6,11 +6,11 @@ function escapedPattern(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function sentenceCase(value) {
-  return value ? `${value.charAt(0).toLocaleUpperCase("es")}${value.slice(1)}` : value;
+function sentenceCase(value, locale = "en") {
+  return value ? `${value.charAt(0).toLocaleUpperCase(uiLocale(locale))}${value.slice(1)}` : value;
 }
 
-export function contextualItineraryTitle(title, destination) {
+export function contextualItineraryTitle(title, destination, locale = "en") {
   const original = normalizedText(title);
   const destinationName = normalizedText(destination);
   if (!original || !destinationName) return original;
@@ -22,7 +22,7 @@ export function contextualItineraryTitle(title, destination) {
     const prefix = new RegExp(`^${escapedPattern(candidate)}(?:\\s*(?:[—–-]|:|·)\\s*|\\s+)`, "iu");
     if (!prefix.test(original)) continue;
     const contextual = normalizedText(original.replace(prefix, ""));
-    if (contextual) return sentenceCase(contextual);
+    if (contextual) return sentenceCase(contextual, locale);
   }
   return original;
 }
@@ -35,14 +35,14 @@ function searchableActivity(entry) {
   ].filter(Boolean).join(" "))
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("es");
+    .toLowerCase();
 }
 
 export function reservationKind(entry) {
   const explicit = entry?.reservation?.kind;
   if (["reservation", "ticket"].includes(explicit)) return explicit;
   const text = searchableActivity(entry);
-  return /\b(museo|museum|concierto|concert|recital|festival|cine|cinema|teatro|theatre|exhibicion|exhibition|atraccion|attraction|parque tematico|theme park|partido|match)\b/u.test(text)
+  return /\b(museo|museum|museu|concierto|concert|concerto|recital|festival|cine|cinema|teatro|theatre|exhibicion|exhibition|exposicao|atraccion|attraction|atracao|parque tematico|theme park|partido|match|jogo)\b/u.test(text)
     ? "ticket"
     : "reservation";
 }
@@ -64,39 +64,40 @@ export function reservationEntryKey(dayDate, activityId) {
   return date && id ? `${date}:${id}` : "";
 }
 
-export function reservationNavigationLabel(entry) {
-  const presentation = reservationPresentation(entry);
-  const title = normalizedText(entry?.activity?.title) || "esta actividad";
-  return `Abrir en Reservas: ${presentation.requirementLabel.toLocaleLowerCase("es")} para ${title}`;
+export function reservationNavigationLabel(entry, locale = "en") {
+  const presentation = reservationPresentation(entry, locale);
+  const title = normalizedText(entry?.activity?.title) || t(locale, "viewer.reservationFallback");
+  return t(locale, "viewer.openReservation", {
+    requirement: presentation.requirementLabel.toLocaleLowerCase(uiLocale(locale)),
+    title,
+  });
 }
 
-export function reservationPresentation(entry) {
+export function reservationPresentation(entry, locale = "en") {
   const kind = reservationKind(entry);
   const requirement = reservationRequirement(entry);
   const rawStatus = entry?.reservation?.status || "pending";
   const status = rawStatus === "suggested" ? "pending" : rawStatus;
   const isTicket = kind === "ticket";
-  const requirementLabel = requirement === "optional"
-    ? `${isTicket ? "Boleto" : "Reserva"} opcional`
-    : requirement === "recommended"
-      ? `${isTicket ? "Boleto" : "Reserva"} recomendad${isTicket ? "o" : "a"}`
-      : `Requiere ${isTicket ? "boleto" : "reserva"}`;
+  const requirementLabel = t(locale, `viewer.${isTicket ? "ticket" : "reservation"}${
+    requirement === "optional" ? "Optional" : requirement === "recommended" ? "Recommended" : "Required"
+  }`);
   const statusLabel = status === "confirmed"
-    ? (isTicket ? "Comprado" : "Reservada")
+    ? t(locale, isTicket ? "viewer.ticketPurchased" : "viewer.reservationBooked")
     : status === "cancelled"
-      ? (isTicket ? "Cancelado" : "Cancelada")
-      : (isTicket ? "Por comprar" : "Por reservar");
+      ? t(locale, isTicket ? "viewer.ticketCancelled" : "viewer.reservationCancelled")
+      : t(locale, isTicket ? "viewer.ticketPending" : "viewer.reservationPending");
   const nextAction = status === "confirmed"
-    ? { label: isTicket ? "Boleto cancelado" : "Reserva cancelada", status: "cancelled" }
+    ? { label: t(locale, isTicket ? "viewer.ticketCancelAction" : "viewer.reservationCancelAction"), status: "cancelled" }
     : status === "cancelled"
-      ? { label: isTicket ? "Aún no compré" : "Aún no reservé", status: "pending" }
-      : { label: isTicket ? "Ya compré" : "Ya reservé", status: "confirmed" };
+      ? { label: t(locale, isTicket ? "viewer.ticketPendingAction" : "viewer.reservationPendingAction"), status: "pending" }
+      : { label: t(locale, isTicket ? "viewer.ticketPurchasedAction" : "viewer.reservationBookedAction"), status: "confirmed" };
 
   return {
-    deadlineLabel: isTicket ? "Comprar antes de" : "Reservar antes de",
+    deadlineLabel: t(locale, isTicket ? "viewer.ticketDeadline" : "viewer.reservationDeadline"),
     externalActionLabel: status === "confirmed"
-      ? (isTicket ? "Gestionar boletos" : "Gestionar reserva")
-      : (isTicket ? "Comprar boletos" : "Reservar"),
+      ? t(locale, isTicket ? "viewer.manageTickets" : "viewer.manageReservation")
+      : t(locale, isTicket ? "viewer.buyTickets" : "viewer.book"),
     kind,
     nextAction,
     requirement,
@@ -105,3 +106,4 @@ export function reservationPresentation(entry) {
     statusLabel,
   };
 }
+import { t, uiLocale } from "../i18n/index.js";

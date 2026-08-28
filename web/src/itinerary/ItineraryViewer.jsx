@@ -1,5 +1,15 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { DisclosurePanel } from "../DisclosurePanel.jsx";
+import {
+  formatDate,
+  localeLanguage,
+  localeWeekStartsOnMonday,
+  resolveContentLocale,
+  setDocumentLocale,
+  t,
+  uiLocale,
+  weekdayLabels,
+} from "../i18n/index.js";
 import { safeExternalUrl } from "../safe-url.js";
 import {
   buildMonthPage,
@@ -22,22 +32,18 @@ import {
   routeStopsForDay,
 } from "./route-utils.js";
 
-const transportLabels = {
-  walk: "a pie",
-  public_transit: "transporte público",
-  taxi: "taxi / app",
-  bike: "bicicleta",
-  car: "auto",
-  train: "tren",
-  boat: "barco",
-  other: "otro",
-};
+function transportLabel(locale, mode) {
+  const label = t(locale, `transport.${mode}`);
+  return label === `transport.${mode}` ? mode : label;
+}
 
-const primaryViews = [
-  { id: "list", label: "Lista" },
-  { id: "calendar", label: "Calendario" },
-  { id: "routes", label: "Rutas" },
-];
+function primaryViewsFor(locale) {
+  return [
+    { id: "list", label: t(locale, "viewer.list") },
+    { id: "calendar", label: t(locale, "viewer.calendar") },
+    { id: "routes", label: t(locale, "viewer.routes") },
+  ];
+}
 
 function ViewIcon({ view }) {
   if (view === "calendar") {
@@ -76,25 +82,22 @@ function TicketIcon() {
   );
 }
 
-export function formatItineraryDate(value, options) {
+export function formatItineraryDate(value, options, locale = globalThis.document?.documentElement?.lang || "en") {
   if (!value) return "";
   try {
-    const locale = document.documentElement.lang || "es";
-    return new Intl.DateTimeFormat(locale, { timeZone: "UTC", ...options }).format(
-      new Date(`${value}T00:00:00Z`),
-    );
+    return formatDate(locale, value, options);
   } catch {
     return value;
   }
 }
 
-function Activity({ activity, dayDate, onOpenExternal, onReservationOpen, variant }) {
+function Activity({ activity, dayDate, locale, onOpenExternal, onReservationOpen, variant }) {
   const showPrivateStatus = variant !== "public";
   const location = activity.location;
   const sourceUrl = safeExternalUrl(activity.sourceUrl);
   const hasReservation = showPrivateStatus && hasReservationManagement(activity);
   const reservationEntry = hasReservation ? { activity, reservation: activity.reservation } : null;
-  const reservationLabel = reservationEntry ? reservationNavigationLabel(reservationEntry) : "";
+  const reservationLabel = reservationEntry ? reservationNavigationLabel(reservationEntry, locale) : "";
   const hasBadges = (showPrivateStatus && activity.locked) || activity.travelToNext;
   return (
     <li className="activity">
@@ -127,13 +130,13 @@ function Activity({ activity, dayDate, onOpenExternal, onReservationOpen, varian
             onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(sourceUrl); } : undefined}
             rel="noreferrer noopener"
             target="_blank"
-          >Ver fuente ↗</a>
+          >{t(locale, "viewer.source")} ↗</a>
         ) : null}
         {hasBadges ? (
           <div className="badges">
-            {showPrivateStatus && activity.locked ? <span className="badge badge-locked">Fijo</span> : null}
+            {showPrivateStatus && activity.locked ? <span className="badge badge-locked">{t(locale, "viewer.fixed")}</span> : null}
             {activity.travelToNext ? (
-              <span className="badge">{activity.travelToNext.durationMinutes} min · {transportLabels[activity.travelToNext.mode] || activity.travelToNext.mode}</span>
+              <span className="badge">{activity.travelToNext.durationMinutes} min · {transportLabel(locale, activity.travelToNext.mode)}</span>
             ) : null}
           </div>
         ) : null}
@@ -142,12 +145,12 @@ function Activity({ activity, dayDate, onOpenExternal, onReservationOpen, varian
   );
 }
 
-function DayContext({ day, onOpenExternal }) {
+function DayContext({ day, locale, onOpenExternal }) {
   const weatherLabel = day.weather?.status === "seasonal"
-    ? "Clima estacional"
+    ? t(locale, "viewer.weatherSeasonal")
     : day.weather?.status === "unknown"
-      ? "Clima por confirmar"
-      : "Clima";
+      ? t(locale, "viewer.weatherPending")
+      : t(locale, "viewer.weather");
   const context = [
     day.weather?.summary ? {
       checkedAt: day.weather.checkedAt,
@@ -156,15 +159,15 @@ function DayContext({ day, onOpenExternal }) {
       sourceUrl: day.weather.sourceUrl,
       value: day.weather.summary,
     } : null,
-    day.fallback ? { label: "Alternativa", value: day.fallback } : null,
+    day.fallback ? { label: t(locale, "viewer.alternative"), value: day.fallback } : null,
   ].filter(Boolean);
   if (!context.length) return null;
   return (
-    <aside className="day-context" aria-label={`Información útil para ${day.title}`}>
+    <aside className="day-context" aria-label={t(locale, "viewer.usefulInfo", { title: day.title })}>
       {context.map((item) => {
         const sourceUrl = safeExternalUrl(item.sourceUrl);
         const checkedAt = item.checkedAt
-          ? formatItineraryDate(item.checkedAt.slice(0, 10), { day: "numeric", month: "short" })
+          ? formatItineraryDate(item.checkedAt.slice(0, 10), { day: "numeric", month: "short" }, locale)
           : "";
         return (
         <section className="day-context-item" key={item.label}>
@@ -177,8 +180,8 @@ function DayContext({ day, onOpenExternal }) {
               onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(sourceUrl); } : undefined}
               rel="noreferrer noopener"
               target="_blank"
-            >Fuente{checkedAt ? ` · ${checkedAt}` : ""} ↗</a>
-          ) : item.missingSource ? <small>Fuente por verificar</small> : null}
+            >{t(locale, "viewer.sourceChecked", { date: checkedAt })} ↗</a>
+          ) : item.missingSource ? <small>{t(locale, "viewer.sourcePending")}</small> : null}
         </section>
         );
       })}
@@ -186,14 +189,14 @@ function DayContext({ day, onOpenExternal }) {
   );
 }
 
-function DayGuide({ day, onOpenExternal }) {
+function DayGuide({ day, locale, onOpenExternal }) {
   const guideActivities = day.activities.filter((activity) =>
     Boolean(activity.location?.name?.trim() || activity.guide),
   );
 
   return (
     <div className="day-guide">
-      <ol aria-label={`Guía de lugares para ${day.title}`} className="day-guide-stops">
+      <ol aria-label={t(locale, "viewer.guideAria", { title: day.title })} className="day-guide-stops">
         {guideActivities.map((activity, index) => {
           const placeTitle = activity.location?.name?.trim() || activity.title;
           const guide = activity.guide;
@@ -207,14 +210,14 @@ function DayGuide({ day, onOpenExternal }) {
               if (!url) return [];
               const sourceLabel = typeof source === "object" && source ? source.label || source.title : "";
               const suppliedLabel = typeof sourceLabel === "string" ? sourceLabel.trim() : "";
-              return [{ label: suppliedLabel || `Fuente ${sourceIndex + 1}`, url }];
+              return [{ label: suppliedLabel || t(locale, "viewer.sourceNumber", { number: sourceIndex + 1 }), url }];
             })
             : [];
           const officialSourceUrl = safeExternalUrl(activity.sourceUrl);
           const sources = guideSources.length
             ? guideSources
             : officialSourceUrl
-              ? [{ label: "Fuente oficial", url: officialSourceUrl }]
+              ? [{ label: t(locale, "viewer.officialSource"), url: officialSourceUrl }]
               : [];
           const hasEditorialGuide = Boolean(overview || highlights.length);
           return (
@@ -230,10 +233,10 @@ function DayGuide({ day, onOpenExternal }) {
                   </ul>
                 ) : null}
                 {!hasEditorialGuide ? (
-                  <p className="day-guide-legacy-note">Todavía no hay una reseña editorial verificada para este lugar.</p>
+                  <p className="day-guide-legacy-note">{t(locale, "viewer.editorialPending")}</p>
                 ) : null}
                 {sources.length ? (
-                  <ul aria-label={`Fuentes sobre ${placeTitle}`} className="day-guide-sources">
+                  <ul aria-label={t(locale, "viewer.sourcesAbout", { title: placeTitle })} className="day-guide-sources">
                     {sources.map((source, sourceIndex) => (
                       <li key={`${source.label}-${source.url}-${sourceIndex}`}>
                         <a
@@ -257,13 +260,13 @@ function DayGuide({ day, onOpenExternal }) {
   );
 }
 
-function DayDetails({ day, labelledBy, onOpenExternal, onReservationOpen, variant }) {
+function DayDetails({ day, labelledBy, locale, onOpenExternal, onReservationOpen, variant }) {
   const [detailView, setDetailView] = useState("route");
   const detailId = useId();
   const detailTabRefs = useRef([]);
   const detailViews = [
-    { id: "route", label: "Recorrido" },
-    { id: "description", label: "Descripción" },
+    { id: "route", label: t(locale, "viewer.route") },
+    { id: "description", label: t(locale, "viewer.description") },
   ];
 
   function selectDetailView(view, focus = false) {
@@ -284,7 +287,7 @@ function DayDetails({ day, labelledBy, onOpenExternal, onReservationOpen, varian
 
   return (
     <div aria-labelledby={labelledBy} className="day-details" role="region">
-      <div aria-label={`Detalle de ${day.title}`} className="day-detail-tabs" role="tablist">
+      <div aria-label={t(locale, "viewer.detailsAria", { title: day.title })} className="day-detail-tabs" role="tablist">
         {detailViews.map((view, index) => (
           <button
             aria-controls={`${detailId}-${view.id}-panel`}
@@ -315,13 +318,14 @@ function DayDetails({ day, labelledBy, onOpenExternal, onReservationOpen, varian
                 activity={activity}
                 dayDate={day.date}
                 key={activity.id || `${day.date}-${index}`}
+                locale={locale}
                 onOpenExternal={onOpenExternal}
                 onReservationOpen={onReservationOpen}
                 variant={variant}
               />
             ))}
           </ol>
-          <DayContext day={day} onOpenExternal={onOpenExternal} />
+          <DayContext day={day} locale={locale} onOpenExternal={onOpenExternal} />
         </div>
       </div>
       <div
@@ -331,13 +335,13 @@ function DayDetails({ day, labelledBy, onOpenExternal, onReservationOpen, varian
         id={`${detailId}-description-panel`}
         role="tabpanel"
       >
-        <DayGuide day={day} onOpenExternal={onOpenExternal} />
+        <DayGuide day={day} locale={locale} onOpenExternal={onOpenExternal} />
       </div>
     </div>
   );
 }
 
-function DayCard({ day, initiallyOpen, onOpenExternal, onReservationOpen, variant }) {
+function DayCard({ day, initiallyOpen, locale, onOpenExternal, onReservationOpen, variant }) {
   const [open, setOpen] = useState(initiallyOpen);
   const controlId = useId();
   const panelId = `${controlId}-panel`;
@@ -352,23 +356,23 @@ function DayCard({ day, initiallyOpen, onOpenExternal, onReservationOpen, varian
           onClick={() => setOpen((value) => !value)}
           type="button"
         >
-          <time className="day-date" dateTime={day.date}>{formatItineraryDate(day.date, { day: "2-digit", month: "short" }).toUpperCase()}</time>
+          <time className="day-date" dateTime={day.date}>{formatItineraryDate(day.date, { day: "2-digit", month: "short" }, locale).toLocaleUpperCase(uiLocale(locale))}</time>
           <span className="day-heading"><strong>{day.title}</strong><span>{day.area}</span></span>
           <span aria-hidden="true" className="disclosure-toggle day-toggle" />
         </button>
       </h2>
       <DisclosurePanel className="day-disclosure" id={panelId} open={open}>
-        <DayDetails day={day} labelledBy={controlId} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />
+        <DayDetails day={day} labelledBy={controlId} locale={locale} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />
       </DisclosurePanel>
     </article>
   );
 }
 
-function ListView({ itinerary, onOpenExternal, onReservationOpen, variant }) {
-  return <div className="days">{itinerary.days.map((day, index) => <DayCard day={day} initiallyOpen={index === 0} key={day.date} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />)}</div>;
+function ListView({ itinerary, locale, onOpenExternal, onReservationOpen, variant }) {
+  return <div className="days">{itinerary.days.map((day, index) => <DayCard day={day} initiallyOpen={index === 0} key={day.date} locale={locale} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />)}</div>;
 }
 
-function CalendarWeek({ currentDate, onOpenExternal, onReservationOpen, selectDate, variant, week }) {
+function CalendarWeek({ currentDate, locale, onOpenExternal, onReservationOpen, selectDate, variant, week }) {
   const expandedDay = week.find((cell) => cell.day?.date === currentDate)?.day;
   const lastExpandedDay = useRef(expandedDay || null);
   if (expandedDay) lastExpandedDay.current = expandedDay;
@@ -392,7 +396,7 @@ function CalendarWeek({ currentDate, onOpenExternal, onReservationOpen, selectDa
             <button
               aria-controls={`${controlId}-panel`}
               aria-expanded={open}
-              aria-label={`${formatItineraryDate(day.date, { weekday: "long", day: "numeric", month: "long" })}: ${day.title}`}
+              aria-label={`${formatItineraryDate(day.date, { weekday: "long", day: "numeric", month: "long" }, locale)}: ${day.title}`}
               className={`calendar-day ${open ? "is-selected" : ""}`}
               id={controlId}
               key={day.date}
@@ -400,7 +404,7 @@ function CalendarWeek({ currentDate, onOpenExternal, onReservationOpen, selectDa
               type="button"
             >
               <time dateTime={day.date}>
-                <strong>{formatItineraryDate(day.date, { day: "numeric" })}</strong>
+                <strong>{formatItineraryDate(day.date, { day: "numeric" }, locale)}</strong>
               </time>
               <p>{day.title}</p>
               <span aria-hidden="true" className="calendar-toggle disclosure-toggle" />
@@ -414,6 +418,7 @@ function CalendarWeek({ currentDate, onOpenExternal, onReservationOpen, selectDa
             <DayDetails
               day={displayedDay}
               labelledBy={`calendar-${displayedDay.date}`}
+              locale={locale}
               onOpenExternal={onOpenExternal}
               onReservationOpen={onReservationOpen}
               variant={variant}
@@ -427,6 +432,7 @@ function CalendarWeek({ currentDate, onOpenExternal, onReservationOpen, selectDa
 
 function CalendarView({
   itinerary,
+  locale,
   onOpenExternal,
   onReservationOpen,
   onSelectedDateChange,
@@ -445,7 +451,11 @@ function CalendarView({
   const [localMonth, setLocalMonth] = useState(requestedMonth || "");
   const currentDate = selectedDate ?? localDate;
   const monthState = resolveMonthPage(monthKeys, selectedMonth || localMonth || requestedMonth);
-  const page = buildMonthPage({ days: itinerary.days, monthKey: monthState.key });
+  const page = buildMonthPage({
+    days: itinerary.days,
+    firstDayOfWeek: localeWeekStartsOnMonday(locale) ? 1 : 0,
+    monthKey: monthState.key,
+  });
 
   useEffect(() => {
     if (selectedMonth && monthKeys.includes(selectedMonth)) setLocalMonth(selectedMonth);
@@ -473,29 +483,30 @@ function CalendarView({
   }
 
   if (!page) return null;
-  const rawMonthLabel = formatItineraryDate(`${page.key}-01`, { month: "long", year: "numeric" });
-  const monthLabel = rawMonthLabel ? `${rawMonthLabel.charAt(0).toLocaleUpperCase("es")}${rawMonthLabel.slice(1)}` : rawMonthLabel;
-  const weekdayLabels = Array.from({ length: 7 }, (_, index) => formatItineraryDate(`2024-01-0${index + 1}`, { weekday: "short" }));
+  const rawMonthLabel = formatItineraryDate(`${page.key}-01`, { month: "long", year: "numeric" }, locale);
+  const monthLabel = rawMonthLabel ? `${rawMonthLabel.charAt(0).toLocaleUpperCase(uiLocale(locale))}${rawMonthLabel.slice(1)}` : rawMonthLabel;
+  const labels = weekdayLabels(locale).map((entry) => entry.short);
 
   return (
-    <div aria-label="Calendario del viaje" className="calendar">
+    <div aria-label={t(locale, "viewer.calendarAria")} className="calendar">
       <header className="calendar-toolbar">
         <div>
-          <p className="eyebrow">Mes {monthState.index + 1} de {monthKeys.length}</p>
+          <p className="eyebrow">{t(locale, "viewer.monthProgress", { current: monthState.index + 1, total: monthKeys.length })}</p>
           <h2>{monthLabel}</h2>
         </div>
         <div className="calendar-pagination">
-          <button aria-label="Mes anterior" disabled={!monthState.previousKey} onClick={() => selectMonth(monthState.previousKey)} type="button">←</button>
-          <button aria-label="Mes siguiente" disabled={!monthState.nextKey} onClick={() => selectMonth(monthState.nextKey)} type="button">→</button>
+          <button aria-label={t(locale, "viewer.previousMonth")} disabled={!monthState.previousKey} onClick={() => selectMonth(monthState.previousKey)} type="button">←</button>
+          <button aria-label={t(locale, "viewer.nextMonth")} disabled={!monthState.nextKey} onClick={() => selectMonth(monthState.nextKey)} type="button">→</button>
         </div>
       </header>
       <div aria-hidden="true" className="calendar-weekdays">
-        {weekdayLabels.map((label) => <span key={label}>{label}</span>)}
+        {labels.map((label) => <span key={label}>{label}</span>)}
       </div>
       {page.weeks.map((week) => (
         <CalendarWeek
           currentDate={currentDate}
           key={week[0]?.date}
+          locale={locale}
           onOpenExternal={onOpenExternal}
           onReservationOpen={onReservationOpen}
           selectDate={selectDate}
@@ -507,7 +518,7 @@ function CalendarView({
   );
 }
 
-function RouteLink({ href, label = "Abrir sitio oficial", onOpenExternal }) {
+function RouteLink({ href, label, locale, onOpenExternal }) {
   const safeHref = safeExternalUrl(href);
   if (!safeHref) return null;
   return (
@@ -519,21 +530,21 @@ function RouteLink({ href, label = "Abrir sitio oficial", onOpenExternal }) {
       rel="noreferrer noopener"
       target="_blank"
     >
-      {label} <span aria-hidden="true">↗</span>
+      {label || t(locale, "viewer.openOfficialSite")} <span aria-hidden="true">↗</span>
     </a>
   );
 }
 
-function RouteSchematic({ day, itinerary }) {
+function RouteSchematic({ day, itinerary, locale }) {
   const coverage = coordinateCoverageForDay(itinerary, day);
   if (!coverage.complete) {
     const coverageCopy = coverage.requiredCount
-      ? "Todavía no podemos dibujar este recorrido completo aquí. Ábrelo en tu app de mapas para verlo."
-      : "No hay paradas suficientes para dibujar este recorrido.";
+      ? t(locale, "viewer.previewIncomplete")
+      : t(locale, "viewer.previewNoStops");
     return (
       <div className="route-map-empty">
         <span aria-hidden="true" className="route-map-pin">⌖</span>
-        <strong>Vista previa no disponible</strong>
+        <strong>{t(locale, "viewer.previewUnavailable")}</strong>
         <p>{coverageCopy}</p>
       </div>
     );
@@ -552,7 +563,7 @@ function RouteSchematic({ day, itinerary }) {
   }));
   return (
     <div className="route-map-graphic">
-      <svg aria-label={`Vista esquemática completa de ${points.length} puntos del recorrido`} role="img" viewBox="0 0 100 100">
+      <svg aria-label={t(locale, "viewer.schematicAria", { count: points.length })} role="img" viewBox="0 0 100 100">
         <path className="route-map-grid" d="M0 25H100M0 50H100M0 75H100M25 0V100M50 0V100M75 0V100" />
         {projected.length > 1 ? <polyline className="route-map-line" points={projected.map((point) => `${point.x},${point.y}`).join(" ")} /> : null}
         {projected.map((point, index) => (
@@ -562,7 +573,7 @@ function RouteSchematic({ day, itinerary }) {
           </g>
         ))}
       </svg>
-      <p>Vista esquemática del recorrido entre las actividades del día.</p>
+      <p>{t(locale, "viewer.schematicCaption")}</p>
     </div>
   );
 }
@@ -571,7 +582,7 @@ function mapsEmbedApiKey() {
   return document.querySelector('meta[name="sendero-google-maps-embed-key"]')?.content?.trim() || "";
 }
 
-function GoogleRouteMap({ day, embedUrl, itinerary }) {
+function GoogleRouteMap({ day, embedUrl, itinerary, locale }) {
   const [state, setState] = useState("loading");
   const timeoutRef = useRef();
 
@@ -585,10 +596,10 @@ function GoogleRouteMap({ day, embedUrl, itinerary }) {
     setState(nextState);
   }
 
-  if (state === "failed") return <RouteSchematic day={day} itinerary={itinerary} />;
+  if (state === "failed") return <RouteSchematic day={day} itinerary={itinerary} locale={locale} />;
   return (
     <div className={`route-map-embed route-map-embed-${state}`}>
-      {state === "loading" ? <div aria-live="polite" className="route-map-loading" role="status">Cargando mapa…</div> : null}
+      {state === "loading" ? <div aria-live="polite" className="route-map-loading" role="status">{t(locale, "viewer.loadingMap")}</div> : null}
       <iframe
         allowFullScreen
         loading="lazy"
@@ -596,13 +607,13 @@ function GoogleRouteMap({ day, embedUrl, itinerary }) {
         onLoad={() => finish("ready")}
         referrerPolicy="strict-origin-when-cross-origin"
         src={embedUrl}
-        title={`Mapa de la ruta: ${day.title}`}
+        title={t(locale, "viewer.mapTitle", { title: day.title })}
       />
     </div>
   );
 }
 
-function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedDate }) {
+function RoutesView({ itinerary, locale, onOpenExternal, onSelectedDateChange, selectedDate }) {
   const [localDate, setLocalDate] = useState(itinerary.days[0]?.date || "");
   const validSelectedDate = itinerary.days.some((day) => day.date === selectedDate) ? selectedDate : "";
   const currentDate = validSelectedDate || localDate || itinerary.days[0]?.date;
@@ -614,7 +625,7 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
     mapsEmbedApiKey(),
     itinerary,
     day,
-    { language: (document.documentElement.lang || "es").split("-")[0] },
+    { language: localeLanguage(locale) || "en" },
   );
 
   function selectDate(date) {
@@ -624,7 +635,7 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
 
   return (
     <div className="routes-split">
-      <nav aria-label="Rutas por día" className="route-list">
+      <nav aria-label={t(locale, "viewer.routesAria")} className="route-list">
         {itinerary.days.map((candidate) => {
           const stopCount = routeStopsForDay(candidate).length;
           return (
@@ -635,38 +646,39 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
               onClick={() => selectDate(candidate.date)}
               type="button"
             >
-              <time dateTime={candidate.date}>{formatItineraryDate(candidate.date, { weekday: "short", day: "numeric", month: "short" })}</time>
+              <time dateTime={candidate.date}>{formatItineraryDate(candidate.date, { weekday: "short", day: "numeric", month: "short" }, locale)}</time>
               <strong>{candidate.area}</strong>
-              <span>{stopCount} {stopCount === 1 ? "parada" : "paradas"}</span>
+              <span>{stopCount} {t(locale, stopCount === 1 ? "viewer.stop" : "viewer.stops")}</span>
             </button>
           );
         })}
       </nav>
       {day ? (
-        <section className="route-map-panel" aria-label={`Ruta del ${formatItineraryDate(day.date, { day: "numeric", month: "long" })}`}>
+        <section className="route-map-panel" aria-label={t(locale, "viewer.routeAria", { date: formatItineraryDate(day.date, { day: "numeric", month: "long" }, locale) })}>
           <header>
             <div>
-              <p className="eyebrow">{formatItineraryDate(day.date, { weekday: "long", day: "numeric", month: "long" })}</p>
+              <p className="eyebrow">{formatItineraryDate(day.date, { weekday: "long", day: "numeric", month: "long" }, locale)}</p>
               <h2>{day.title}</h2>
             </div>
-            {day.route?.totalMinutes ? <span className="route-duration">{day.route.totalMinutes} min aprox.</span> : null}
+            {day.route?.totalMinutes ? <span className="route-duration">{t(locale, "viewer.approxMinutes", { minutes: day.route.totalMinutes })}</span> : null}
           </header>
           {embedUrl ? (
-            <GoogleRouteMap day={day} embedUrl={embedUrl} itinerary={itinerary} key={embedUrl} />
+            <GoogleRouteMap day={day} embedUrl={embedUrl} itinerary={itinerary} key={embedUrl} locale={locale} />
           ) : (
-            <RouteSchematic day={day} itinerary={itinerary} />
+            <RouteSchematic day={day} itinerary={itinerary} locale={locale} />
           )}
           {stops.length ? (
             <ol className="route-stops">
               {stops.map((stop, index) => <li key={`${stop}-${index}`}><span>{index + 1}</span>{stop}</li>)}
             </ol>
-          ) : <p className="route-empty">Todavía no hay suficientes ubicaciones para trazar este día.</p>}
+          ) : <p className="route-empty">{t(locale, "viewer.noRouteLocations")}</p>}
           <div className="route-external-links">
             {googleRouteUrls.map((routeUrl, index) => (
               <RouteLink
                 href={routeUrl}
                 key={routeUrl}
-                label={googleRouteUrls.length === 1 ? "Abrir en Google Maps" : `Google Maps · tramo ${index + 1}`}
+                label={googleRouteUrls.length === 1 ? t(locale, "viewer.openGoogleMaps") : t(locale, "viewer.googleMapsSegment", { number: index + 1 })}
+                locale={locale}
                 onOpenExternal={onOpenExternal}
               />
             ))}
@@ -674,7 +686,8 @@ function RoutesView({ itinerary, onOpenExternal, onSelectedDateChange, selectedD
               <RouteLink
                 href={routeUrl}
                 key={routeUrl}
-                label={appleRouteUrls.length === 1 ? "Abrir en Apple Maps" : `Apple Maps · tramo ${index + 1}`}
+                label={appleRouteUrls.length === 1 ? t(locale, "viewer.openAppleMaps") : t(locale, "viewer.appleMapsSegment", { number: index + 1 })}
+                locale={locale}
                 onOpenExternal={onOpenExternal}
               />
             ))}
@@ -697,11 +710,11 @@ function reservationUrl(entry) {
   return entry.reservation.url || entry.reservation.officialUrl || entry.reservation.bookingUrl || entry.activity.sourceUrl || "";
 }
 
-function ReservationActions({ entry, onStatusChange, writable }) {
+function ReservationActions({ entry, locale, onStatusChange, writable }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   if (!writable || !onStatusChange) return null;
-  const presentation = reservationPresentation(entry);
+  const presentation = reservationPresentation(entry, locale);
   const actions = [presentation.nextAction];
 
   async function update(nextStatus) {
@@ -709,8 +722,8 @@ function ReservationActions({ entry, onStatusChange, writable }) {
     setError("");
     try {
       await onStatusChange({ activityId: entry.activity.id, dayDate: entry.day.date, status: nextStatus });
-    } catch (caught) {
-      setError(caught?.message || "No pudimos actualizar esta gestión.");
+    } catch {
+      setError(t(locale, "viewer.updateManagementError"));
     } finally {
       setBusy(false);
     }
@@ -720,7 +733,7 @@ function ReservationActions({ entry, onStatusChange, writable }) {
     <div className="reservation-controls">
       {actions.map((action) => (
         <button className="button button-secondary" disabled={busy} key={action.status} onClick={() => update(action.status)} type="button">
-          {busy ? "Actualizando…" : action.label}
+          {busy ? t(locale, "viewer.updating") : action.label}
         </button>
       ))}
       {error ? <p className="reservation-error" role="alert">{error}</p> : null}
@@ -728,7 +741,7 @@ function ReservationActions({ entry, onStatusChange, writable }) {
   );
 }
 
-function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedReservationKey, writable }) {
+function ReservationsView({ itinerary, locale, onOpenExternal, onStatusChange, selectedReservationKey, writable }) {
   const entries = reservationEntries(itinerary);
   const targetReservationRef = useRef(null);
 
@@ -747,8 +760,8 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedR
   if (!entries.length) {
     return (
       <div className="reservations-empty">
-        <strong>No hay reservas ni boletos por gestionar</strong>
-        <p>Las actividades de este viaje no tienen gestiones pendientes registradas.</p>
+        <strong>{t(locale, "viewer.reservationsEmptyTitle")}</strong>
+        <p>{t(locale, "viewer.reservationsEmptyBody")}</p>
       </div>
     );
   }
@@ -756,17 +769,17 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedR
     <div className="reservations-view">
       <header className="reservations-header">
         <div>
-          <p className="eyebrow">Todo en un solo lugar</p>
-          <h2>Reservas y boletos</h2>
-          <p>Enlaces, fechas y estado actual, sin generar otra respuesta en el chat.</p>
-          {writable ? <small>Los controles actualizan Sendero; no compran ni cancelan con el proveedor.</small> : null}
+          <p className="eyebrow">{t(locale, "viewer.reservationsEyebrow")}</p>
+          <h2>{t(locale, "viewer.reservationsTitle")}</h2>
+          <p>{t(locale, "viewer.reservationsBody")}</p>
+          {writable ? <small>{t(locale, "viewer.reservationsWritable")}</small> : null}
         </div>
-        <span>{entries.length} {entries.length === 1 ? "gestión" : "gestiones"}</span>
+        <span>{entries.length} {t(locale, entries.length === 1 ? "viewer.management" : "viewer.managements")}</span>
       </header>
       <div className="reservation-list">
         {entries.map((entry, index) => {
           const href = reservationUrl(entry);
-          const presentation = reservationPresentation(entry);
+          const presentation = reservationPresentation(entry, locale);
           const entryKey = reservationEntryKey(entry.day.date, entry.activity.id);
           const isTargeted = Boolean(selectedReservationKey && selectedReservationKey === entryKey);
           return (
@@ -779,7 +792,7 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedR
               tabIndex={isTargeted ? -1 : undefined}
             >
               <div className="reservation-date">
-                <time dateTime={entry.day.date}>{formatItineraryDate(entry.day.date, { weekday: "short", day: "numeric", month: "short" })}</time>
+                <time dateTime={entry.day.date}>{formatItineraryDate(entry.day.date, { weekday: "short", day: "numeric", month: "short" }, locale)}</time>
                 <span>{entry.activity.startTime}</span>
               </div>
               <div className="reservation-copy">
@@ -797,11 +810,11 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedR
                 {entry.reservation.note ? <p>{entry.reservation.note}</p> : null}
                 <div className="reservation-actions">
                   <div className="reservation-provider-row">
-                    {href ? <RouteLink href={href} label={presentation.externalActionLabel} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">Sin enlace oficial verificado</span>}
+                    {href ? <RouteLink href={href} label={presentation.externalActionLabel} locale={locale} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">{t(locale, "viewer.noVerifiedLink")}</span>}
                   </div>
                   {writable && onStatusChange ? (
                     <div className="reservation-status-row">
-                      <ReservationActions entry={entry} onStatusChange={onStatusChange} writable={writable} />
+                      <ReservationActions entry={entry} locale={locale} onStatusChange={onStatusChange} writable={writable} />
                     </div>
                   ) : null}
                 </div>
@@ -814,14 +827,14 @@ function ReservationsView({ itinerary, onOpenExternal, onStatusChange, selectedR
   );
 }
 
-function SourcesPanel({ itinerary, onOpenExternal }) {
+function SourcesPanel({ itinerary, locale, onOpenExternal }) {
   const sources = (itinerary.sources || [])
     .map((source) => ({ ...source, safeUrl: safeExternalUrl(source.url) }))
     .filter((source) => source.safeUrl);
   if (!sources.length) return null;
   return (
     <details className="itinerary-sources">
-      <summary>Fuentes verificadas ({sources.length})</summary>
+      <summary>{t(locale, "viewer.verifiedSources", { count: sources.length })}</summary>
       <ul>
         {sources.map((source) => (
           <li key={`${source.label}-${source.safeUrl}`}>
@@ -831,7 +844,7 @@ function SourcesPanel({ itinerary, onOpenExternal }) {
               rel="noreferrer noopener"
               target="_blank"
             >{source.label} ↗</a>
-            {source.checkedAt ? <small>Comprobada {formatItineraryDate(source.checkedAt.slice(0, 10), { day: "numeric", month: "short" })}</small> : null}
+            {source.checkedAt ? <small>{t(locale, "viewer.checked", { date: formatItineraryDate(source.checkedAt.slice(0, 10), { day: "numeric", month: "short" }, locale) })}</small> : null}
           </li>
         ))}
       </ul>
@@ -856,6 +869,8 @@ export function ItineraryViewer({
   selectedRouteDate,
   variant = "chat",
 }) {
+  const locale = resolveContentLocale(itinerary?.locale);
+  const primaryViews = primaryViewsFor(locale);
   const viewerId = useId();
   const tabRefs = useRef([]);
   const supportsReservations = variant !== "public";
@@ -866,8 +881,12 @@ export function ItineraryViewer({
   const currentPanelLabelId = currentView === "reservations"
     ? `${viewerId}-reservations-button`
     : `${viewerId}-${currentView}-tab`;
-  const contextualTitle = contextualItineraryTitle(itinerary.title, itinerary.destination);
-  const meta = `${formatItineraryDate(itinerary.startDate, { day: "numeric", month: "long" })} — ${formatItineraryDate(itinerary.endDate, { day: "numeric", month: "long", year: "numeric" })} · ${itinerary.days.length} ${itinerary.days.length === 1 ? "día" : "días"}`;
+  const contextualTitle = contextualItineraryTitle(itinerary.title, itinerary.destination, locale);
+  const meta = `${formatItineraryDate(itinerary.startDate, { day: "numeric", month: "long" }, locale)} — ${formatItineraryDate(itinerary.endDate, { day: "numeric", month: "long", year: "numeric" }, locale)} · ${itinerary.days.length} ${t(locale, itinerary.days.length === 1 ? "viewer.day" : "viewer.days")}`;
+
+  useEffect(() => {
+    setDocumentLocale(locale);
+  }, [locale]);
 
   function selectView(view, focus = false) {
     onViewChange?.(view.id);
@@ -894,7 +913,7 @@ export function ItineraryViewer({
           <p className="meta">{meta}</p>
         </div>
         <div className="view-navigation">
-          <nav aria-label="Vistas del itinerario" className="tabs">
+          <nav aria-label={t(locale, "viewer.viewsAria")} className="tabs">
             <div role="tablist">
               {primaryViews.map((view, index) => (
                 <button
@@ -927,7 +946,7 @@ export function ItineraryViewer({
                 else onViewChange?.("reservations");
               }}
               type="button"
-            >Reservas</button>
+            >{t(locale, "viewer.reservations")}</button>
           ) : null}
         </div>
       </header>
@@ -941,6 +960,7 @@ export function ItineraryViewer({
           {currentView === "calendar" ? (
             <CalendarView
               itinerary={itinerary}
+              locale={locale}
               onOpenExternal={onOpenExternal}
               onReservationOpen={onReservationOpen}
               onSelectedDateChange={onCalendarDayChange}
@@ -950,18 +970,19 @@ export function ItineraryViewer({
               variant={variant}
             />
           ) : currentView === "routes" ? (
-            <RoutesView itinerary={itinerary} onOpenExternal={onOpenExternal} onSelectedDateChange={onRouteDayChange} selectedDate={selectedRouteDate} />
+            <RoutesView itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} onSelectedDateChange={onRouteDayChange} selectedDate={selectedRouteDate} />
           ) : currentView === "reservations" ? (
             <ReservationsView
               itinerary={itinerary}
+              locale={locale}
               onOpenExternal={onOpenExternal}
               onStatusChange={onReservationStatusChange}
               selectedReservationKey={selectedReservationKey}
               writable={reservationWritable}
             />
-          ) : <ListView itinerary={itinerary} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />}
+          ) : <ListView itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} onReservationOpen={onReservationOpen} variant={variant} />}
         </div>
-        <SourcesPanel itinerary={itinerary} onOpenExternal={onOpenExternal} />
+        <SourcesPanel itinerary={itinerary} locale={locale} onOpenExternal={onOpenExternal} />
       </section>
     </div>
   );

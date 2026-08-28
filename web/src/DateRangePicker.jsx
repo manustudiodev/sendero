@@ -12,18 +12,9 @@ import {
   startOfMonthISO,
   todayISO,
 } from "./date-range.js";
+import { t, uiLocale, weekdayLabels } from "./i18n/index.js";
 
-const weekdayLabels = [
-  { short: "Lu", long: "Lunes" },
-  { short: "Ma", long: "Martes" },
-  { short: "Mi", long: "Miércoles" },
-  { short: "Ju", long: "Jueves" },
-  { short: "Vi", long: "Viernes" },
-  { short: "Sá", long: "Sábado" },
-  { short: "Do", long: "Domingo" },
-];
-
-export function DateRangePicker({ startDate, endDate, onChange }) {
+export function DateRangePicker({ startDate, endDate, locale, onChange }) {
   const id = useId();
   const panelId = `${id}-date-range`;
   const instructionsId = `${id}-instructions`;
@@ -80,7 +71,7 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
       choose(value);
       return;
     }
-    const next = moveCalendarFocus(value, event.key, event.shiftKey);
+    const next = moveCalendarFocus(value, event.key, event.shiftKey, resolvedLocale);
     if (!next) return;
     event.preventDefault();
     setFocusedDate(next);
@@ -94,18 +85,19 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
     close();
   }
 
-  const cells = monthMatrix(visibleMonth);
+  const resolvedLocale = uiLocale(locale || globalThis.document?.documentElement?.lang);
+  const cells = monthMatrix(visibleMonth, resolvedLocale);
   const cellRows = Array.from({ length: 6 }, (_, index) => cells.slice(index * 7, index * 7 + 7));
-  const locale = document.documentElement.lang || "es";
+  const weekdays = weekdayLabels(resolvedLocale);
   const today = todayISO();
 
   return (
     <fieldset className="date-range field-wide">
-      <legend>Fechas del viaje</legend>
+      <legend>{t(resolvedLocale, "dateRange.legend")}</legend>
       <div className="date-range-fields">
         {[
-          { key: "start", label: "Llegada", value: startDate },
-          { key: "end", label: "Regreso", value: endDate },
+          { key: "start", label: t(resolvedLocale, "dateRange.arrival"), value: startDate },
+          { key: "end", label: t(resolvedLocale, "dateRange.return"), value: endDate },
         ].map((item) => (
           <button
             aria-controls={panelId}
@@ -117,23 +109,23 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
             type="button"
           >
             <span>{item.label}</span>
-            <strong className={item.value ? "" : "is-placeholder"}>{formatDateLabel(item.value, locale)}</strong>
+            <strong className={item.value ? "" : "is-placeholder"}>{formatDateLabel(item.value, resolvedLocale)}</strong>
             <span aria-hidden="true" className="date-range-calendar-icon">▦</span>
           </button>
         ))}
       </div>
       <DisclosurePanel className="date-range-disclosure" id={panelId} open={open}>
-        <section aria-describedby={instructionsId} aria-label="Elegir fechas del viaje" className="date-range-panel" onKeyDown={handlePanelKeyDown}>
-          <p className="visually-hidden" id={instructionsId}>Usa las flechas para moverte por el calendario. Presiona Enter para elegir primero la llegada y luego el regreso. Escape cierra el calendario.</p>
+        <section aria-describedby={instructionsId} aria-label={t(resolvedLocale, "dateRange.chooseAria")} className="date-range-panel" onKeyDown={handlePanelKeyDown}>
+          <p className="visually-hidden" id={instructionsId}>{t(resolvedLocale, "dateRange.instructions")}</p>
           <div className="date-range-toolbar">
-            <button aria-label="Mes anterior" onClick={() => moveMonth(-1)} type="button">←</button>
-            <strong aria-live="polite">{formatMonthLabel(visibleMonth, locale)}</strong>
-            <button aria-label="Mes siguiente" onClick={() => moveMonth(1)} type="button">→</button>
+            <button aria-label={t(resolvedLocale, "dateRange.previousMonth")} onClick={() => moveMonth(-1)} type="button">←</button>
+            <strong aria-live="polite">{formatMonthLabel(visibleMonth, resolvedLocale)}</strong>
+            <button aria-label={t(resolvedLocale, "dateRange.nextMonth")} onClick={() => moveMonth(1)} type="button">→</button>
           </div>
-          <p aria-live="polite" className="date-range-prompt">{endpoint === "start" ? "Elige la llegada" : "Ahora elige el regreso"}</p>
-          <div aria-label={formatMonthLabel(visibleMonth, locale)} aria-multiselectable="true" className="date-range-grid" role="grid">
+          <p aria-live="polite" className="date-range-prompt">{t(resolvedLocale, endpoint === "start" ? "dateRange.chooseArrival" : "dateRange.chooseReturn")}</p>
+          <div aria-label={formatMonthLabel(visibleMonth, resolvedLocale)} aria-multiselectable="true" className="date-range-grid" role="grid">
             <div className="date-range-row" role="row">
-              {weekdayLabels.map(({ short, long }) => <span aria-label={long} className="date-range-weekday" key={short} role="columnheader">{short}</span>)}
+              {weekdays.map(({ short, long }) => <span aria-label={long} className="date-range-weekday" key={long} role="columnheader">{short}</span>)}
             </div>
             {cellRows.map((row, rowIndex) => (
               <div className="date-range-row" key={row[0]?.iso || rowIndex} role="row">
@@ -149,7 +141,7 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
                   return (
                     <button
                       aria-current={iso === today ? "date" : undefined}
-                      aria-label={`${formatLongDateLabel(iso, locale)}${state.isStart ? ", llegada" : state.isEnd ? ", regreso" : state.inRange ? ", dentro del viaje" : ""}`}
+                      aria-label={`${formatLongDateLabel(iso, resolvedLocale)}${state.isStart ? t(resolvedLocale, "dateRange.arrivalState") : state.isEnd ? t(resolvedLocale, "dateRange.returnState") : state.inRange ? t(resolvedLocale, "dateRange.inRangeState") : ""}`}
                       aria-selected={state.isStart || state.isEnd || state.inRange}
                       className={className}
                       key={iso}
@@ -171,7 +163,7 @@ export function DateRangePicker({ startDate, endDate, onChange }) {
               </div>
             ))}
           </div>
-          <button className="date-range-close" onClick={() => close()} type="button">Cerrar calendario</button>
+          <button className="date-range-close" onClick={() => close()} type="button">{t(resolvedLocale, "dateRange.close")}</button>
         </section>
       </DisclosurePanel>
     </fieldset>

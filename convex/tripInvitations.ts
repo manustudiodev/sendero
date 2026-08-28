@@ -13,6 +13,7 @@ import {
   type MemberRole,
 } from "./tripAccess";
 import { enqueueInvitationEmail } from "./invitationEmailOutbox";
+import { canonicalLocale, DEFAULT_LOCALE } from "../shared/locale.mjs";
 
 const memberRole = v.union(v.literal("editor"), v.literal("viewer"));
 const DEFAULT_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -622,6 +623,7 @@ export const inspect = query({
       inviterName: inviter?.name,
       trip: {
         webId: trip.webId,
+        locale: canonicalLocale(trip.locale, canonicalLocale((trip.snapshot as Record<string, unknown>)?.locale, DEFAULT_LOCALE)),
         title: trip.title,
         destination: trip.destination,
         startDate: trip.startDate,

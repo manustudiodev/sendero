@@ -12,20 +12,25 @@ import {
   LEGACY_ITINERARY_V7_UI_URI,
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
+  LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
+  LEGACY_PUBLIC_SHARE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
+  LEGACY_TRIP_INTAKE_V5_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
+  LEGACY_TRIP_LIST_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -49,6 +54,7 @@ import {
   deriveInvitationToken,
   hashInvitationToken,
 } from "./invitations.mjs";
+import { canonicalLocale, DEFAULT_LOCALE, localeLanguage } from "../shared/locale.mjs";
 
 export {
   ITINERARY_UI_URI,
@@ -60,20 +66,25 @@ export {
   LEGACY_ITINERARY_V7_UI_URI,
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
+  LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
+  LEGACY_PUBLIC_SHARE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
+  LEGACY_TRIP_INTAKE_V5_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
+  LEGACY_TRIP_LIST_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -91,6 +102,15 @@ const checkedAt = z
   .refine((value) => !Number.isNaN(Date.parse(value)), "Use a valid date");
 const url = z.string().url();
 const httpUrl = url.refine((value) => /^https?:\/\//i.test(value), "Use an HTTP(S) URL");
+const localeSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(35)
+  .regex(
+    /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/,
+    "Use a BCP 47 language tag such as es, es-AR, en, or en-GB",
+  );
 
 const transportMode = z.enum([
   "walk",
@@ -141,10 +161,13 @@ const lodgingSchema = z.object({
 });
 
 const tripBriefLodgingSchema = z.object({
-  name: z.string().min(1).optional(),
-  address: z.string().min(1).optional(),
-  area: z.string().min(1).optional(),
-  status: z.enum(["confirmed", "area_only", "undecided"]).optional(),
+  name: z.string().min(1).describe("Hotel, rental, or lodging name when known.").optional(),
+  address: z.string().min(1).describe("Exact lodging address only when the user supplied it.").optional(),
+  area: z.string().min(1).describe("Neighborhood or area where the user will stay, including a provisional base.").optional(),
+  status: z
+    .enum(["confirmed", "area_only", "undecided"])
+    .describe("Whether lodging is confirmed, known only by area, or still undecided.")
+    .optional(),
 });
 
 const reservationSchema = z.object({
@@ -227,6 +250,7 @@ const daySchema = z.object({
 
 export const itinerarySchema = z.object({
   id: z.string().optional(),
+  locale: localeSchema.default(DEFAULT_LOCALE),
   title: z.string().min(1),
   destination: z.string().min(1),
   startDate: isoDate,
@@ -276,6 +300,7 @@ const publicActivitySchema = z.object({
 
 export const publicItinerarySchema = z.object({
   schemaVersion: z.literal(1),
+  locale: localeSchema.default(DEFAULT_LOCALE),
   title: z.string().min(1),
   destination: z.string().min(1),
   startDate: isoDate,
@@ -321,29 +346,39 @@ export const publicItinerarySchema = z.object({
 });
 
 const tripBriefSchema = z.object({
-  destination: z.string().optional(),
-  startDate: isoDate.optional(),
-  endDate: isoDate.optional(),
-  lodging: tripBriefLodgingSchema.optional(),
+  locale: localeSchema
+    .describe(
+      "BCP 47 locale inferred from the user's predominant language. Always provide it without asking the user; for example es, es-AR, en, en-GB, or pt-BR.",
+    )
+    .default(DEFAULT_LOCALE),
+  destination: z
+    .string()
+    .describe("Trip destination as stated by the user, ideally city and country; for example, Santiago de Chile.")
+    .optional(),
+  startDate: isoDate.describe("Arrival or first itinerary date in YYYY-MM-DD format when known.").optional(),
+  endDate: isoDate.describe("Departure or final itinerary date in YYYY-MM-DD format when known.").optional(),
+  lodging: tripBriefLodgingSchema.describe("Known or provisional lodging context; an exact address is not required.").optional(),
   travellers: z
     .object({
-      adults: z.number().int().positive().optional(),
-      children: z.number().int().nonnegative().optional(),
+      adults: z.number().int().positive().describe("Number of adult travellers when stated.").optional(),
+      children: z.number().int().nonnegative().describe("Number of child travellers when stated.").optional(),
     })
+    .describe("Party size extracted from the request.")
     .optional(),
-  budget: z.enum(["low", "medium", "high", "flexible"]).optional(),
-  pace: z.enum(["relaxed", "balanced", "intense"]).optional(),
-  interests: z.array(z.string()).optional(),
-  mustDo: z.array(z.string()).optional(),
-  avoid: z.array(z.string()).optional(),
+  budget: z.enum(["low", "medium", "high", "flexible"]).describe("Overall trip budget preference.").optional(),
+  pace: z.enum(["relaxed", "balanced", "intense"]).describe("Desired daily itinerary intensity.").optional(),
+  interests: z.array(z.string()).describe("Travel interests already mentioned, in the user's own level of specificity.").optional(),
+  mustDo: z.array(z.string()).describe("Places or experiences the user explicitly wants included.").optional(),
+  avoid: z.array(z.string()).describe("Activities, styles, places, or constraints the user explicitly wants excluded.").optional(),
   dietaryNeeds: z.array(z.string()).optional(),
   accessibilityNeeds: z.array(z.string()).optional(),
   transport: z
     .object({
-      modes: z.array(transportMode).optional(),
-      hasLicense: z.boolean().optional(),
-      wantsCar: z.boolean().optional(),
+      modes: z.array(transportMode).describe("Allowed or preferred transport modes already stated by the user.").optional(),
+      hasLicense: z.boolean().describe("Whether at least one traveller has a valid driving licence, only when relevant or stated.").optional(),
+      wantsCar: z.boolean().describe("Whether the travellers want to use or rent a car.").optional(),
     })
+    .describe("Mobility constraints and preferred transport for the trip.")
     .optional(),
   fixedPlans: z
     .array(
@@ -355,8 +390,9 @@ const tripBriefSchema = z.object({
         reservationStatus: z.enum(["pending", "confirmed"]).optional(),
       }),
     )
+    .describe("Existing reservations, tickets, appointments, or other time-locked commitments.")
     .optional(),
-  notes: z.string().optional(),
+  notes: z.string().describe("Any remaining travel context that does not fit another field.").optional(),
 });
 
 const tripCriticalFieldSchema = z.enum([
@@ -368,16 +404,39 @@ const tripCriticalFieldSchema = z.enum([
 ]);
 
 const tripCriticalFieldLabels = {
-  destination: "el destino",
-  startDate: "la fecha de llegada",
-  endDate: "la fecha de regreso",
-  "travellers.adults": "la cantidad de adultos",
-  "transport.modes": "cómo quieren moverse",
+  en: {
+    destination: "the destination",
+    startDate: "the arrival date",
+    endDate: "the return date",
+    "travellers.adults": "the number of adults",
+    "transport.modes": "how you want to get around",
+  },
+  es: {
+    destination: "el destino",
+    startDate: "la fecha de llegada",
+    endDate: "la fecha de regreso",
+    "travellers.adults": "la cantidad de adultos",
+    "transport.modes": "cómo quieren moverse",
+  },
+  pt: {
+    destination: "o destino",
+    startDate: "a data de chegada",
+    endDate: "a data de retorno",
+    "travellers.adults": "a quantidade de adultos",
+    "transport.modes": "como vocês querem se locomover",
+  },
 };
 
-function humanList(values) {
-  if (values.length < 2) return values[0] || "";
-  return `${values.slice(0, -1).join(", ")} y ${values.at(-1)}`;
+function localizedToolCopy(locale, copy) {
+  return copy[localeLanguage(locale)] || copy.en;
+}
+
+function humanList(values, locale = DEFAULT_LOCALE) {
+  if (!values.length) return "";
+  return new Intl.ListFormat(canonicalLocale(locale), {
+    style: "long",
+    type: "conjunction",
+  }).format(values);
 }
 
 const validationSchema = z.object({
@@ -418,6 +477,7 @@ const tripOpenInputSchema = z
   .strict();
 const tripSummarySchema = z.object({
   id: z.string(),
+  locale: localeSchema.default(DEFAULT_LOCALE),
   title: z.string(),
   destination: z.string(),
   startDate: isoDate,
@@ -443,6 +503,7 @@ const publicShareStateSchema = z.enum([
 ]);
 const publicShareActionSchema = z.enum(["publish", "update"]);
 const publicShareSummarySchema = z.object({
+  locale: localeSchema.default(DEFAULT_LOCALE),
   title: z.string().min(1),
   destination: z.string().min(1),
   startDate: isoDate,
@@ -544,6 +605,7 @@ const accessInvitationSchema = z.object({
 const publicShareStatusFields = {
   state: publicShareStateSchema,
   tripId: z.string().min(1),
+  locale: localeSchema.optional(),
   title: z.string().min(1).optional(),
   destination: z.string().min(1).optional(),
   startDate: isoDate.optional(),
@@ -718,6 +780,13 @@ function findLatestUpdatedTrip(trips) {
     .slice(0, 1);
 }
 
+function normalizeTripSummary(summary) {
+  return {
+    ...summary,
+    locale: canonicalLocale(summary.locale),
+  };
+}
+
 function validatedPresentation(itinerary, { reservationCompleteness } = {}) {
   const normalized = itinerarySchema.parse(normalizeItinerary(itinerary));
   const validation = validateItinerary(
@@ -725,7 +794,12 @@ function validatedPresentation(itinerary, { reservationCompleteness } = {}) {
     reservationCompleteness ? { reservationCompleteness } : undefined,
   );
   if (!validation.valid) {
-    throw new Error(`Itinerary cannot be presented: ${validation.errors.join(" ")}`);
+    const prefix = localizedToolCopy(normalized.locale, {
+      en: "Itinerary cannot be presented",
+      es: "El itinerario no se puede presentar",
+      pt: "O itinerário não pode ser apresentado",
+    });
+    throw new Error(`${prefix}: ${validation.errors.join(" ")}`);
   }
   return { itinerary: normalized, validation };
 }
@@ -845,6 +919,7 @@ export function buildDailyRouteUrl(itinerary, day) {
 export function normalizeItinerary(itinerary) {
   return {
     ...itinerary,
+    locale: canonicalLocale(itinerary.locale),
     days: [...itinerary.days]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((day) => {
@@ -1056,6 +1131,7 @@ function prepareTripBrief(brief) {
     warnings,
     assumptions,
     brief: {
+      locale: canonicalLocale(brief.locale),
       budget: "flexible",
       pace: "balanced",
       interests: [],
@@ -1121,6 +1197,7 @@ function invitationDeliveryText(delivery, email, action = "enviada") {
 
 function publicShareSummary(itinerary) {
   return {
+    locale: canonicalLocale(itinerary.locale),
     title: itinerary.title,
     destination: itinerary.destination,
     startDate: itinerary.startDate,
@@ -1177,7 +1254,9 @@ function publicShareToolMeta(invoking, invoked, visibility) {
 }
 
 const SERVER_INSTRUCTIONS = [
-  "Treat natural language as Sendero's primary interface; slash commands are optional shortcuts.",
+  "Use Sendero for any request to create, plan, organize, or draft a trip or itinerary, even when the user does not name Sendero. Treat natural language as Sendero's primary interface; slash commands and @mentions are optional shortcuts.",
+  "Infer the predominant language and the most appropriate BCP 47 locale from the user's request without asking them. Always pass it as brief.locale and itinerary.locale; use English when the language is ambiguous or unsupported. Generate every user-authored or editorial itinerary string in that locale, including titles, summaries, weather and fallback text, activity copy, guide content, reservation notes, and generic source labels; keep proper nouns in their official form and avoid mixed-language filler.",
+  "A saved itinerary's locale is authoritative when it is opened, rendered, revised, restored, or shared. Preserve it across revisions unless the user explicitly asks to change language; a language change requires translating all user-visible itinerary copy and saving the new locale with changeLanguage true. Omit changeLanguage for ordinary revisions. Legacy trips without a locale use English as a compatibility fallback.",
   "Choose the tool that represents the user's complete current intent. Do not compose compatibility primitives when an intent-level facade exists.",
   "Use open_trip once to resolve and present an unchanged saved trip by exact ID, latest_updated selector, or natural reference. Only a needs_selection result justifies showing the saved-trip picker.",
   "Use present_trip once for a complete new or changed itinerary that must be shown without persistence. It is intentionally unsaved and must not receive a saved trip ID, version, or role.",
@@ -1252,7 +1331,7 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.8.1" },
+    { name: "sendero", version: "0.9.0" },
     {
       instructions: SERVER_INSTRUCTIONS,
     },
@@ -1285,6 +1364,9 @@ export function createTripPlannerServer({
   server.registerResource("itinerary-ui-v9", LEGACY_ITINERARY_V9_UI_URI, {}, async () =>
     itineraryResource(widgetOrigin, LEGACY_ITINERARY_V9_UI_URI, { mapsEmbedApiKey }),
   );
+  server.registerResource("itinerary-ui-v10", LEGACY_ITINERARY_V10_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V10_UI_URI, { mapsEmbedApiKey }),
+  );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),
   );
@@ -1297,6 +1379,9 @@ export function createTripPlannerServer({
   server.registerResource("trip-intake-ui-v4", LEGACY_TRIP_INTAKE_V4_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_V4_UI_URI),
   );
+  server.registerResource("trip-intake-ui-v5", LEGACY_TRIP_INTAKE_V5_UI_URI, {}, async () =>
+    tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_V5_UI_URI),
+  );
   server.registerResource("trip-list-ui", TRIP_LIST_UI_URI, {}, async () =>
     tripListResource(widgetOrigin),
   );
@@ -1308,6 +1393,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("trip-list-ui-v3", LEGACY_TRIP_LIST_V3_UI_URI, {}, async () =>
     tripListResource(widgetOrigin, LEGACY_TRIP_LIST_V3_UI_URI),
+  );
+  server.registerResource("trip-list-ui-v4", LEGACY_TRIP_LIST_V4_UI_URI, {}, async () =>
+    tripListResource(widgetOrigin, LEGACY_TRIP_LIST_V4_UI_URI),
   );
   server.registerResource("trip-requirements-ui", TRIP_REQUIREMENTS_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin),
@@ -1327,6 +1415,9 @@ export function createTripPlannerServer({
   server.registerResource("trip-requirements-ui-v5", LEGACY_TRIP_REQUIREMENTS_V5_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V5_UI_URI),
   );
+  server.registerResource("trip-requirements-ui-v6", LEGACY_TRIP_REQUIREMENTS_V6_UI_URI, {}, async () =>
+    tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V6_UI_URI),
+  );
   server.registerResource("public-share-ui", PUBLIC_SHARE_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin),
   );
@@ -1339,13 +1430,16 @@ export function createTripPlannerServer({
   server.registerResource("public-share-ui-v3", LEGACY_PUBLIC_SHARE_V3_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_V3_UI_URI),
   );
+  server.registerResource("public-share-ui-v4", LEGACY_PUBLIC_SHARE_V4_UI_URI, {}, async () =>
+    publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_V4_UI_URI),
+  );
 
   server.registerTool(
     "prepare_trip_brief",
     {
-      title: "Prepare trip brief",
+      title: "Create or plan a new trip with Sendero",
       description:
-        "Normalize the user's travel requirements and identify critical missing details before researching or scheduling the trip. A requirements component also calls this tool after submission; when it returns ready with no criticalFields, continue from that validated brief and do not request those fields again.",
+        "Use this when the user wants to create, plan, organize, or draft a new trip, vacation, travel itinerary, day-by-day plan, or sightseeing schedule—even if they do not mention Sendero. This includes indirect requests such as ‘viajo a Santiago el mes que viene y quiero un itinerario’, ‘organízame cinco días en Lisboa’, or ‘quiero aprovechar cada día de mis vacaciones’. Extract every travel fact already supplied, infer and include brief.locale from the user's predominant language without asking, and use English when the language is ambiguous or unsupported. Normalize the requirements and identify all critical missing details together before researching or scheduling. A requirements component also calls this tool after submission; when it returns ready with no criticalFields, continue from that validated brief and do not request those fields again. Do not use for generic travel facts, a single-place recommendation, or an existing saved trip unless the user wants a new itinerary.",
       inputSchema: { brief: tripBriefSchema },
       outputSchema: {
         ready: z.boolean(),
@@ -1364,14 +1458,25 @@ export function createTripPlannerServer({
     },
     async ({ brief }) => {
       const result = prepareTripBrief(brief);
+      const locale = result.brief.locale;
+      const labels = tripCriticalFieldLabels[localeLanguage(locale)] || tripCriticalFieldLabels.en;
+      const missing = humanList(result.criticalFields.map((field) => labels[field]), locale);
       return {
         structuredContent: result,
         content: [
           {
             type: "text",
             text: result.ready
-              ? "The trip brief is ready for research and planning."
-              : `Para continuar faltan ${humanList(result.criticalFields.map((field) => tripCriticalFieldLabels[field]))}. Solicita todos estos datos juntos en una sola interacción.`,
+              ? localizedToolCopy(locale, {
+                  en: "The trip brief is ready for research and planning.",
+                  es: "El brief del viaje está listo para investigar y planificar.",
+                  pt: "O briefing da viagem está pronto para pesquisa e planejamento.",
+                })
+              : localizedToolCopy(locale, {
+                  en: `To continue, ${missing} are missing. Ask for all of them together in one interaction.`,
+                  es: `Para continuar faltan ${missing}. Solicita todos estos datos juntos en una sola interacción.`,
+                  pt: `Para continuar, faltam ${missing}. Solicite todos esses dados juntos em uma única interação.`,
+                }),
           },
         ],
       };
@@ -1406,6 +1511,7 @@ export function createTripPlannerServer({
     },
     async ({ brief, interactionId }) => {
       const prepared = prepareTripBrief(brief);
+      const locale = prepared.brief.locale;
       const id = interactionId || `trip-requirements-${crypto.randomUUID()}`;
       return {
         structuredContent: {
@@ -1419,8 +1525,16 @@ export function createTripPlannerServer({
           {
             type: "text",
             text: prepared.ready
-              ? "Sendero ya tiene los datos esenciales."
-              : "Completa los datos esenciales directamente en Sendero.",
+              ? localizedToolCopy(locale, {
+                  en: "Sendero already has the essential details.",
+                  es: "Sendero ya tiene los datos esenciales.",
+                  pt: "O Sendero já tem os dados essenciais.",
+                })
+              : localizedToolCopy(locale, {
+                  en: "Complete the essential details directly in Sendero.",
+                  es: "Completa los datos esenciales directamente en Sendero.",
+                  pt: "Preencha os dados essenciais diretamente no Sendero.",
+                }),
           },
         ],
       };
@@ -1451,19 +1565,29 @@ export function createTripPlannerServer({
         "openai/toolInvocation/invoked": "Sendero is ready.",
       },
     },
-    async ({ brief = {}, mode = "new" }) => ({
-      structuredContent: {
-        brief,
-        mode,
-        actions: mode === "menu" ? ["new", "open", "adjust", "refresh"] : [],
-      },
-      content: [
-        {
-          type: "text",
-          text: "Sendero está listo para continuar.",
+    async ({ brief = {}, mode = "new" }) => {
+      const locale = canonicalLocale(brief.locale);
+      return {
+        structuredContent: {
+          brief: {
+            ...brief,
+            locale,
+          },
+          mode,
+          actions: mode === "menu" ? ["new", "open", "adjust", "refresh"] : [],
         },
-      ],
-    }),
+        content: [
+          {
+            type: "text",
+            text: localizedToolCopy(locale, {
+              en: "Sendero is ready to continue.",
+              es: "Sendero está listo para continuar.",
+              pt: "O Sendero está pronto para continuar.",
+            }),
+          },
+        ],
+      };
+    },
   );
 
   server.registerTool(
@@ -1480,14 +1604,23 @@ export function createTripPlannerServer({
     async ({ itinerary }) => {
       const normalized = normalizeItinerary(itinerary);
       const validation = validateItinerary(normalized);
+      const locale = normalized.locale;
       return {
         structuredContent: { itinerary: normalized, validation },
         content: [
           {
             type: "text",
             text: validation.valid
-              ? `Itinerary is valid with ${validation.warnings.length} warning(s).`
-              : `Itinerary has ${validation.errors.length} blocking issue(s) and ${validation.warnings.length} warning(s).`,
+              ? localizedToolCopy(locale, {
+                  en: `The itinerary is valid with ${validation.warnings.length} warning(s).`,
+                  es: `El itinerario es válido y tiene ${validation.warnings.length} advertencia(s).`,
+                  pt: `O itinerário é válido e tem ${validation.warnings.length} aviso(s).`,
+                })
+              : localizedToolCopy(locale, {
+                  en: `The itinerary has ${validation.errors.length} blocking issue(s) and ${validation.warnings.length} warning(s).`,
+                  es: `El itinerario tiene ${validation.errors.length} problema(s) bloqueante(s) y ${validation.warnings.length} advertencia(s).`,
+                  pt: `O itinerário tem ${validation.errors.length} problema(s) bloqueante(s) e ${validation.warnings.length} aviso(s).`,
+                }),
           },
         ],
       };
@@ -1531,7 +1664,12 @@ export function createTripPlannerServer({
       const normalized = itinerarySchema.parse(normalizeItinerary(itinerary));
       const validation = validateItinerary(normalized, { reservationCompleteness: "warning" });
       if (!validation.valid) {
-        throw new Error(`Itinerary cannot be rendered: ${validation.errors.join(" ")}`);
+        const prefix = localizedToolCopy(normalized.locale, {
+          en: "Itinerary cannot be rendered",
+          es: "El itinerario no se puede mostrar",
+          pt: "O itinerário não pode ser exibido",
+        });
+        throw new Error(`${prefix}: ${validation.errors.join(" ")}`);
       }
       return {
         structuredContent: {
@@ -1542,7 +1680,11 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: "Tu itinerario está listo en Sendero.",
+            text: localizedToolCopy(normalized.locale, {
+              en: "Your itinerary is ready in Sendero.",
+              es: "Tu itinerario está listo en Sendero.",
+              pt: "Seu itinerário está pronto no Sendero.",
+            }),
           },
         ],
       };
@@ -1577,7 +1719,14 @@ export function createTripPlannerServer({
           state: "presented",
           ...presented,
         },
-        content: [{ type: "text", text: "Tu itinerario está listo en Sendero." }],
+        content: [{
+          type: "text",
+          text: localizedToolCopy(presented.itinerary.locale, {
+            en: "Your itinerary is ready in Sendero.",
+            es: "Tu itinerario está listo en Sendero.",
+            pt: "Seu itinerário está pronto no Sendero.",
+          }),
+        }],
       };
     },
   );
@@ -1633,8 +1782,16 @@ export function createTripPlannerServer({
           {
             type: "text",
             text: result.changed
-              ? "Sendero actualizó el estado local de la reserva. No se realizó ninguna acción con el proveedor."
-              : "La reserva ya tenía ese estado en Sendero. No se realizó ninguna acción con el proveedor.",
+              ? localizedToolCopy(normalized.locale, {
+                  en: "Sendero updated the local reservation or ticket status. No action was taken with the provider.",
+                  es: "Sendero actualizó el estado local de la reserva o entrada. No se realizó ninguna acción con el proveedor.",
+                  pt: "O Sendero atualizou o status local da reserva ou ingresso. Nenhuma ação foi realizada com o fornecedor.",
+                })
+              : localizedToolCopy(normalized.locale, {
+                  en: "The reservation or ticket already had that status in Sendero. No action was taken with the provider.",
+                  es: "La reserva o entrada ya tenía ese estado en Sendero. No se realizó ninguna acción con el proveedor.",
+                  pt: "A reserva ou ingresso já tinha esse status no Sendero. Nenhuma ação foi realizada com o fornecedor.",
+                }),
           },
         ],
       };
@@ -1685,13 +1842,22 @@ export function createTripPlannerServer({
         });
         const result = await storage().open(resolvedReference);
         if (result.state === "needs_selection") {
+          const trips = result.trips.map(normalizeTripSummary);
+          const locale = trips[0]?.locale || DEFAULT_LOCALE;
           return {
             structuredContent: {
               state: "needs_selection",
-              trips: result.trips,
+              trips,
               purpose: "open",
             },
-            content: [{ type: "text", text: "Hay más de un viaje que coincide." }],
+            content: [{
+              type: "text",
+              text: localizedToolCopy(locale, {
+                en: "More than one saved trip matches.",
+                es: "Hay más de un viaje guardado que coincide.",
+                pt: "Há mais de uma viagem salva correspondente.",
+              }),
+            }],
           };
         }
         if (result.state === "not_found") {
@@ -1701,8 +1867,8 @@ export function createTripPlannerServer({
               {
                 type: "text",
                 text: tripId
-                  ? "Ese viaje ya no está disponible."
-                  : "No encontré un viaje guardado que coincida.",
+                  ? "That trip is no longer available."
+                  : "No matching saved trip was found.",
               },
             ],
           };
@@ -1710,13 +1876,20 @@ export function createTripPlannerServer({
         const opened = tripPresentation(result);
         return {
           structuredContent: opened,
-          content: [{ type: "text", text: "Tu viaje está abierto en Sendero." }],
+          content: [{
+            type: "text",
+            text: localizedToolCopy(opened.itinerary.locale, {
+              en: "Your trip is open in Sendero.",
+              es: "Tu viaje está abierto en Sendero.",
+              pt: "Sua viagem está aberta no Sendero.",
+            }),
+          }],
         };
       } catch (error) {
         if (!isUnavailableTripError(error)) throw error;
         return {
           structuredContent: { state: "not_found", trips: [], purpose: "open" },
-          content: [{ type: "text", text: "Ese viaje ya no está disponible." }],
+          content: [{ type: "text", text: "That trip is no longer available." }],
         };
       }
     },
@@ -1736,7 +1909,7 @@ export function createTripPlannerServer({
     async ({ query, reference, selector, startDate, endDate }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
       if (denied) return denied;
-      const trips = await storage().list();
+      const trips = (await storage().list()).map(normalizeTripSummary);
       const resolvedReference = canonicalTripReference({
         selector,
         query,
@@ -1751,17 +1924,29 @@ export function createTripPlannerServer({
               startDate: resolvedReference.startDate,
               endDate: resolvedReference.endDate,
             });
+      const locale = matches[0]?.locale || DEFAULT_LOCALE;
       return {
         structuredContent: { trips: matches },
         content: [
           {
             type: "text",
-            text:
-              matches.length === 1
-                ? "One saved trip matches the user's reference. Continue with it directly."
-                : matches.length > 1
-                  ? "Several saved trips match. Let the user choose from clickable cards."
-                  : "No saved trip matches that reference.",
+            text: localizedToolCopy(locale, matches.length === 1
+              ? {
+                  en: "One saved trip matches the user's reference. Continue with it directly.",
+                  es: "Un viaje guardado coincide con la referencia del usuario. Continúa directamente con él.",
+                  pt: "Uma viagem salva corresponde à referência do usuário. Continue diretamente com ela.",
+                }
+              : matches.length > 1
+                ? {
+                    en: "Several saved trips match. Let the user choose from clickable cards.",
+                    es: "Varios viajes guardados coinciden. Deja que el usuario elija entre las tarjetas interactivas.",
+                    pt: "Várias viagens salvas correspondem. Deixe o usuário escolher entre os cartões interativos.",
+                  }
+                : {
+                    en: "No saved trip matches that reference.",
+                    es: "Ningún viaje guardado coincide con esa referencia.",
+                    pt: "Nenhuma viagem salva corresponde a essa referência.",
+                  }),
           },
         ],
       };
@@ -1789,13 +1974,24 @@ export function createTripPlannerServer({
     async ({ purpose = "open" }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.read]);
       if (denied) return denied;
-      const trips = await storage().list();
+      const trips = (await storage().list()).map(normalizeTripSummary);
+      const locale = trips[0]?.locale || DEFAULT_LOCALE;
       return {
         structuredContent: { trips, purpose },
         content: [
           {
             type: "text",
-            text: trips.length ? "Elige un viaje en Sendero." : "Todavía no hay viajes guardados.",
+            text: localizedToolCopy(locale, trips.length
+              ? {
+                  en: "Choose a trip in Sendero.",
+                  es: "Elige un viaje en Sendero.",
+                  pt: "Escolha uma viagem no Sendero.",
+                }
+              : {
+                  en: "There are no saved trips yet.",
+                  es: "Todavía no hay viajes guardados.",
+                  pt: "Ainda não há viagens salvas.",
+                }),
           },
         ],
       };
@@ -1833,7 +2029,11 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: `Opened ${itinerary.title}, version ${result.version}, with ${result.role} access.`,
+            text: localizedToolCopy(itinerary.locale, {
+              en: `Opened ${itinerary.title}, version ${result.version}.`,
+              es: `Se abrió ${itinerary.title}, versión ${result.version}.`,
+              pt: `${itinerary.title}, versão ${result.version}, foi aberta.`,
+            }),
           },
         ],
       };
@@ -1851,6 +2051,12 @@ export function createTripPlannerServer({
         itinerary: itinerarySchema,
         reason: z.string().min(1).optional(),
         expectedVersion: z.number().int().positive().optional(),
+        changeLanguage: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true only when the user explicitly asked to translate the complete saved itinerary into itinerary.locale. Ordinary updates must omit it so the saved locale remains authoritative.",
+          ),
         operationId: tripWriteOperationIdSchema,
       },
       outputSchema: {
@@ -1866,22 +2072,32 @@ export function createTripPlannerServer({
       },
       _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]) },
     },
-    async ({ tripId, itinerary, reason, expectedVersion, operationId }) => {
+    async ({ tripId, itinerary, reason, expectedVersion, changeLanguage = false, operationId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
       if (denied) return denied;
       const normalized = normalizeItinerary(itinerary);
       const validation = validateItinerary(normalized);
       if (!validation.valid) {
-        throw new Error(`Itinerary cannot be saved: ${validation.errors.join(" ")}`);
+        const prefix = localizedToolCopy(normalized.locale, {
+          en: "Itinerary cannot be saved",
+          es: "El itinerario no se puede guardar",
+          pt: "O itinerário não pode ser salvo",
+        });
+        throw new Error(`${prefix}: ${validation.errors.join(" ")}`);
       }
       if (tripId && expectedVersion === undefined) {
-        throw new Error("expectedVersion is required when updating a saved trip");
+        throw new Error(localizedToolCopy(normalized.locale, {
+          en: "The current trip version is required when updating a saved trip.",
+          es: "La versión actual del viaje es obligatoria al actualizar un viaje guardado.",
+          pt: "A versão atual da viagem é obrigatória ao atualizar uma viagem salva.",
+        }));
       }
       const result = await storage().save({
         tripId,
         itinerary: normalized,
         reason,
         expectedVersion,
+        changeLanguage,
         operationId,
       });
       return {
@@ -1893,7 +2109,17 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: `${tripId ? "Saved a new version" : "Created the trip"} successfully as version ${result.version}.`,
+            text: localizedToolCopy(normalized.locale, tripId
+              ? {
+                  en: `Saved version ${result.version} successfully.`,
+                  es: `La versión ${result.version} se guardó correctamente.`,
+                  pt: `A versão ${result.version} foi salva com sucesso.`,
+                }
+              : {
+                  en: `Created the trip successfully as version ${result.version}.`,
+                  es: `El viaje se creó correctamente como versión ${result.version}.`,
+                  pt: `A viagem foi criada com sucesso como versão ${result.version}.`,
+                }),
           },
         ],
       };
@@ -1911,6 +2137,12 @@ export function createTripPlannerServer({
         itinerary: itinerarySchema,
         reason: z.string().min(1).optional(),
         expectedVersion: z.number().int().positive().optional(),
+        changeLanguage: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true only when the user explicitly asked to translate the complete saved itinerary into itinerary.locale. Ordinary updates must omit it so the saved locale remains authoritative.",
+          ),
         operationId: tripWriteOperationIdSchema,
       },
       outputSchema: {
@@ -1937,14 +2169,23 @@ export function createTripPlannerServer({
         "openai/toolInvocation/invoked": "Itinerary saved.",
       },
     },
-    async ({ tripId, itinerary, reason, expectedVersion, operationId }) => {
+    async ({ tripId, itinerary, reason, expectedVersion, changeLanguage = false, operationId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.write]);
       if (denied) return denied;
+      const locale = canonicalLocale(itinerary.locale);
       if (tripId && expectedVersion === undefined) {
-        throw new Error("expectedVersion is required when updating a saved trip.");
+        throw new Error(localizedToolCopy(locale, {
+          en: "The current trip version is required when updating a saved trip.",
+          es: "La versión actual del viaje es obligatoria al actualizar un viaje guardado.",
+          pt: "A versão atual da viagem é obrigatória ao atualizar uma viagem salva.",
+        }));
       }
       if (!tripId && expectedVersion !== undefined) {
-        throw new Error("expectedVersion is only valid when updating a saved trip.");
+        throw new Error(localizedToolCopy(locale, {
+          en: "A current trip version is only valid when updating a saved trip.",
+          es: "La versión actual del viaje solo es válida al actualizar un viaje guardado.",
+          pt: "A versão atual da viagem só é válida ao atualizar uma viagem salva.",
+        }));
       }
       const prepared = validatedPresentation(itinerary);
       const result = await storage().save({
@@ -1952,6 +2193,7 @@ export function createTripPlannerServer({
         itinerary: prepared.itinerary,
         reason,
         expectedVersion,
+        changeLanguage,
         operationId,
       });
       const authoritative = validatedPresentation(result.itinerary, {
@@ -1967,7 +2209,14 @@ export function createTripPlannerServer({
           ...authoritative,
           replayed: result.replayed,
         },
-        content: [{ type: "text", text: "Tu viaje quedó guardado y abierto en Sendero." }],
+        content: [{
+          type: "text",
+          text: localizedToolCopy(authoritative.itinerary.locale, {
+            en: "Your trip was saved and is open in Sendero.",
+            es: "Tu viaje quedó guardado y abierto en Sendero.",
+            pt: "Sua viagem foi salva e está aberta no Sendero.",
+          }),
+        }],
       };
     },
   );
@@ -2379,8 +2628,13 @@ export function createTripPlannerServer({
         }),
       );
       if (resolved.state === "needs_selection") {
+        const locale = resolved.trips?.map(normalizeTripSummary)[0]?.locale || DEFAULT_LOCALE;
         throw new Error(
-          "Several saved trips match that reference. Ask the owner which trip they mean before publishing.",
+          localizedToolCopy(locale, {
+            en: "Several saved trips match that reference. Ask the owner which trip they mean before publishing.",
+            es: "Varios viajes guardados coinciden con esa referencia. Pregunta al propietario cuál quiere publicar.",
+            pt: "Várias viagens salvas correspondem a essa referência. Pergunte ao proprietário qual delas deseja publicar.",
+          }),
         );
       }
       if (resolved.state === "not_found") {
@@ -2412,8 +2666,16 @@ export function createTripPlannerServer({
           content: [{
             type: "text",
             text: publicUrl
-              ? `El enlace público de solo lectura sigue siendo el mismo: ${publicUrl}`
-              : "El enlace público sigue activo, pero pertenece a una generación antigua que Sendero no puede volver a mostrar. Sólo reemplázalo si el propietario pide expresamente un enlace nuevo.",
+              ? localizedToolCopy(itinerary.locale, {
+                  en: `The public read-only link remains the same: ${publicUrl}`,
+                  es: `El enlace público de solo lectura sigue siendo el mismo: ${publicUrl}`,
+                  pt: `O link público somente para leitura continua o mesmo: ${publicUrl}`,
+                })
+              : localizedToolCopy(itinerary.locale, {
+                  en: "The public link is still active, but it belongs to an older generation that Sendero cannot display again. Replace it only if the owner explicitly asks for a new link.",
+                  es: "El enlace público sigue activo, pero pertenece a una generación antigua que Sendero no puede volver a mostrar. Reemplázalo solo si el propietario pide expresamente un enlace nuevo.",
+                  pt: "O link público continua ativo, mas pertence a uma geração antiga que o Sendero não consegue exibir novamente. Substitua-o apenas se o proprietário pedir explicitamente um novo link.",
+                }),
           }],
         };
       }
@@ -2451,7 +2713,11 @@ export function createTripPlannerServer({
           content: [
             {
               type: "text",
-              text: `El enlace público de solo lectura ya está listo: ${publicUrl}`,
+              text: localizedToolCopy(itinerary.locale, {
+                en: `The public read-only link is ready: ${publicUrl}`,
+                es: `El enlace público de solo lectura ya está listo: ${publicUrl}`,
+                pt: `O link público somente para leitura está pronto: ${publicUrl}`,
+              }),
             },
           ],
         };
@@ -2497,9 +2763,21 @@ export function createTripPlannerServer({
             type: "text",
             text: publicUrl
               ? state === "updated"
-                ? `La vista pública ya refleja la versión actual del viaje y conserva este enlace: ${publicUrl}`
-                : `El enlace público de solo lectura sigue siendo el mismo: ${publicUrl}`
-              : "La vista pública ya refleja la versión actual del viaje, pero Sendero no puede volver a mostrar esta generación antigua del enlace. Sólo reemplázalo si el propietario lo pide expresamente.",
+                ? localizedToolCopy(receiptItinerary?.locale || itinerary.locale, {
+                    en: `The public view now reflects the current trip version and keeps this link: ${publicUrl}`,
+                    es: `La vista pública ya refleja la versión actual del viaje y conserva este enlace: ${publicUrl}`,
+                    pt: `A visualização pública agora reflete a versão atual da viagem e mantém este link: ${publicUrl}`,
+                  })
+                : localizedToolCopy(receiptItinerary?.locale || itinerary.locale, {
+                    en: `The public read-only link remains the same: ${publicUrl}`,
+                    es: `El enlace público de solo lectura sigue siendo el mismo: ${publicUrl}`,
+                    pt: `O link público somente para leitura continua o mesmo: ${publicUrl}`,
+                  })
+              : localizedToolCopy(receiptItinerary?.locale || itinerary.locale, {
+                  en: "The public view now reflects the current trip version, but Sendero cannot display this older link generation again. Replace it only if the owner explicitly asks.",
+                  es: "La vista pública ya refleja la versión actual del viaje, pero Sendero no puede volver a mostrar esta generación antigua del enlace. Reemplázalo solo si el propietario lo pide expresamente.",
+                  pt: "A visualização pública agora reflete a versão atual da viagem, mas o Sendero não consegue exibir novamente esta geração antiga do link. Substitua-o apenas se o proprietário pedir explicitamente.",
+                }),
           },
         ],
       };
@@ -2554,7 +2832,11 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: "Revisa y confirma la vista pública en Sendero.",
+            text: localizedToolCopy(itinerary.locale, {
+              en: "Review the public preview in Sendero.",
+              es: "Revisa la vista pública en Sendero.",
+              pt: "Revise a prévia pública no Sendero.",
+            }),
           },
         ],
       };
@@ -2582,14 +2864,32 @@ export function createTripPlannerServer({
         sharing,
         operationId,
       });
-      const descriptions = {
-        active: output.isStale
-          ? "El enlace sigue activo, pero el viaje privado tiene cambios que todavía no se publicaron."
-          : "El enlace público está activo y muestra la versión publicada más reciente.",
-        expired: "El enlace público venció y ya no abre el viaje.",
-        revoked: "El enlace público fue revocado y ya no abre el viaje.",
-        not_published: "Este viaje todavía no tiene un enlace público.",
-      };
+      const descriptions = localizedToolCopy(output.locale, {
+        en: {
+          active: output.isStale
+            ? "The link is still active, but the private trip has changes that have not been published yet."
+            : "The public link is active and shows the latest published version.",
+          expired: "The public link expired and no longer opens the trip.",
+          revoked: "The public link was revoked and no longer opens the trip.",
+          not_published: "This trip does not have a public link yet.",
+        },
+        es: {
+          active: output.isStale
+            ? "El enlace sigue activo, pero el viaje privado tiene cambios que todavía no se publicaron."
+            : "El enlace público está activo y muestra la versión publicada más reciente.",
+          expired: "El enlace público venció y ya no abre el viaje.",
+          revoked: "El enlace público fue revocado y ya no abre el viaje.",
+          not_published: "Este viaje todavía no tiene un enlace público.",
+        },
+        pt: {
+          active: output.isStale
+            ? "O link continua ativo, mas a viagem privada tem alterações que ainda não foram publicadas."
+            : "O link público está ativo e mostra a versão publicada mais recente.",
+          expired: "O link público expirou e não abre mais a viagem.",
+          revoked: "O link público foi revogado e não abre mais a viagem.",
+          not_published: "Esta viagem ainda não tem um link público.",
+        },
+      });
       return {
         structuredContent: output,
         content: [{ type: "text", text: descriptions[output.state] }],
@@ -2652,7 +2952,11 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: `El enlace público de solo lectura ya está listo: ${publicUrl}`,
+            text: localizedToolCopy(output.locale, {
+              en: `The public read-only link is ready: ${publicUrl}`,
+              es: `El enlace público de solo lectura ya está listo: ${publicUrl}`,
+              pt: `O link público somente para leitura está pronto: ${publicUrl}`,
+            }),
           },
         ],
       };
@@ -2699,8 +3003,16 @@ export function createTripPlannerServer({
           {
             type: "text",
             text: publicUrl
-              ? `La vista pública ahora refleja la versión que acabas de revisar y conserva este enlace: ${publicUrl}`
-              : "La vista pública ahora refleja la versión que acabas de revisar. El enlace sigue activo, pero esta generación antigua no se puede volver a mostrar.",
+              ? localizedToolCopy(output.locale, {
+                  en: `The public view now reflects the version you just reviewed and keeps this link: ${publicUrl}`,
+                  es: `La vista pública ahora refleja la versión que acabas de revisar y conserva este enlace: ${publicUrl}`,
+                  pt: `A visualização pública agora reflete a versão que você acabou de revisar e mantém este link: ${publicUrl}`,
+                })
+              : localizedToolCopy(output.locale, {
+                  en: "The public view now reflects the version you just reviewed. The link remains active, but this older generation cannot be displayed again.",
+                  es: "La vista pública ahora refleja la versión que acabas de revisar. El enlace sigue activo, pero esta generación antigua no se puede volver a mostrar.",
+                  pt: "A visualização pública agora reflete a versão que você acabou de revisar. O link continua ativo, mas esta geração antiga não pode ser exibida novamente.",
+                }),
           },
         ],
       };
@@ -2754,7 +3066,11 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: `El enlace anterior dejó de funcionar. Este es el nuevo enlace público: ${publicUrl}`,
+            text: localizedToolCopy(output.locale, {
+              en: `The previous link no longer works. This is the new public link: ${publicUrl}`,
+              es: `El enlace anterior dejó de funcionar. Este es el nuevo enlace público: ${publicUrl}`,
+              pt: `O link anterior não funciona mais. Este é o novo link público: ${publicUrl}`,
+            }),
           },
         ],
       };
@@ -2796,8 +3112,16 @@ export function createTripPlannerServer({
             type: "text",
             text:
               state === "revoked"
-                ? "El enlace público fue revocado y ya no permite abrir el viaje."
-                : "Este viaje no tenía un enlace público activo.",
+                ? localizedToolCopy(output.locale, {
+                    en: "The public link was revoked and no longer opens the trip.",
+                    es: "El enlace público fue revocado y ya no permite abrir el viaje.",
+                    pt: "O link público foi revogado e não abre mais a viagem.",
+                  })
+                : localizedToolCopy(output.locale, {
+                    en: "This trip did not have an active public link.",
+                    es: "Este viaje no tenía un enlace público activo.",
+                    pt: "Esta viagem não tinha um link público ativo.",
+                  }),
           },
         ],
       };
@@ -2871,7 +3195,11 @@ export function createTripPlannerServer({
         content: [
           {
             type: "text",
-            text: "La versión restaurada está abierta en Sendero.",
+            text: localizedToolCopy(authoritative.itinerary.locale, {
+              en: "The restored version is open in Sendero.",
+              es: "La versión restaurada está abierta en Sendero.",
+              pt: "A versão restaurada está aberta no Sendero.",
+            }),
           },
         ],
       };

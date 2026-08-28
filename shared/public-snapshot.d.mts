@@ -1,5 +1,6 @@
 export interface PublicItinerarySnapshot {
   schemaVersion: 1;
+  locale?: string;
   title: string;
   destination: string;
   startDate: string;

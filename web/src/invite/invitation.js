@@ -1,3 +1,5 @@
+import { formatDate, localeLanguage, resolveContentLocale } from "../i18n/index.js";
+
 function valueString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
@@ -22,15 +24,13 @@ export function invitationWebId(locationLike = globalThis.location) {
   }
 }
 
-export function formatInvitationExpiry(expiresAt, locale = "es") {
-  if (!valueString(expiresAt)) return "Sin fecha disponible";
+export function formatInvitationExpiry(expiresAt, locale = "en") {
+  const resolvedLocale = resolveContentLocale(locale);
+  const unavailable = { en: "Date unavailable", es: "Sin fecha disponible", pt: "Data indisponível" }[localeLanguage(resolvedLocale)];
+  if (!valueString(expiresAt)) return unavailable;
   const date = new Date(expiresAt);
-  if (Number.isNaN(date.getTime())) return "Sin fecha disponible";
-  return new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  if (Number.isNaN(date.getTime())) return unavailable;
+  return formatDate(resolvedLocale, date, { day: "numeric", month: "short", year: "numeric" });
 }
 
 export function normalizeInvitationInspection(payload) {
@@ -38,6 +38,8 @@ export function normalizeInvitationInspection(payload) {
   const supportedStates = new Set(["ready", "signed_out", "email_mismatch", "email_unverified", "unavailable"]);
   const state = supportedStates.has(value.state) ? value.state : "unavailable";
   const invitation = value.invitation && typeof value.invitation === "object" ? value.invitation : {};
+  const locale = resolveContentLocale(invitation.locale || value.locale);
+  const fallbackTitle = { en: "Shared trip", es: "Viaje compartido", pt: "Viagem compartilhada" }[localeLanguage(locale)];
   return {
     state,
     invitation: {
@@ -45,8 +47,9 @@ export function normalizeInvitationInspection(payload) {
       expiresAt: valueString(invitation.expiresAt),
       invitedEmail: valueString(invitation.invitedEmail),
       inviterName: valueString(invitation.inviterName),
+      locale,
       role: invitation.role === "editor" ? "editor" : "viewer",
-      title: valueString(invitation.title) || "Viaje compartido",
+      title: valueString(invitation.title) || fallbackTitle,
       webId: valueString(invitation.webId),
     },
   };

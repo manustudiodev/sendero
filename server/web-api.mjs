@@ -12,6 +12,7 @@ import {
   publicShareExpiresAt,
   recoverPublicShareUrl,
 } from "./public-sharing.mjs";
+import { canonicalLocale, DEFAULT_LOCALE, localeLanguage } from "../shared/locale.mjs";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -66,9 +67,27 @@ function isoTime(value) {
   return Number.isFinite(Number(value)) ? new Date(Number(value)).toISOString() : "";
 }
 
+function localeForTrip(trip) {
+  return canonicalLocale(
+    trip?.locale,
+    canonicalLocale(trip?.itinerary?.locale, DEFAULT_LOCALE),
+  );
+}
+
+function itineraryWithLocale(itinerary, fallback = DEFAULT_LOCALE) {
+  if (!itinerary || typeof itinerary !== "object" || Array.isArray(itinerary)) {
+    return itinerary;
+  }
+  return {
+    ...itinerary,
+    locale: canonicalLocale(itinerary.locale, fallback),
+  };
+}
+
 function safeTripSummary(trip) {
   return {
     webId: trip.webId,
+    locale: localeForTrip(trip),
     title: trip.title,
     destination: trip.destination,
     startDate: trip.startDate,
@@ -80,26 +99,35 @@ function safeTripSummary(trip) {
 }
 
 function tripEnvelope(trip) {
+  const locale = localeForTrip(trip);
   return {
     trip: {
       webId: trip.webId,
+      locale,
       role: trip.role,
       version: trip.version,
       updatedAt: isoTime(trip.updatedAt),
-      itinerary: trip.itinerary,
+      itinerary: itineraryWithLocale(trip.itinerary, locale),
       permissions: permissionsForRole(trip.role),
     },
   };
 }
 
 function invitationDetails(inspection, invitedEmail = "") {
+  const locale = canonicalLocale(inspection.trip?.locale, DEFAULT_LOCALE);
+  const fallbackTitle = {
+    en: "Shared trip",
+    es: "Viaje compartido",
+    pt: "Viagem compartilhada",
+  }[localeLanguage(locale)] || "Shared trip";
   return {
     destination: inspection.trip?.destination || "",
     expiresAt: isoTime(inspection.expiresAt),
     invitedEmail,
     inviterName: inspection.inviterName || "",
+    locale,
     role: inspection.role,
-    title: inspection.trip?.title || "Viaje compartido",
+    title: inspection.trip?.title || fallbackTitle,
     webId: inspection.trip?.webId || "",
   };
 }
@@ -111,26 +139,26 @@ function errorResponse(context, code, status, message, retryable = status >= 500
 function mappedFailure(context, error, logger) {
   const message = typeof error?.message === "string" ? error.message : "";
   if (/Unauthenticated|Sign in|authentication/i.test(message)) {
-    return errorResponse(context, "authentication_required", 401, "Inicia sesión para continuar.");
+    return errorResponse(context, "authentication_required", 401, "Sign in to continue.");
   }
   if (/Owner access|Only the trip owner|Editor access|access denied|required access/i.test(message)) {
-    return errorResponse(context, "forbidden", 403, "No tienes permiso para hacer ese cambio.");
+    return errorResponse(context, "forbidden", 403, "You do not have permission to make that change.");
   }
   if (/not found/i.test(message)) {
-    return errorResponse(context, "not_found", 404, "No encontramos ese recurso.");
+    return errorResponse(context, "not_found", 404, "We could not find that resource.");
   }
   if (/version changed|changed after|already has|already used|cannot be resent|is revoked|is declined|is accepted/i.test(message)) {
-    return errorResponse(context, "conflict", 409, "El estado cambió. Actualiza la página e intenta nuevamente.");
+    return errorResponse(context, "conflict", 409, "The state changed. Refresh and try again.");
   }
   if (/valid|invalid|required|expiry|expired|does not have a reservation/i.test(message)) {
-    return errorResponse(context, "invalid_request", 400, "Revisa los datos e intenta nuevamente.");
+    return errorResponse(context, "invalid_request", 400, "Check the details and try again.");
   }
   logger.warn?.("[sendero.web-api] request failed", { code: "request_failed" });
   return errorResponse(
     context,
     "temporarily_unavailable",
     503,
-    "Sendero no está disponible temporalmente.",
+    "Sendero is temporarily unavailable.",
     true,
   );
 }
@@ -183,10 +211,10 @@ export function registerWebApiRoutes(app, {
   async function sessionContext(context, { mutate = false } = {}) {
     const session = await webAuth.accessSession(context);
     if (!session) {
-      return { response: errorResponse(context, "authentication_required", 401, "Inicia sesión para continuar.") };
+      return { response: errorResponse(context, "authentication_required", 401, "Sign in to continue.") };
     }
     if (mutate && !webAuth.validateCsrf(context, session)) {
-      return { response: errorResponse(context, "invalid_csrf", 403, "Actualiza la página e intenta nuevamente.") };
+      return { response: errorResponse(context, "invalid_csrf", 403, "Refresh and try again.") };
     }
     return {
       session,
@@ -613,7 +641,7 @@ export function registerWebApiRoutes(app, {
           context,
           "invitation_unavailable",
           409,
-          "La invitación ya no está disponible.",
+          "The invitation is no longer available.",
           false,
         );
       }

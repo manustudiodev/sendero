@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WebButton } from "../account/PageFrame.jsx";
 import { normalizeTripAccess, operationId, requestJson } from "../account/web-client.js";
+import { formatDate, localeLanguage, resolveContentLocale } from "../i18n/index.js";
 
 const accessStyles = `
 .access-panel { margin-top: 34px; border-top: 1px solid var(--web-line); padding-top: 18px; }
@@ -48,71 +49,146 @@ const accessStyles = `
 }
 `;
 
-const INVITATION_STATUS = {
-  expired: "Vencida",
-  pending: "Pendiente",
+const COPY = {
+  en: {
+    invitationStatus: { expired: "Expired", pending: "Pending" },
+    deliveryStatus: { failed: "Delivery failed", not_configured: "Email not configured", processing: "Sending", queued: "Queued", retry_scheduled: "Retrying", sent: "Accepted by email provider" },
+    providerEvent: { bounced: "Email bounced", complained: "Marked as spam", delayed: "Delivery delayed", delivered: "Delivered", failed: "Delivery failed" },
+    invitation: "The invitation",
+    renewedInvitation: "The renewed invitation",
+    delivered: (action, email) => `${action} for ${email} was delivered.`,
+    acceptedByProvider: (action, email) => `The email service accepted ${action.toLowerCase()} for ${email}.`,
+    queued: (action, email) => `${action} for ${email} was queued for delivery.`,
+    notConfigured: (action, email) => `${action} for ${email} was created, but email is not configured yet.`,
+    failed: (action, email) => `${action} for ${email} was created, but the email could not be sent. You can retry it.`,
+    created: (action, email) => `${action} for ${email} was created. Check its status before resending it.`,
+    migrated: "The legacy invitation was migrated successfully.",
+    expires: "Expires",
+    expired: "Expired",
+    cancel: "Cancel",
+    loadError: "We couldn't load the people with access.",
+    saveError: "We couldn't save that change. Try again.",
+    copyError: "We couldn't copy the link. Select it and copy it manually.",
+    removedLegacy: (email) => `You removed the legacy invitation for ${email}. That entry did not grant access.`,
+    summary: "Share and manage access",
+    email: "Email",
+    permission: "Permission",
+    viewer: "Viewer",
+    collaborator: "Collaborator",
+    invite: "Invite",
+    loading: "Loading access…",
+    generalAccess: "General access",
+    publicDetail: "Anyone with the link can view",
+    restrictedDetail: "Invited people only",
+    generalAria: "General itinerary access",
+    restrictConfirm: "Restrict access",
+    restrictDetail: "The current public link will stop working immediately. Invited people will keep their access.",
+    restrictTitle: "Restrict this trip?",
+    restricted: "Restricted",
+    publicLink: "Public with link",
+    legacyLink: "This link is still active, but it was created with an older version of Sendero and cannot be shown again. Replace it only if you need to share a new URL.",
+    replaceLink: "Replace link",
+    replaceDetail: "The current link will stop working and you will need to share the new one.",
+    replaceTitle: "Create a new public link?",
+    createLink: "Create new link",
+    linkCopied: "Link copied.",
+    linkReady: "Link ready to share.",
+    linkAria: "Share link",
+    copy: "Copy",
+    people: "People with access",
+    owner: "Owner",
+    permissionOf: (email) => `Permission for ${email}`,
+    removeAccess: "Remove access",
+    removeDetail: (name) => `${name} will no longer be able to open this trip.`,
+    removeTitle: (name) => `Remove ${name}?`,
+    remove: "Remove",
+    invitations: "Invitations",
+    renew: "Renew",
+    resend: "Resend",
+    revokeInvitation: "Revoke invitation",
+    revokeDetail: (email) => `${email} will no longer be able to accept this invitation.`,
+    revokeTitle: (email) => `Revoke the invitation for ${email}?`,
+    revoke: "Revoke",
+    legacyInvitations: "Legacy invitations",
+    legacyDetail: "These pending records do not grant access. Migrate each invitation you want to keep to send a secure link, or remove it.",
+    noAccess: "No access",
+    migrateAria: (email) => `Migrate and send the invitation for ${email}`,
+    migrate: "Migrate and send",
+    migrateDetail: (email) => `${email} does not currently have access. Sendero will replace this record with a secure invitation and send the email.`,
+    migrateTitle: (email) => `Migrate the invitation for ${email}?`,
+    deleteAria: (email) => `Delete the legacy invitation for ${email}`,
+    deleteInvitation: "Delete invitation",
+    deleteDetail: (email) => `The pending record for ${email} will be deleted. This person does not currently have access.`,
+    deleteTitle: (email) => `Delete the legacy invitation for ${email}?`,
+    delete: "Delete",
+  },
+  es: {
+    invitationStatus: { expired: "Vencida", pending: "Pendiente" },
+    deliveryStatus: { failed: "Falló el envío", not_configured: "Correo no configurado", processing: "Enviando", queued: "En cola", retry_scheduled: "Reintentando", sent: "Aceptada por correo" },
+    providerEvent: { bounced: "Correo rebotado", complained: "Marcada como spam", delayed: "Entrega demorada", delivered: "Entregada", failed: "Entrega fallida" },
+    invitation: "La invitación", renewedInvitation: "La invitación renovada",
+    delivered: (action, email) => `${action} para ${email} fue entregada.`, acceptedByProvider: (action, email) => `El servicio de correo aceptó ${action.toLowerCase()} para ${email}.`, queued: (action, email) => `${action} para ${email} quedó en cola de envío.`, notConfigured: (action, email) => `${action} para ${email} quedó creada, pero el correo todavía no está configurado.`, failed: (action, email) => `${action} para ${email} quedó creada, pero el correo no pudo enviarse. Puedes reintentarlo.`, created: (action, email) => `${action} para ${email} quedó creada. Revisa su estado antes de reenviarla.`, migrated: "La invitación antigua se migró correctamente.",
+    expires: "Vence", expired: "Venció", cancel: "Cancelar", loadError: "No pudimos cargar las personas con acceso.", saveError: "No pudimos guardar ese cambio. Intenta nuevamente.", copyError: "No pudimos copiar el enlace. Selecciónalo y cópialo manualmente.", removedLegacy: (email) => `Eliminaste la invitación antigua de ${email}. Esa entrada no otorgaba acceso.`,
+    summary: "Compartir y gestionar acceso", email: "Correo", permission: "Permiso", viewer: "Viewer", collaborator: "Colaborador", invite: "Invitar", loading: "Cargando acceso…", generalAccess: "Acceso general", publicDetail: "Cualquier persona con el enlace puede ver", restrictedDetail: "Solo personas invitadas", generalAria: "Acceso general del itinerario", restrictConfirm: "Restringir acceso", restrictDetail: "El enlace público actual dejará de funcionar inmediatamente. Las personas invitadas conservarán su acceso.", restrictTitle: "¿Restringir este viaje?", restricted: "Restringido", publicLink: "Público con enlace", legacyLink: "Este enlace sigue activo, pero fue creado con una versión antigua de Sendero y no podemos volver a mostrarlo. Sólo reemplázalo si necesitas compartir una URL nueva.", replaceLink: "Reemplazar enlace", replaceDetail: "El enlace actual dejará de funcionar y tendrás que compartir el nuevo.", replaceTitle: "¿Crear un enlace público nuevo?", createLink: "Crear enlace nuevo", linkCopied: "Enlace copiado.", linkReady: "Enlace listo para compartir.", linkAria: "Enlace para compartir", copy: "Copiar", people: "Personas con acceso", owner: "Propietario", permissionOf: (email) => `Permiso de ${email}`, removeAccess: "Quitar acceso", removeDetail: (name) => `${name} dejará de poder abrir este viaje.`, removeTitle: (name) => `¿Quitar a ${name}?`, remove: "Quitar", invitations: "Invitaciones", renew: "Renovar", resend: "Reenviar", revokeInvitation: "Revocar invitación", revokeDetail: (email) => `${email} ya no podrá aceptar esta invitación.`, revokeTitle: (email) => `¿Revocar la invitación de ${email}?`, revoke: "Revocar", legacyInvitations: "Invitaciones antiguas", legacyDetail: "Estos registros pendientes no otorgan acceso. Migra cada invitación que quieras conservar para enviar un enlace seguro, o elimínala.", noAccess: "Sin acceso", migrateAria: (email) => `Migrar y enviar la invitación de ${email}`, migrate: "Migrar y enviar", migrateDetail: (email) => `${email} no tiene acceso actualmente. Sendero reemplazará este registro por una invitación segura y enviará el correo.`, migrateTitle: (email) => `¿Migrar la invitación de ${email}?`, deleteAria: (email) => `Eliminar la invitación antigua de ${email}`, deleteInvitation: "Eliminar invitación", deleteDetail: (email) => `Se eliminará el registro pendiente de ${email}. Esta persona no tiene acceso actualmente.`, deleteTitle: (email) => `¿Eliminar la invitación antigua de ${email}?`, delete: "Eliminar",
+  },
+  pt: {
+    invitationStatus: { expired: "Expirado", pending: "Pendente" },
+    deliveryStatus: { failed: "Falha no envio", not_configured: "E-mail não configurado", processing: "Enviando", queued: "Na fila", retry_scheduled: "Tentando novamente", sent: "Aceito pelo serviço de e-mail" },
+    providerEvent: { bounced: "E-mail devolvido", complained: "Marcado como spam", delayed: "Entrega atrasada", delivered: "Entregue", failed: "Falha na entrega" },
+    invitation: "O convite", renewedInvitation: "O convite renovado",
+    delivered: (action, email) => `${action} para ${email} foi entregue.`, acceptedByProvider: (action, email) => `O serviço de e-mail aceitou ${action.toLowerCase()} para ${email}.`, queued: (action, email) => `${action} para ${email} entrou na fila de envio.`, notConfigured: (action, email) => `${action} para ${email} foi criado, mas o e-mail ainda não está configurado.`, failed: (action, email) => `${action} para ${email} foi criado, mas o e-mail não pôde ser enviado. Você pode tentar novamente.`, created: (action, email) => `${action} para ${email} foi criado. Verifique o status antes de reenviá-lo.`, migrated: "O convite antigo foi migrado com sucesso.",
+    expires: "Expira", expired: "Expirou", cancel: "Cancelar", loadError: "Não foi possível carregar as pessoas com acesso.", saveError: "Não foi possível salvar essa alteração. Tente novamente.", copyError: "Não foi possível copiar o link. Selecione-o e copie manualmente.", removedLegacy: (email) => `Você removeu o convite antigo de ${email}. Essa entrada não concedia acesso.`,
+    summary: "Compartilhar e gerenciar acesso", email: "E-mail", permission: "Permissão", viewer: "Visualizador", collaborator: "Colaborador", invite: "Convidar", loading: "Carregando acesso…", generalAccess: "Acesso geral", publicDetail: "Qualquer pessoa com o link pode visualizar", restrictedDetail: "Somente pessoas convidadas", generalAria: "Acesso geral ao roteiro", restrictConfirm: "Restringir acesso", restrictDetail: "O link público atual deixará de funcionar imediatamente. As pessoas convidadas manterão o acesso.", restrictTitle: "Restringir esta viagem?", restricted: "Restrito", publicLink: "Público com link", legacyLink: "Este link continua ativo, mas foi criado com uma versão antiga do Sendero e não pode ser exibido novamente. Substitua-o somente se precisar compartilhar uma nova URL.", replaceLink: "Substituir link", replaceDetail: "O link atual deixará de funcionar e você precisará compartilhar o novo.", replaceTitle: "Criar um novo link público?", createLink: "Criar novo link", linkCopied: "Link copiado.", linkReady: "Link pronto para compartilhar.", linkAria: "Link para compartilhar", copy: "Copiar", people: "Pessoas com acesso", owner: "Proprietário", permissionOf: (email) => `Permissão de ${email}`, removeAccess: "Remover acesso", removeDetail: (name) => `${name} não poderá mais abrir esta viagem.`, removeTitle: (name) => `Remover ${name}?`, remove: "Remover", invitations: "Convites", renew: "Renovar", resend: "Reenviar", revokeInvitation: "Revogar convite", revokeDetail: (email) => `${email} não poderá mais aceitar este convite.`, revokeTitle: (email) => `Revogar o convite de ${email}?`, revoke: "Revogar", legacyInvitations: "Convites antigos", legacyDetail: "Estes registros pendentes não concedem acesso. Migre cada convite que deseja manter para enviar um link seguro, ou remova-o.", noAccess: "Sem acesso", migrateAria: (email) => `Migrar e enviar o convite de ${email}`, migrate: "Migrar e enviar", migrateDetail: (email) => `${email} não tem acesso atualmente. O Sendero substituirá este registro por um convite seguro e enviará o e-mail.`, migrateTitle: (email) => `Migrar o convite de ${email}?`, deleteAria: (email) => `Excluir o convite antigo de ${email}`, deleteInvitation: "Excluir convite", deleteDetail: (email) => `O registro pendente de ${email} será excluído. Esta pessoa não tem acesso atualmente.`, deleteTitle: (email) => `Excluir o convite antigo de ${email}?`, delete: "Excluir",
+  },
 };
 
-const DELIVERY_STATUS = {
-  failed: "Falló el envío",
-  not_configured: "Correo no configurado",
-  processing: "Enviando",
-  queued: "En cola",
-  retry_scheduled: "Reintentando",
-  sent: "Aceptada por correo",
-};
+function copyFor(locale) {
+  return COPY[localeLanguage(resolveContentLocale(locale))] || COPY.en;
+}
 
-const PROVIDER_EVENT = {
-  bounced: "Correo rebotado",
-  complained: "Marcada como spam",
-  delayed: "Entrega demorada",
-  delivered: "Entregada",
-  failed: "Entrega fallida",
-};
-
-function deliveryLabel(delivery) {
+function deliveryLabel(delivery, copy) {
   if (!delivery) return "";
-  return PROVIDER_EVENT[delivery.providerEvent]
-    || DELIVERY_STATUS[delivery.status]
+  return copy.providerEvent[delivery.providerEvent]
+    || copy.deliveryStatus[delivery.status]
     || "";
 }
 
-function deliveryNotice(delivery, email, resend = false) {
-  const action = resend ? "La invitación renovada" : "La invitación";
+function deliveryNotice(delivery, email, copy, resend = false) {
+  const action = resend ? copy.renewedInvitation : copy.invitation;
   const status = typeof delivery === "string" ? delivery : delivery?.status;
   const providerEvent = typeof delivery === "object" ? delivery?.providerEvent : "";
   if (providerEvent === "delivered") {
-    return `${action} para ${email} fue entregada.`;
+    return copy.delivered(action, email);
   }
   if (status === "sent") {
-    return `El servicio de correo aceptó ${action.toLowerCase()} para ${email}.`;
+    return copy.acceptedByProvider(action, email);
   }
   if (["queued", "processing", "retry_scheduled"].includes(status)) {
-    return `${action} para ${email} quedó en cola de envío.`;
+    return copy.queued(action, email);
   }
   if (status === "not_configured") {
-    return `${action} para ${email} quedó creada, pero el correo todavía no está configurado.`;
+    return copy.notConfigured(action, email);
   }
   if (status === "failed") {
-    return `${action} para ${email} quedó creada, pero el correo no pudo enviarse. Puedes reintentarlo.`;
+    return copy.failed(action, email);
   }
-  return `${action} para ${email} quedó creada. Revisa su estado antes de reenviarla.`;
+  return copy.created(action, email);
 }
 
-function legacyMigrationNotice(delivery, email) {
-  const message = deliveryNotice(delivery, email);
-  return `La invitación antigua se migró correctamente. ${message}`;
+function legacyMigrationNotice(delivery, email, copy) {
+  const message = deliveryNotice(delivery, email, copy);
+  return `${copy.migrated} ${message}`;
 }
 
-function readableExpiry(value, expired) {
+function readableExpiry(value, expired, locale, copy) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const formatted = new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" }).format(date);
-  return `${expired ? "Venció" : "Vence"} el ${formatted}`;
+  const formatted = formatDate(locale, date, { day: "numeric", month: "short", year: "numeric" });
+  return `${expired ? copy.expired : copy.expires} ${formatted}`;
 }
 
-function Confirmation({ busy, confirmation, onCancel, onConfirm }) {
+function Confirmation({ busy, cancelLabel, confirmation, onCancel, onConfirm }) {
   if (!confirmation) return null;
   return (
     <div aria-labelledby="access-confirmation-title" aria-modal="false" className="access-confirmation" role="alertdialog">
@@ -121,7 +197,7 @@ function Confirmation({ busy, confirmation, onCancel, onConfirm }) {
         <p>{confirmation.detail}</p>
       </div>
       <div className="access-row-actions">
-        <WebButton disabled={busy} onClick={onCancel}>Cancelar</WebButton>
+        <WebButton disabled={busy} onClick={onCancel}>{cancelLabel}</WebButton>
         <WebButton
           className={confirmation.danger === false ? "" : "web-button-danger"}
           disabled={busy}
@@ -137,7 +213,8 @@ function endpoint(webId, suffix = "") {
   return `/api/trips/${encodeURIComponent(webId)}${suffix}`;
 }
 
-export function AccessPanel({ csrfToken, webId }) {
+export function AccessPanel({ csrfToken, locale = "en", webId }) {
+  const copy = copyFor(locale);
   const [access, setAccess] = useState(null);
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
@@ -161,7 +238,7 @@ export function AccessPanel({ csrfToken, webId }) {
         setGeneratedLink("");
       }
     } catch {
-      setError("No pudimos cargar las personas con acceso.");
+      setError(copy.loadError);
     }
   }, [webId]);
 
@@ -195,7 +272,7 @@ export function AccessPanel({ csrfToken, webId }) {
       setConfirmation(null);
       return result;
     } catch {
-      setError("No pudimos guardar ese cambio. Intenta nuevamente.");
+      setError(copy.saveError);
     } finally {
       setBusy(false);
     }
@@ -207,7 +284,7 @@ export function AccessPanel({ csrfToken, webId }) {
       await navigator.clipboard.writeText(generatedLink);
       setLinkCopied(true);
     } catch {
-      setError("No pudimos copiar el enlace. Selecciónalo y cópialo manualmente.");
+      setError(copy.copyError);
     }
   }
 
@@ -218,7 +295,7 @@ export function AccessPanel({ csrfToken, webId }) {
     const result = await mutate("/invitations", { body: { email: nextEmail, role } });
     if (result) {
       setEmail("");
-      setNotice(deliveryNotice(result.delivery, nextEmail));
+      setNotice(deliveryNotice(result.delivery, nextEmail, copy));
     }
   }
 
@@ -235,7 +312,7 @@ export function AccessPanel({ csrfToken, webId }) {
   async function resendInvitation(invitation) {
     const result = await mutate(`/invitations/${encodeURIComponent(invitation.id)}/resend`);
     if (result) {
-      setNotice(deliveryNotice(result.delivery, invitation.email, true));
+      setNotice(deliveryNotice(result.delivery, invitation.email, copy, true));
     }
   }
 
@@ -244,7 +321,7 @@ export function AccessPanel({ csrfToken, webId }) {
       `/legacy-invitations/${encodeURIComponent(invitation.id)}/migrate`,
     );
     if (result) {
-      setNotice(legacyMigrationNotice(result.delivery, invitation.email));
+      setNotice(legacyMigrationNotice(result.delivery, invitation.email, copy));
     }
   }
 
@@ -254,87 +331,87 @@ export function AccessPanel({ csrfToken, webId }) {
       { body: {}, method: "DELETE" },
     );
     if (result) {
-      setNotice(`Eliminaste la invitación antigua de ${invitation.email}. Esa entrada no otorgaba acceso.`);
+      setNotice(copy.removedLegacy(invitation.email));
     }
   }
 
   return (
     <details className="access-panel">
       <style>{accessStyles}</style>
-      <summary>Compartir y gestionar acceso</summary>
+      <summary>{copy.summary}</summary>
       <div className="access-body">
         <form className="access-form" onSubmit={invite}>
-          <label className="web-sr-only" htmlFor="invite-email">Correo</label>
+          <label className="web-sr-only" htmlFor="invite-email">{copy.email}</label>
           <input autoComplete="email" id="invite-email" onChange={(event) => setEmail(event.target.value)} placeholder="persona@correo.com" type="email" value={email} />
-          <label className="web-sr-only" htmlFor="invite-role">Permiso</label>
+          <label className="web-sr-only" htmlFor="invite-role">{copy.permission}</label>
           <select id="invite-role" onChange={(event) => setRole(event.target.value)} value={role}>
-            <option value="viewer">Viewer</option>
-            <option value="editor">Colaborador</option>
+            <option value="viewer">{copy.viewer}</option>
+            <option value="editor">{copy.collaborator}</option>
           </select>
-          <WebButton disabled={busy || !email.trim()} tone="primary" type="submit">Invitar</WebButton>
+          <WebButton disabled={busy || !email.trim()} tone="primary" type="submit">{copy.invite}</WebButton>
         </form>
         {error ? <p className="web-inline-error" role="alert">{error}</p> : null}
         {notice ? <p className="access-notice" role="status">{notice}</p> : null}
-        <Confirmation busy={busy} confirmation={confirmation} onCancel={() => setConfirmation(null)} onConfirm={confirmDestructiveAction} />
-        {!access && !error ? <p aria-live="polite">Cargando acceso…</p> : null}
+        <Confirmation busy={busy} cancelLabel={copy.cancel} confirmation={confirmation} onCancel={() => setConfirmation(null)} onConfirm={confirmDestructiveAction} />
+        {!access && !error ? <p aria-live="polite">{copy.loading}</p> : null}
         {access ? (
           <>
             <div className="access-general">
-              <div><strong>Acceso general</strong><span>{access.generalAccess === "public_link" ? "Cualquier persona con el enlace puede ver" : "Solo personas invitadas"}</span></div>
-              <select aria-label="Acceso general del itinerario" disabled={busy} onChange={(event) => {
+              <div><strong>{copy.generalAccess}</strong><span>{access.generalAccess === "public_link" ? copy.publicDetail : copy.restrictedDetail}</span></div>
+              <select aria-label={copy.generalAria} disabled={busy} onChange={(event) => {
                 const generalAccess = event.target.value;
                 if (generalAccess === "restricted" && access.generalAccess === "public_link") {
                   requestConfirmation({
                     action: () => mutate("/access", { body: { generalAccess }, method: "PATCH" }),
-                    confirmLabel: "Restringir acceso",
-                    detail: "El enlace público actual dejará de funcionar inmediatamente. Las personas invitadas conservarán su acceso.",
-                    title: "¿Restringir este viaje?",
+                    confirmLabel: copy.restrictConfirm,
+                    detail: copy.restrictDetail,
+                    title: copy.restrictTitle,
                   });
                 } else mutate("/access", { body: { generalAccess }, method: "PATCH" });
               }} value={access.generalAccess}>
-                <option value="restricted">Restringido</option>
-                <option value="public_link">Público con enlace</option>
+                <option value="restricted">{copy.restricted}</option>
+                <option value="public_link">{copy.publicLink}</option>
               </select>
             </div>
             {access.generalAccess === "public_link" && !generatedLink ? (
               <div className="access-link-receipt">
-                <p>Este enlace sigue activo, pero fue creado con una versión antigua de Sendero y no podemos volver a mostrarlo. Sólo reemplázalo si necesitas compartir una URL nueva.</p>
+                <p>{copy.legacyLink}</p>
                 <div className="web-actions">
                   <WebButton disabled={busy} onClick={() => requestConfirmation({
                     action: () => mutate("/access/public-link/rotate"),
-                    confirmLabel: "Reemplazar enlace",
-                    detail: "El enlace actual dejará de funcionar y tendrás que compartir el nuevo.",
-                    title: "¿Crear un enlace público nuevo?",
-                  })}>Crear enlace nuevo</WebButton>
+                    confirmLabel: copy.replaceLink,
+                    detail: copy.replaceDetail,
+                    title: copy.replaceTitle,
+                  })}>{copy.createLink}</WebButton>
                 </div>
               </div>
             ) : null}
             {generatedLink ? (
               <div className="access-link-receipt" role="status">
-                <p>{linkCopied ? "Enlace copiado." : "Enlace listo para compartir."}</p>
+                <p>{linkCopied ? copy.linkCopied : copy.linkReady}</p>
                 <div className="access-link-value">
-                  <input aria-label="Enlace para compartir" readOnly value={generatedLink} />
-                  <WebButton onClick={copyGeneratedLink}>Copiar</WebButton>
+                  <input aria-label={copy.linkAria} readOnly value={generatedLink} />
+                  <WebButton onClick={copyGeneratedLink}>{copy.copy}</WebButton>
                 </div>
               </div>
             ) : null}
             <section>
-              <h2 className="access-subheading">Personas con acceso</h2>
+              <h2 className="access-subheading">{copy.people}</h2>
               <div className="access-list">
-                {access.owner ? <div className="access-row"><div className="access-person"><strong>{access.owner.name || access.owner.email}</strong><span>{access.owner.email}</span></div><span className="web-role-badge">Propietario</span></div> : null}
+                {access.owner ? <div className="access-row"><div className="access-person"><strong>{access.owner.name || access.owner.email}</strong><span>{access.owner.email}</span></div><span className="web-role-badge">{copy.owner}</span></div> : null}
                 {access.members.map((member) => (
                   <div className="access-row" key={member.id}>
                     <div className="access-person"><strong>{member.name || member.email}</strong><span>{member.email}</span></div>
                     <div className="access-row-actions">
-                      <select aria-label={`Permiso de ${member.email}`} disabled={busy} onChange={(event) => mutate(`/access/${encodeURIComponent(member.id)}`, { body: { role: event.target.value }, method: "PATCH" })} value={member.role}>
-                        <option value="viewer">Viewer</option><option value="editor">Colaborador</option>
+                      <select aria-label={copy.permissionOf(member.email)} disabled={busy} onChange={(event) => mutate(`/access/${encodeURIComponent(member.id)}`, { body: { role: event.target.value }, method: "PATCH" })} value={member.role}>
+                        <option value="viewer">{copy.viewer}</option><option value="editor">{copy.collaborator}</option>
                       </select>
                       <WebButton className="web-button-danger" disabled={busy} onClick={() => requestConfirmation({
                         action: () => mutate(`/access/${encodeURIComponent(member.id)}`, { body: {}, method: "DELETE" }),
-                        confirmLabel: "Quitar acceso",
-                        detail: `${member.name || member.email} dejará de poder abrir este viaje.`,
-                        title: `¿Quitar a ${member.name || member.email}?`,
-                      })}>Quitar</WebButton>
+                        confirmLabel: copy.removeAccess,
+                        detail: copy.removeDetail(member.name || member.email),
+                        title: copy.removeTitle(member.name || member.email),
+                      })}>{copy.remove}</WebButton>
                     </div>
                   </div>
                 ))}
@@ -342,31 +419,31 @@ export function AccessPanel({ csrfToken, webId }) {
             </section>
             {access.invitations.length ? (
               <section>
-                <h2 className="access-subheading">Invitaciones</h2>
+                <h2 className="access-subheading">{copy.invitations}</h2>
                 <div className="access-list">
                   {access.invitations.map((invitation) => (
                     <div className="access-row" key={invitation.id}>
                       <div className="access-person">
                         <strong>{invitation.email}</strong>
                         <div className="access-invitation-meta">
-                          <span>{invitation.role === "editor" ? "Colaborador" : "Viewer"}</span>
-                          <span className={`web-status-badge is-${invitation.status}`}>{INVITATION_STATUS[invitation.status] || "Pendiente"}</span>
-                          {deliveryLabel(invitation.delivery) ? (
+                          <span>{invitation.role === "editor" ? copy.collaborator : copy.viewer}</span>
+                          <span className={`web-status-badge is-${invitation.status}`}>{copy.invitationStatus[invitation.status] || copy.invitationStatus.pending}</span>
+                          {deliveryLabel(invitation.delivery, copy) ? (
                             <span className={`web-status-badge is-delivery-${invitation.delivery.status}`}>
-                              {deliveryLabel(invitation.delivery)}
+                              {deliveryLabel(invitation.delivery, copy)}
                             </span>
                           ) : null}
-                          {readableExpiry(invitation.expiresAt, invitation.status === "expired") ? <span>{readableExpiry(invitation.expiresAt, invitation.status === "expired")}</span> : null}
+                          {readableExpiry(invitation.expiresAt, invitation.status === "expired", locale, copy) ? <span>{readableExpiry(invitation.expiresAt, invitation.status === "expired", locale, copy)}</span> : null}
                         </div>
                       </div>
                       <div className="access-row-actions">
-                        <WebButton disabled={busy} onClick={() => resendInvitation(invitation)}>{invitation.status === "expired" ? "Renovar" : "Reenviar"}</WebButton>
+                        <WebButton disabled={busy} onClick={() => resendInvitation(invitation)}>{invitation.status === "expired" ? copy.renew : copy.resend}</WebButton>
                         <WebButton className="web-button-danger" disabled={busy} onClick={() => requestConfirmation({
                           action: () => mutate(`/invitations/${encodeURIComponent(invitation.id)}`, { body: {}, method: "DELETE" }),
-                          confirmLabel: "Revocar invitación",
-                          detail: `${invitation.email} ya no podrá aceptar esta invitación.`,
-                          title: `¿Revocar la invitación de ${invitation.email}?`,
-                        })}>Revocar</WebButton>
+                          confirmLabel: copy.revokeInvitation,
+                          detail: copy.revokeDetail(invitation.email),
+                          title: copy.revokeTitle(invitation.email),
+                        })}>{copy.revoke}</WebButton>
                       </div>
                     </div>
                   ))}
@@ -375,9 +452,9 @@ export function AccessPanel({ csrfToken, webId }) {
             ) : null}
             {access.legacyInvitations.length ? (
               <section>
-                <h2 className="access-subheading">Invitaciones antiguas</h2>
+                <h2 className="access-subheading">{copy.legacyInvitations}</h2>
                 <p className="access-section-copy">
-                  Estos registros pendientes no otorgan acceso. Migra cada invitación que quieras conservar para enviar un enlace seguro, o elimínala.
+                  {copy.legacyDetail}
                 </p>
                 <div className="access-list access-legacy-list">
                   {access.legacyInvitations.map((invitation) => (
@@ -385,24 +462,24 @@ export function AccessPanel({ csrfToken, webId }) {
                       <div className="access-person">
                         <strong>{invitation.email}</strong>
                         <div className="access-invitation-meta">
-                          <span>{invitation.role === "editor" ? "Colaborador" : "Viewer"}</span>
-                          <span className="web-status-badge">Sin acceso</span>
+                          <span>{invitation.role === "editor" ? copy.collaborator : copy.viewer}</span>
+                          <span className="web-status-badge">{copy.noAccess}</span>
                         </div>
                       </div>
                       <div className="access-row-actions">
-                        <WebButton aria-label={`Migrar y enviar la invitación de ${invitation.email}`} disabled={busy} onClick={() => requestConfirmation({
+                        <WebButton aria-label={copy.migrateAria(invitation.email)} disabled={busy} onClick={() => requestConfirmation({
                           action: () => migrateLegacyInvitation(invitation),
-                          confirmLabel: "Migrar y enviar",
+                          confirmLabel: copy.migrate,
                           danger: false,
-                          detail: `${invitation.email} no tiene acceso actualmente. Sendero reemplazará este registro por una invitación segura y enviará el correo.`,
-                          title: `¿Migrar la invitación de ${invitation.email}?`,
-                        })}>Migrar y enviar</WebButton>
-                        <WebButton aria-label={`Eliminar la invitación antigua de ${invitation.email}`} className="web-button-danger" disabled={busy} onClick={() => requestConfirmation({
+                          detail: copy.migrateDetail(invitation.email),
+                          title: copy.migrateTitle(invitation.email),
+                        })}>{copy.migrate}</WebButton>
+                        <WebButton aria-label={copy.deleteAria(invitation.email)} className="web-button-danger" disabled={busy} onClick={() => requestConfirmation({
                           action: () => removeLegacyInvitation(invitation),
-                          confirmLabel: "Eliminar invitación",
-                          detail: `Se eliminará el registro pendiente de ${invitation.email}. Esta persona no tiene acceso actualmente.`,
-                          title: `¿Eliminar la invitación antigua de ${invitation.email}?`,
-                        })}>Eliminar</WebButton>
+                          confirmLabel: copy.deleteInvitation,
+                          detail: copy.deleteDetail(invitation.email),
+                          title: copy.deleteTitle(invitation.email),
+                        })}>{copy.delete}</WebButton>
                       </div>
                     </div>
                   ))}

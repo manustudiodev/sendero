@@ -3,14 +3,15 @@ import { Button } from "../components.jsx";
 import { callTool, openExternal, setWidgetState, useToolOutput, widgetState } from "../bridge.js";
 import { ItineraryViewer } from "./ItineraryViewer.jsx";
 import { reservationEntryKey } from "./presentation-utils.js";
+import { resolveContentLocale, t } from "../i18n/index.js";
 
-function LoadingState({ failed, onRetry }) {
+function LoadingState({ failed, locale, onRetry }) {
   return (
     <div className="empty-state">
       <div>
-        <strong>{failed ? "No pudimos cargar el itinerario" : "Preparando tu viaje…"}</strong>
-        <span>{failed ? "Sendero no recibió los datos del resultado. Puedes intentar cargarlos nuevamente." : "Organizando días, reservas y recorridos."}</span>
-        {failed ? <Button onClick={onRetry}>Reintentar</Button> : null}
+        <strong>{t(locale, failed ? "viewer.loadErrorTitle" : "viewer.loadingTitle")}</strong>
+        <span>{t(locale, failed ? "viewer.loadErrorBody" : "viewer.loadingBody")}</span>
+        {failed ? <Button onClick={onRetry}>{t(locale, "viewer.retry")}</Button> : null}
       </div>
     </div>
   );
@@ -248,7 +249,8 @@ export function ItineraryApp({ initialOutput = null } = {}) {
   }
 
   const explicitFailure = output?.state === "error" || Boolean(output?.error || output?.isError);
-  if (!itinerary) return <main className="app-shell"><LoadingState failed={explicitFailure} onRetry={refresh} /></main>;
+  const locale = resolveContentLocale(itinerary?.locale || output?.brief?.locale || output?.locale);
+  if (!itinerary) return <main className="app-shell"><LoadingState failed={explicitFailure} locale={locale} onRetry={refresh} /></main>;
   const reservationWritable = Boolean(context.tripId && context.version && ["owner", "editor"].includes(context.role));
 
   return (

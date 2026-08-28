@@ -26,8 +26,9 @@ test("opens a selected trip directly and renders it without a model continuation
   assert.doesNotMatch(directOpenBranch, /sendFollowUpMessage|updateModelContext/);
 
   assert.match(source, /<ItineraryApp initialOutput=\{openedTrip\}/);
-  assert.match(source, /message: purpose === "open" \? "Abriendo el viaje…"/);
-  assert.match(source, /status\.state === "error"[\s\S]*Reintentar/);
+  assert.match(source, /opening: "Abriendo el viaje…"/);
+  assert.match(source, /message: purpose === "open" \? strings\.opening : strings\.continuing/);
+  assert.match(source, /status\.state === "error"[\s\S]*strings\.retry/);
 });
 
 test("keeps adjust and refresh selections conversational", async () => {
@@ -55,10 +56,10 @@ test("distinguishes an unavailable requested trip from an empty library", async 
   );
 
   const unavailableBranch = source.slice(unavailableStart, emptyLibraryStart);
-  assert.match(unavailableBranch, /No encontramos ese viaje/);
-  assert.match(unavailableBranch, /Puede que se haya eliminado o que ya no tengas acceso/);
-  assert.match(unavailableBranch, /onClick=\{viewSavedTrips\}[\s\S]*Ver mis viajes/);
-  assert.doesNotMatch(unavailableBranch, /Todavía no tienes viajes guardados/);
+  assert.match(source, /notFoundTitle: "No encontramos ese viaje"/);
+  assert.match(source, /missingTrip: "No encontramos ese viaje\. Puede que se haya eliminado o que ya no tengas acceso\."/);
+  assert.match(unavailableBranch, /onClick=\{viewSavedTrips\}[\s\S]*strings\.viewTrips/);
+  assert.doesNotMatch(unavailableBranch, /strings\.emptyTitle/);
 });
 
 test("recovers by loading saved trips directly without a model continuation", async () => {
@@ -68,10 +69,12 @@ test("recovers by loading saved trips directly without a model continuation", as
 
   assert.ok(recoveryStart >= 0, "the unavailable-trip state needs a recovery action");
   const recovery = source.slice(recoveryStart, createTripStart);
-  assert.match(recovery, /state: "loading", message: "Buscando tus viajes…"/);
+  assert.match(source, /searching: "Buscando tus viajes…"/);
+  assert.match(recovery, /state: "loading", message: strings\.searching/);
   assert.match(recovery, /callTool\("list_itineraries", \{ purpose: "open" \}\)/);
   assert.match(recovery, /setListedOutput\(\{ \.\.\.listed, purpose: "open" \}\)/);
-  assert.match(recovery, /No pudimos cargar tus viajes\. Inténtalo de nuevo\./);
+  assert.match(source, /listFailed: "No pudimos cargar tus viajes\. Inténtalo de nuevo\."/);
+  assert.match(recovery, /message: strings\.listFailed/);
   assert.doesNotMatch(recovery, /sendFollowUpMessage|updateModelContext/);
   assert.doesNotMatch(recovery, /callTool\("(?:save|update|delete|publish)/);
 });

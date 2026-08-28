@@ -1,4 +1,4 @@
 interface:
-  display_name: "Sendero · Mis viajes"
-  short_description: "Encuentra y abre itinerarios guardados"
-  default_prompt: "Usa $sendero-my-trips para listar mis itinerarios guardados y abrir el que elija."
+  display_name: "Sendero · My trips"
+  short_description: "Find and open saved itineraries"
+  default_prompt: "Use $sendero-my-trips to show my saved itineraries and open the one I choose."

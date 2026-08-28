@@ -1,6 +1,6 @@
 ---
 name: plan-local-trip
-description: Create, research, validate, and visualize a new local-first travel itinerary. Use when a user wants a new trip plan, day-by-day schedule, local or alternative experiences, weather-aware planning, event discovery, transport and driving constraints, reservation planning, lodging-based travel times, or daily routes. Use the specialized Sendero adjustment or refresh skill for changes to an existing saved itinerary.
+description: Create, research, validate, and visualize a new local-first travel itinerary. Use whenever a user wants to create, plan, organize, or draft a trip, vacation, itinerary, day-by-day schedule, sightseeing plan, or a way to make the most of each travel day, even when they do not mention Sendero. Match indirect Spanish requests such as “viajo a Santiago el mes que viene y quiero un itinerario” as well as requests for local or alternative experiences, weather-aware planning, event discovery, transport and driving constraints, reservation planning, lodging-based travel times, or daily routes. Use the specialized Sendero adjustment or refresh skill for changes to an existing saved itinerary.
 ---
 
 # Plan a New Local Trip
@@ -13,6 +13,7 @@ Create practical plans that balance essential sights with neighborhood life, ind
 
 Start from the user's natural-language request. Extract every supplied fact before opening a component or asking a question. Collect or infer:
 
+- The predominant language and the most appropriate BCP 47 locale. Always set `brief.locale` (for example `es`, `es-AR`, `en`, `en-GB`, or `pt-BR`) without asking the user. If there is not enough linguistic evidence, use English.
 - Destination, dates, party size, ages when relevant, budget, pace, and interests.
 - Lodging name or address. Use it as the origin and default end point of each day.
 - Preferred transport modes, driving-license status, willingness to rent a car, accessibility needs, and walking tolerance.
@@ -62,6 +63,9 @@ Prefer official sources for operational facts. Use reputable local sources for d
 - Put the source-backed visitor guide in `activity.guide`. Its `overview` must be 2–4 useful sentences about the place, its context, or why it matters for this trip; `highlights` is optional and may contain at most four concise items; `sources` must contain 1–4 sources that directly support the guide. Prefer official, institutional, or reputable cultural sources. Omit `guide` rather than inventing unsupported copy.
 
 Use the canonical structure in [itinerary-schema.md](references/itinerary-schema.md). Once research and itinerary construction are complete, finish through exactly one intent-level facade:
+
+- Set `itinerary.locale` to the prepared brief locale. Write every generated user-visible itinerary field in that language: trip and day titles, summaries, weather and fallback copy, activity titles and descriptions, guide text and highlights, reservation notes, and generic source labels. Keep official place names and other proper nouns in their official form. Do not mix in English or Spanish filler from schema examples.
+- Preserve the saved locale on revisions and restored versions unless the user explicitly asks for a different language. If they do, translate the complete user-visible itinerary, update the locale together, and pass `changeLanguage: true` to the save facade. Omit that flag for ordinary revisions.
 
 - If the user explicitly asked to save or otherwise persist the trip, call `save_and_present_trip` once with the complete snapshot and a concise revision reason. It validates strictly, persists the authoritative version, and presents that saved snapshot with its real `tripId`, `version`, and `role`.
 - Otherwise call `present_trip` once with the complete snapshot. It validates strictly and presents the final unsaved plan as a deliberately non-editable preview, without `tripId`, `version`, `role`, or any other saved-trip context.

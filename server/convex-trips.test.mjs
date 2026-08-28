@@ -20,6 +20,20 @@ function loadTripsModule() {
   return tripsModulePromise;
 }
 
+function requestFingerprint(value) {
+  const serialized = JSON.stringify(value);
+  let high = 0x9e3779b9;
+  let low = 0x85ebca6b;
+  for (let index = 0; index < serialized.length; index += 1) {
+    const code = serialized.charCodeAt(index);
+    high = Math.imul(high ^ code, 0x5bd1e995);
+    low = Math.imul(low ^ code, 0x27d4eb2d);
+  }
+  high = Math.imul(high ^ (high >>> 16), 0x85ebca6b) ^ Math.imul(low ^ (low >>> 13), 0xc2b2ae35);
+  low = Math.imul(low ^ (low >>> 16), 0x85ebca6b) ^ Math.imul(high ^ (high >>> 13), 0xc2b2ae35);
+  return `${serialized.length}:${(high >>> 0).toString(16).padStart(8, "0")}${(low >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 function createDatabase() {
   const tables = {
     collaborators: [],
@@ -163,6 +177,9 @@ test("trip saves require optimistic concurrency and replay idempotently", async 
   assert.equal(first.savedVersion, 2);
   assert.equal(first.replayed, false);
   assert.equal(first.itinerary.title, "Updated trip");
+  assert.equal(first.itinerary.locale, "en");
+  assert.equal(db.tables.trips[0].locale, "en");
+  assert.equal(db.tables.trips[0].snapshot.locale, "en");
 
   const laterUpdate = structuredClone(update);
   laterUpdate.title = "Latest trip";
@@ -174,6 +191,13 @@ test("trip saves require optimistic concurrency and replay idempotently", async 
     operationId: "trip-save-update-2",
   });
   assert.equal(later.version, 3);
+
+  db.tables.tripWriteOperations[0].requestFingerprint = requestFingerprint({
+    tripId: firstRequest.tripId,
+    itinerary: firstRequest.itinerary,
+    reason: firstRequest.reason,
+    expectedVersion: firstRequest.expectedVersion,
+  });
 
   const retry = await save._handler(ctx, firstRequest);
   assert.equal(retry.replayed, true);
@@ -203,7 +227,7 @@ test("trip saves require optimistic concurrency and replay idempotently", async 
 });
 
 test("new trip save retries return the existing authoritative trip", async () => {
-  const { save } = await loadTripsModule();
+  const { listMine, open, save } = await loadTripsModule();
   const db = createDatabase();
   const ctx = {
     auth: {
@@ -218,6 +242,7 @@ test("new trip save retries return the existing authoritative trip", async () =>
     db,
   };
   const itinerary = {
+    locale: "en-GB",
     title: "New trip",
     destination: "Buenos Aires, Argentina",
     startDate: "2026-08-13",
@@ -236,10 +261,103 @@ test("new trip save retries return the existing authoritative trip", async () =>
   assert.match(created.webId, /^[a-f0-9]{32}$/);
   assert.equal(retry.webId, created.webId);
   assert.equal(db.tables.trips[1].webId, created.webId);
+  assert.equal(created.itinerary.locale, "en-GB");
+  assert.equal(retry.itinerary.locale, "en-GB");
+  assert.equal(db.tables.trips[1].locale, "en-GB");
+  assert.equal(db.tables.trips[1].snapshot.locale, "en-GB");
+  assert.equal(db.tables.tripRevisions[0].snapshot.locale, "en-GB");
   assert.equal(retry.replayed, true);
   assert.equal(db.tables.trips.length, 2);
   assert.equal(db.tables.collaborators.length, 0);
   assert.equal(db.tables.tripWriteOperations.length, 1);
+
+  const opened = await open._handler(ctx, { reference: { tripId: created.tripId } });
+  assert.equal(opened.trip.locale, "en-GB");
+  assert.equal(opened.trip.snapshot.locale, "en-GB");
+  const listed = await listMine._handler(ctx, {});
+  const listedTrip = listed.find((entry) => entry._id === created.tripId);
+  assert.equal(listedTrip.locale, "en-GB");
+  assert.equal(listedTrip.snapshot.locale, "en-GB");
+});
+
+test("trip updates preserve the saved locale unless a complete language change is explicit", async () => {
+  const { save } = await loadTripsModule();
+  const db = createDatabase();
+  db.tables.trips[0].locale = "en-GB";
+  db.tables.trips[0].snapshot = {
+    ...db.tables.trips[0].snapshot,
+    locale: "en-GB",
+  };
+  const ctx = {
+    auth: {
+      async getUserIdentity() {
+        return {
+          tokenIdentifier: "auth0|user-1",
+          email: "traveler@example.com",
+          name: "Traveler",
+        };
+      },
+    },
+    db,
+  };
+
+  const ordinaryUpdate = {
+    ...structuredClone(db.tables.trips[0].snapshot),
+    locale: "es",
+    title: "Ordinary update",
+  };
+  await assert.rejects(
+    save._handler(ctx, {
+      tripId: "trip_1",
+      itinerary: ordinaryUpdate,
+      expectedVersion: 1,
+      operationId: "trip-save-locale-mismatch",
+    }),
+    /Saved trip locale is en-GB/,
+  );
+  assert.equal(db.tables.trips[0].currentVersion, 1);
+  assert.equal(db.tables.tripRevisions.length, 0);
+  assert.equal(db.tables.tripWriteOperations.length, 0);
+
+  const preserved = await save._handler(ctx, {
+    tripId: "trip_1",
+    itinerary: {
+      ...ordinaryUpdate,
+      locale: "en-GB",
+    },
+    expectedVersion: 1,
+    operationId: "trip-save-locale-preserved",
+  });
+  assert.equal(preserved.itinerary.locale, "en-GB");
+  assert.equal(db.tables.trips[0].locale, "en-GB");
+  assert.equal(db.tables.tripRevisions.at(-1).snapshot.locale, "en-GB");
+
+  const translatedUpdate = {
+    ...structuredClone(preserved.itinerary),
+    locale: "pt-BR",
+    title: "Viagem traduzida",
+  };
+  const translated = await save._handler(ctx, {
+    tripId: "trip_1",
+    itinerary: translatedUpdate,
+    expectedVersion: 2,
+    changeLanguage: true,
+    operationId: "trip-save-language-change",
+  });
+  assert.equal(translated.itinerary.locale, "pt-BR");
+  assert.equal(db.tables.trips[0].locale, "pt-BR");
+  assert.equal(db.tables.trips[0].snapshot.locale, "pt-BR");
+  assert.equal(db.tables.tripRevisions.at(-1).snapshot.locale, "pt-BR");
+
+  await assert.rejects(
+    save._handler(ctx, {
+      tripId: "trip_1",
+      itinerary: translatedUpdate,
+      expectedVersion: 2,
+      operationId: "trip-save-language-change",
+    }),
+    /operation ID was already used for a different request/,
+  );
 });
 
 test("existing trips receive one stable web ID and resolve it without exposing database IDs in URLs", async () => {
@@ -275,10 +393,12 @@ test("existing trips receive one stable web ID and resolve it without exposing d
   assert.equal(resolved._id, "trip_1");
   assert.equal(resolved.webId, backfilled.webId);
   assert.equal(resolved.role, "owner");
+  assert.equal(resolved.locale, "en");
+  assert.equal(resolved.snapshot.locale, "en");
 });
 
 test("trip opening resolves exact, latest, natural, ambiguous, and missing references atomically", async () => {
-  const { open } = await loadTripsModule();
+  const { listMine, open } = await loadTripsModule();
   const db = createDatabase();
   const ctx = {
     auth: {
@@ -297,6 +417,12 @@ test("trip opening resolves exact, latest, natural, ambiguous, and missing refer
   assert.equal(exact.state, "opened");
   assert.equal(exact.trip._id, "trip_1");
   assert.equal(exact.trip.role, "owner");
+  assert.equal(exact.trip.locale, "en");
+  assert.equal(exact.trip.snapshot.locale, "en");
+
+  const listed = await listMine._handler(ctx, {});
+  assert.equal(listed[0].locale, "en");
+  assert.equal(listed[0].snapshot.locale, "en");
 
   const natural = await open._handler(ctx, {
     reference: {
@@ -330,6 +456,10 @@ test("trip opening resolves exact, latest, natural, ambiguous, and missing refer
     ambiguous.trips.map((trip) => trip.id),
     ["trip_2", "trip_1"],
   );
+  assert.deepEqual(
+    ambiguous.trips.map((trip) => trip.locale),
+    ["en", "en"],
+  );
 
   const missing = await open._handler(ctx, {
     reference: { query: "Tokyo" },
@@ -337,10 +467,13 @@ test("trip opening resolves exact, latest, natural, ambiguous, and missing refer
   assert.deepEqual(missing, { state: "not_found", trips: [] });
 });
 
-test("revision restores validate the historical candidate and replay against the latest trip", async () => {
+test("revision restores preserve the current trip locale and replay against the latest trip", async () => {
   const { getRevision, restoreRevision } = await loadTripsModule();
   const db = createDatabase();
-  const original = structuredClone(db.tables.trips[0].snapshot);
+  const original = {
+    ...structuredClone(db.tables.trips[0].snapshot),
+    locale: "es",
+  };
   db.tables.tripRevisions.push({
     _id: "revision_1",
     tripId: "trip_1",
@@ -351,6 +484,7 @@ test("revision restores validate the historical candidate and replay against the
     createdAt: 1,
   });
   db.tables.trips[0].snapshot = { ...original, title: "Current version" };
+  db.tables.trips[0].locale = "en-GB";
   db.tables.trips[0].title = "Current version";
   db.tables.trips[0].currentVersion = 2;
   const ctx = {
@@ -380,11 +514,16 @@ test("revision restores validate the historical candidate and replay against the
   assert.equal(candidate.version, 1);
   assert.equal(candidate.role, "owner");
   assert.equal(candidate.itinerary.title, "Trip");
+  assert.equal(candidate.itinerary.locale, "en-GB");
 
   const restored = await restoreRevision._handler(ctx, request);
   assert.equal(restored.version, 3);
   assert.equal(restored.replayed, false);
   assert.equal(restored.itinerary.title, "Trip");
+  assert.equal(restored.itinerary.locale, "en-GB");
+  assert.equal(db.tables.trips[0].locale, "en-GB");
+  assert.equal(db.tables.trips[0].snapshot.locale, "en-GB");
+  assert.equal(db.tables.tripRevisions.at(-1).snapshot.locale, "en-GB");
 
   db.tables.trips[0].snapshot = { ...original, title: "Later edit" };
   db.tables.trips[0].title = "Later edit";
@@ -394,6 +533,7 @@ test("revision restores validate the historical candidate and replay against the
   assert.equal(retry.restoredVersion, 3);
   assert.equal(retry.version, 4);
   assert.equal(retry.itinerary.title, "Later edit");
+  assert.equal(retry.itinerary.locale, "en-GB");
   assert.equal(db.tables.tripWriteOperations.length, 1);
 });
 

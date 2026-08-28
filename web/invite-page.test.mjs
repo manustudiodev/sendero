@@ -26,8 +26,8 @@ test("invitation states are normalized without retaining its secret", () => {
 });
 
 test("invitation expiry has a readable fallback", () => {
-  assert.equal(formatInvitationExpiry(""), "Sin fecha disponible");
-  assert.equal(formatInvitationExpiry("not-a-date"), "Sin fecha disponible");
+  assert.equal(formatInvitationExpiry(""), "Date unavailable");
+  assert.equal(formatInvitationExpiry("not-a-date"), "Date unavailable");
   assert.match(formatInvitationExpiry("2026-09-03T12:00:00.000Z", "es"), /2026/);
 });
 

@@ -68,14 +68,17 @@ export function indexItineraryDays(days = []) {
   return lookup;
 }
 
-export function buildMonthPage({ days = [], monthKey: requestedMonthKey }) {
+export function buildMonthPage({ days = [], firstDayOfWeek = 1, monthKey: requestedMonthKey }) {
   const parsed = parsedMonthKey(requestedMonthKey);
   if (!parsed) return null;
 
   const { monthIndex, year } = parsed;
   const firstOfMonth = new Date(Date.UTC(year, monthIndex, 1));
   const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
-  const leadingCells = (firstOfMonth.getUTCDay() + 6) % 7;
+  const normalizedFirstDay = Number.isInteger(firstDayOfWeek) && firstDayOfWeek >= 0 && firstDayOfWeek <= 6
+    ? firstDayOfWeek
+    : 1;
+  const leadingCells = (firstOfMonth.getUTCDay() - normalizedFirstDay + 7) % 7;
   const cellCount = Math.ceil((leadingCells + daysInMonth) / 7) * 7;
   const gridStart = new Date(Date.UTC(year, monthIndex, 1 - leadingCells));
   const dayByDate = indexItineraryDays(days);

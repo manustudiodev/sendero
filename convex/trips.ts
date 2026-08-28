@@ -8,16 +8,48 @@ import {
   requireAccess,
   type ReadContext,
 } from "./tripAccess";
+import { canonicalLocale, DEFAULT_LOCALE } from "../shared/locale.mjs";
+
+function normalizeSnapshotLocale(snapshot: unknown, fallback = DEFAULT_LOCALE) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new Error("Invalid itinerary snapshot");
+  }
+  const itinerary = snapshot as Record<string, unknown>;
+  return {
+    ...itinerary,
+    locale: canonicalLocale(itinerary.locale, fallback),
+  };
+}
+
+function normalizeSnapshotToCurrentLocale(snapshot: unknown, locale: string) {
+  return {
+    ...normalizeSnapshotLocale(snapshot, locale),
+    locale: canonicalLocale(locale),
+  };
+}
+
+function normalizeTripLocale(trip: Record<string, unknown>) {
+  const snapshot = normalizeSnapshotLocale(trip.snapshot);
+  const locale = canonicalLocale(trip.locale, snapshot.locale as string);
+  return {
+    ...trip,
+    locale,
+    snapshot: {
+      ...snapshot,
+      locale,
+    },
+  };
+}
 
 function itineraryMetadata(snapshot: unknown) {
-  if (!snapshot || typeof snapshot !== "object") throw new Error("Invalid itinerary snapshot");
-  const itinerary = snapshot as Record<string, unknown>;
+  const itinerary = normalizeSnapshotLocale(snapshot);
   for (const field of ["title", "destination", "startDate", "endDate"] as const) {
     if (typeof itinerary[field] !== "string" || itinerary[field].length === 0) {
       throw new Error(`Invalid itinerary ${field}`);
     }
   }
   return {
+    locale: itinerary.locale as string,
     title: itinerary.title as string,
     destination: itinerary.destination as string,
     startDate: itinerary.startDate as string,
@@ -59,16 +91,18 @@ function normalizeSearchText(value: string) {
 }
 
 function tripSummary(trip: Record<string, unknown>) {
+  const normalized = normalizeTripLocale(trip);
   return {
-    id: trip._id,
-    webId: trip.webId,
-    title: trip.title,
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    currentVersion: trip.currentVersion,
-    role: trip.role,
-    updatedAt: trip.updatedAt,
+    id: normalized._id,
+    webId: normalized.webId,
+    locale: normalized.locale,
+    title: normalized.title,
+    destination: normalized.destination,
+    startDate: normalized.startDate,
+    endDate: normalized.endDate,
+    currentVersion: normalized.currentVersion,
+    role: normalized.role,
+    updatedAt: normalized.updatedAt,
   };
 }
 
@@ -101,7 +135,7 @@ async function revisionSummaries(ctx: ReadContext, tripId: Id<"trips">) {
 
 export const listMine = query({
   args: {},
-  handler: async (ctx) => listAccessibleTrips(ctx),
+  handler: async (ctx) => (await listAccessibleTrips(ctx)).map(normalizeTripLocale),
 });
 
 export const bootstrapSession = mutation({
@@ -133,13 +167,13 @@ export const open = query({
       const access = await requireAccess(ctx, reference.tripId, "viewer");
       return {
         state: "opened" as const,
-        trip: { ...access.trip, role: access.role },
+        trip: normalizeTripLocale({ ...access.trip, role: access.role }),
         revisions: await revisionSummaries(ctx, reference.tripId),
         trips: [],
       };
     }
 
-    const trips = await listAccessibleTrips(ctx);
+    const trips = (await listAccessibleTrips(ctx)).map(normalizeTripLocale);
     const matches = "selector" in reference
       ? trips.slice(0, 1)
       : (() => {
@@ -181,7 +215,7 @@ export const get = query({
   handler: async (ctx, { tripId }) => {
     const access = await requireAccess(ctx, tripId, "viewer");
     return {
-      ...access.trip,
+      ...normalizeTripLocale(access.trip),
       role: access.role,
       revisions: await revisionSummaries(ctx, tripId),
     };
@@ -198,7 +232,7 @@ export const getByWebId = query({
     if (!trip) throw new Error("Trip not found");
     const access = await requireAccess(ctx, trip._id, "viewer");
     return {
-      ...access.trip,
+      ...normalizeTripLocale(access.trip),
       role: access.role,
       revisions: await revisionSummaries(ctx, trip._id),
     };
@@ -224,6 +258,7 @@ export const getRevision = query({
   },
   handler: async (ctx, { tripId, version }) => {
     const access = await requireAccess(ctx, tripId, "viewer");
+    const currentLocale = normalizeTripLocale(access.trip).locale as string;
     const revision = await ctx.db
       .query("tripRevisions")
       .withIndex("by_trip_and_version", (q) => q.eq("tripId", tripId).eq("version", version))
@@ -233,7 +268,7 @@ export const getRevision = query({
       tripId,
       version: revision.version,
       role: access.role,
-      itinerary: revision.snapshot,
+      itinerary: normalizeSnapshotToCurrentLocale(revision.snapshot, currentLocale),
     };
   },
 });
@@ -244,22 +279,33 @@ export const save = mutation({
     itinerary: v.any(),
     reason: v.optional(v.string()),
     expectedVersion: v.optional(v.number()),
+    changeLanguage: v.optional(v.boolean()),
     operationId: v.string(),
   },
   handler: async (
     ctx,
-    { tripId, itinerary, reason, expectedVersion, operationId },
+    { tripId, itinerary, reason, expectedVersion, changeLanguage = false, operationId },
   ) => {
     requireOperationId(operationId, "trip save");
     const user = await ensureCurrentUser(ctx);
-    const metadata = itineraryMetadata(itinerary);
+    const requestedItinerary = normalizeSnapshotLocale(itinerary);
     const now = Date.now();
     const requestFingerprintValue = requestFingerprint({
       tripId: tripId || null,
-      itinerary,
+      itinerary: requestedItinerary,
       reason: reason || null,
       expectedVersion: expectedVersion ?? null,
+      ...(changeLanguage ? { changeLanguage: true } : {}),
     });
+    const { locale: _locale, ...legacyItinerary } = requestedItinerary;
+    const legacyRequestFingerprintValue = !changeLanguage && requestedItinerary.locale === DEFAULT_LOCALE
+      ? requestFingerprint({
+          tripId: tripId || null,
+          itinerary: legacyItinerary,
+          reason: reason || null,
+          expectedVersion: expectedVersion ?? null,
+        })
+      : undefined;
     const existingOperation = await ctx.db
       .query("tripWriteOperations")
       .withIndex("by_actor_and_operation", (q) =>
@@ -270,18 +316,21 @@ export const save = mutation({
     if (existingOperation) {
       if (
         existingOperation.operation !== "save" ||
-        existingOperation.requestFingerprint !== requestFingerprintValue
+        ![requestFingerprintValue, legacyRequestFingerprintValue].includes(
+          existingOperation.requestFingerprint,
+        )
       ) {
         throw new Error("Trip write operation ID was already used for a different request");
       }
       const access = await requireAccess(ctx, existingOperation.tripId, "viewer");
+      const authoritativeTrip = normalizeTripLocale(access.trip);
       return {
         tripId: existingOperation.tripId,
-        webId: access.trip.webId,
-        version: access.trip.currentVersion,
+        webId: authoritativeTrip.webId,
+        version: authoritativeTrip.currentVersion,
         savedVersion: existingOperation.resultVersion,
         role: access.role,
-        itinerary: access.trip.snapshot,
+        itinerary: authoritativeTrip.snapshot,
         replayed: true,
       };
     }
@@ -290,12 +339,14 @@ export const save = mutation({
       if (expectedVersion !== undefined) {
         throw new Error("expectedVersion is only valid when updating a saved trip");
       }
+      const normalizedItinerary = requestedItinerary;
+      const metadata = itineraryMetadata(normalizedItinerary);
       const webId = await allocateWebId(ctx);
       const createdTripId = await ctx.db.insert("trips", {
         ownerId: user._id,
         webId,
         ...metadata,
-        snapshot: itinerary,
+        snapshot: normalizedItinerary,
         currentVersion: 1,
         status: "active",
         createdAt: now,
@@ -304,7 +355,7 @@ export const save = mutation({
       await ctx.db.insert("tripRevisions", {
         tripId: createdTripId,
         version: 1,
-        snapshot: itinerary,
+        snapshot: normalizedItinerary,
         actorId: user._id,
         reason: reason || "Trip created",
         createdAt: now,
@@ -324,7 +375,7 @@ export const save = mutation({
         savedVersion: 1,
         role: "owner" as const,
         webId,
-        itinerary,
+        itinerary: normalizedItinerary,
         replayed: false,
       };
     }
@@ -338,17 +389,25 @@ export const save = mutation({
         `Trip version changed. Expected ${expectedVersion}, found ${access.trip.currentVersion}. Refresh before saving the itinerary.`,
       );
     }
+    const savedLocale = normalizeTripLocale(access.trip).locale as string;
+    if (!changeLanguage && requestedItinerary.locale !== savedLocale) {
+      throw new Error(
+        `Saved trip locale is ${savedLocale}. Preserve it unless the user explicitly requested a complete language change.`,
+      );
+    }
+    const normalizedItinerary = requestedItinerary;
+    const metadata = itineraryMetadata(normalizedItinerary);
     const version = access.trip.currentVersion + 1;
     await ctx.db.patch(tripId, {
       ...metadata,
-      snapshot: itinerary,
+      snapshot: normalizedItinerary,
       currentVersion: version,
       updatedAt: now,
     });
     await ctx.db.insert("tripRevisions", {
       tripId,
       version,
-      snapshot: itinerary,
+      snapshot: normalizedItinerary,
       actorId: user._id,
       reason: reason || "Itinerary updated",
       createdAt: now,
@@ -368,7 +427,7 @@ export const save = mutation({
       version,
       savedVersion: version,
       role: access.role,
-      itinerary,
+      itinerary: normalizedItinerary,
       replayed: false,
     };
   },
@@ -426,15 +485,16 @@ export const updateReservationStatus = mutation({
       }
       const currentTrip = await ctx.db.get(tripId);
       if (!currentTrip) throw new Error("Trip not found");
+      const authoritativeTrip = normalizeTripLocale(currentTrip);
       return {
         tripId,
         // The durable operation record proves that this exact write already ran.
         // Always return the authoritative current snapshot, though: a later edit
         // must never be visually replaced by the historical operation result.
-        version: currentTrip.currentVersion,
+        version: authoritativeTrip.currentVersion,
         role: access.role,
         changed: existingOperation.changed,
-        itinerary: currentTrip.snapshot,
+        itinerary: authoritativeTrip.snapshot,
       };
     }
 
@@ -444,7 +504,12 @@ export const updateReservationStatus = mutation({
       );
     }
 
-    const snapshot = structuredClone(access.trip.snapshot) as Record<string, unknown>;
+    const snapshot = structuredClone(
+      normalizeSnapshotLocale(
+        access.trip.snapshot,
+        canonicalLocale(access.trip.locale),
+      ),
+    ) as Record<string, unknown>;
     const days = Array.isArray(snapshot.days) ? snapshot.days : undefined;
     if (!days) throw new Error("Invalid itinerary snapshot");
     const day = days.find(
@@ -478,6 +543,7 @@ export const updateReservationStatus = mutation({
       reservation.status = status;
       resultVersion += 1;
       await ctx.db.patch(tripId, {
+        locale: snapshot.locale as string,
         snapshot,
         currentVersion: resultVersion,
         updatedAt: now,
@@ -524,6 +590,7 @@ export const restoreRevision = mutation({
     requireOperationId(operationId, "trip restore");
     const user = await ensureCurrentUser(ctx);
     const access = await requireAccess(ctx, tripId, "editor");
+    const currentLocale = normalizeTripLocale(access.trip).locale as string;
     const requestFingerprintValue = requestFingerprint({
       tripId,
       version,
@@ -545,13 +612,14 @@ export const restoreRevision = mutation({
       }
       const currentTrip = await ctx.db.get(tripId);
       if (!currentTrip) throw new Error("Trip not found");
+      const authoritativeTrip = normalizeTripLocale(currentTrip);
       return {
         tripId,
-        version: currentTrip.currentVersion,
+        version: authoritativeTrip.currentVersion,
         restoredVersion: existingOperation.resultVersion,
         restoredFrom: version,
         role: access.role,
-        itinerary: currentTrip.snapshot,
+        itinerary: authoritativeTrip.snapshot,
         replayed: true,
       };
     }
@@ -569,18 +637,19 @@ export const restoreRevision = mutation({
       .unique();
     if (!revision) throw new Error("Trip revision not found");
 
+    const restoredSnapshot = normalizeSnapshotToCurrentLocale(revision.snapshot, currentLocale);
     const nextVersion = access.trip.currentVersion + 1;
     const now = Date.now();
     await ctx.db.patch(tripId, {
-      ...itineraryMetadata(revision.snapshot),
-      snapshot: revision.snapshot,
+      ...itineraryMetadata(restoredSnapshot),
+      snapshot: restoredSnapshot,
       currentVersion: nextVersion,
       updatedAt: now,
     });
     await ctx.db.insert("tripRevisions", {
       tripId,
       version: nextVersion,
-      snapshot: revision.snapshot,
+      snapshot: restoredSnapshot,
       actorId: user._id,
       reason: `Restored version ${version}`,
       createdAt: now,
@@ -600,7 +669,7 @@ export const restoreRevision = mutation({
       restoredVersion: nextVersion,
       restoredFrom: version,
       role: access.role,
-      itinerary: revision.snapshot,
+      itinerary: restoredSnapshot,
       replayed: false,
     };
   },

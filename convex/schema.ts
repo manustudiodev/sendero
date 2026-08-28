@@ -160,6 +160,7 @@ const publicDay = v.object({
 
 export const publicSnapshotValidator = v.object({
   schemaVersion: v.literal(1),
+  locale: v.optional(v.string()),
   title: v.string(),
   destination: v.string(),
   startDate: v.string(),
@@ -220,6 +221,7 @@ export default defineSchema({
   trips: defineTable({
     ownerId: v.id("users"),
     webId: v.optional(v.string()),
+    locale: v.optional(v.string()),
     title: v.string(),
     destination: v.string(),
     startDate: v.string(),

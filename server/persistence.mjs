@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
+import { canonicalLocale, DEFAULT_LOCALE } from "../shared/locale.mjs";
 
 const listMine = makeFunctionReference("trips:listMine");
 const bootstrapSession = makeFunctionReference("trips:bootstrapSession");
@@ -35,6 +36,23 @@ const declineTripInvitation = makeFunctionReference("tripInvitations:decline");
 function requireValue(value, message) {
   if (!value) throw new Error(message);
   return value;
+}
+
+function itineraryWithLocale(itinerary, fallback = DEFAULT_LOCALE) {
+  if (!itinerary || typeof itinerary !== "object" || Array.isArray(itinerary)) {
+    return itinerary;
+  }
+  return {
+    ...itinerary,
+    locale: canonicalLocale(itinerary.locale, fallback),
+  };
+}
+
+function localeForTrip(trip) {
+  return canonicalLocale(
+    trip?.locale,
+    canonicalLocale(trip?.snapshot?.locale, DEFAULT_LOCALE),
+  );
 }
 
 export function createConvexPersistence({ convexUrl, authToken } = {}) {
@@ -77,9 +95,10 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
         state: "opened",
         id: result.trip._id,
         webId: result.trip.webId,
+        locale: localeForTrip(result.trip),
         role: result.trip.role,
         version: result.trip.currentVersion,
-        itinerary: result.trip.snapshot,
+        itinerary: itineraryWithLocale(result.trip.snapshot, localeForTrip(result.trip)),
         revisions: (result.revisions || []).map((revision) => ({
           version: revision.version,
           reason: revision.reason,
@@ -94,6 +113,7 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       return trips.map((trip) => ({
         id: trip._id,
         webId: trip.webId,
+        locale: localeForTrip(trip),
         title: trip.title,
         destination: trip.destination,
         startDate: trip.startDate,
@@ -109,9 +129,10 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       return {
         id: trip._id,
         webId: trip.webId,
+        locale: localeForTrip(trip),
         role: trip.role,
         version: trip.currentVersion,
-        itinerary: trip.snapshot,
+        itinerary: itineraryWithLocale(trip.snapshot, localeForTrip(trip)),
         revisions: trip.revisions.map((revision) => ({
           version: revision.version,
           reason: revision.reason,
@@ -125,10 +146,11 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       return {
         id: trip._id,
         webId: trip.webId,
+        locale: localeForTrip(trip),
         role: trip.role,
         version: trip.currentVersion,
         updatedAt: trip.updatedAt,
-        itinerary: trip.snapshot,
+        itinerary: itineraryWithLocale(trip.snapshot, localeForTrip(trip)),
         revisions: trip.revisions.map((revision) => ({
           version: revision.version,
           reason: revision.reason,
@@ -147,18 +169,23 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
         tripId: revision.tripId,
         version: revision.version,
         role: revision.role,
-        itinerary: revision.itinerary,
+        itinerary: itineraryWithLocale(revision.itinerary),
       };
     },
 
-    async save({ tripId, itinerary, reason, expectedVersion, operationId }) {
-      return client().mutation(saveTrip, {
+    async save({ tripId, itinerary, reason, expectedVersion, changeLanguage = false, operationId }) {
+      const normalizedItinerary = itineraryWithLocale(itinerary);
+      const result = await client().mutation(saveTrip, {
         ...(tripId ? { tripId } : {}),
-        itinerary,
+        itinerary: normalizedItinerary,
         ...(reason ? { reason } : {}),
         ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+        ...(changeLanguage ? { changeLanguage: true } : {}),
         operationId,
       });
+      return result?.itinerary
+        ? { ...result, itinerary: itineraryWithLocale(result.itinerary) }
+        : result;
     },
 
     async updateReservation({
@@ -169,7 +196,7 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       expectedVersion,
       operationId,
     }) {
-      return client().mutation(updateReservationStatus, {
+      const result = await client().mutation(updateReservationStatus, {
         tripId,
         dayDate,
         activityId,
@@ -177,6 +204,9 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
         expectedVersion,
         operationId,
       });
+      return result?.itinerary
+        ? { ...result, itinerary: itineraryWithLocale(result.itinerary) }
+        : result;
     },
 
     async listInvitations() {
@@ -281,12 +311,15 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
     },
 
     async restore({ tripId, version, expectedVersion, operationId }) {
-      return client().mutation(restoreTripRevision, {
+      const result = await client().mutation(restoreTripRevision, {
         tripId,
         version,
         expectedVersion,
         operationId,
       });
+      return result?.itinerary
+        ? { ...result, itinerary: itineraryWithLocale(result.itinerary) }
+        : result;
     },
 
     async publicPreview(tripId) {
@@ -294,7 +327,20 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
     },
 
     async publicStatus(tripId) {
-      return client().query(getPublicShareStatus, { tripId });
+      const convex = client();
+      const [status, trip] = await Promise.all([
+        convex.query(getPublicShareStatus, { tripId }),
+        convex.query(getTrip, { tripId }),
+      ]);
+      return status?.summary
+        ? {
+            ...status,
+            summary: {
+              ...status.summary,
+              locale: localeForTrip(trip),
+            },
+          }
+        : status;
     },
 
     async publishPublic({

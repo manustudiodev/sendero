@@ -4,6 +4,7 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
 
 ```json
 {
+  "locale": "en-GB",
   "title": "Seven days in Lisbon",
   "destination": "Lisbon, Portugal",
   "startDate": "2026-09-04",
@@ -88,6 +89,8 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
   ]
 }
 ```
+
+`locale` is the BCP 47 language tag inferred from the user's predominant language. It is semantically required for every new itinerary, although the server supplies `en` as a compatibility fallback for legacy snapshots. All generated user-visible copy in the snapshot must use this locale consistently; official proper nouns may remain in their original form. Preserve the locale when revising, restoring, opening, or sharing a trip unless the user explicitly requests a language change.
 
 ## Activity editorial fields
 

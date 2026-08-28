@@ -15,20 +15,25 @@ import {
   LEGACY_ITINERARY_V7_UI_URI,
   LEGACY_ITINERARY_V8_UI_URI,
   LEGACY_ITINERARY_V9_UI_URI,
+  LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
+  LEGACY_PUBLIC_SHARE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
+  LEGACY_TRIP_INTAKE_V5_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
+  LEGACY_TRIP_LIST_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -67,11 +72,11 @@ test("pins a fresh URI for every current Sendero component bundle", () => {
       share: PUBLIC_SHARE_UI_URI,
     },
     {
-      itinerary: "ui://sendero/itinerary-v10.html",
-      intake: "ui://sendero/trip-intake-v5.html",
-      trips: "ui://sendero/trip-list-v4.html",
-      requirements: "ui://sendero/trip-requirements-v6.html",
-      share: "ui://sendero/public-share-control-v4.html",
+      itinerary: "ui://sendero/itinerary-v11.html",
+      intake: "ui://sendero/trip-intake-v6.html",
+      trips: "ui://sendero/trip-list-v5.html",
+      requirements: "ui://sendero/trip-requirements-v7.html",
+      share: "ui://sendero/public-share-control-v5.html",
     },
   );
 });
@@ -153,6 +158,7 @@ test("validates realistic constraints and creates a daily route", () => {
   assert.match(mapUrl, /travelmode=transit/);
 
   const normalized = normalizeItinerary(itinerary);
+  assert.equal(normalized.locale, "en");
   assert.equal(normalized.days[0].route.mapUrl, mapUrl);
   assert.equal(normalized.days[0].route.returnToLodging, true);
   assert.equal(normalized.days[0].route.origin, "Bairro Alto, Lisboa");
@@ -410,12 +416,23 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.equal(findTool._meta.ui, undefined);
   assert.equal(publicTool._meta.ui.resourceUri, ITINERARY_UI_URI);
   assert.equal(publicTool._meta["openai/outputTemplate"], ITINERARY_UI_URI);
+  assert.equal(
+    saveAndPresentTool.inputSchema.properties.changeLanguage.type,
+    "boolean",
+  );
   assert.equal(intakeTool._meta.ui.resourceUri, TRIP_INTAKE_UI_URI);
   assert.equal(tripListTool._meta.ui.resourceUri, TRIP_LIST_UI_URI);
   assert.equal(tripListTool._meta["openai/outputTemplate"], TRIP_LIST_UI_URI);
   assert.deepEqual(prepareTool._meta.ui.visibility, ["model", "app"]);
   assert.equal(prepareTool._meta["openai/widgetAccessible"], true);
   assert.equal(prepareTool.annotations.readOnlyHint, true);
+  assert.match(prepareTool.title, /create or plan a new trip/i);
+  assert.match(prepareTool.description, /^Use this when/i);
+  assert.match(prepareTool.description, /even if they do not mention Sendero/i);
+  assert.match(prepareTool.description, /viajo a Santiago/i);
+  assert.match(prepareTool.inputSchema.properties.brief.properties.destination.description, /Santiago de Chile/i);
+  assert.match(prepareTool.inputSchema.properties.brief.properties.startDate.description, /YYYY-MM-DD/);
+  assert.match(prepareTool.inputSchema.properties.brief.properties.transport.description, /Mobility constraints/i);
   assert.equal(requirementsTool._meta.ui.resourceUri, TRIP_REQUIREMENTS_UI_URI);
   assert.equal(requirementsTool._meta["openai/outputTemplate"], TRIP_REQUIREMENTS_UI_URI);
   assert.equal(publicShareTool._meta.ui.resourceUri, PUBLIC_SHARE_UI_URI);
@@ -486,7 +503,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   });
   assert.equal(result.structuredContent.itinerary.days.length, 1);
   assert.equal(result.structuredContent.validation.valid, true);
-  assert.equal(result.content[0].text, "Tu itinerario está listo en Sendero.");
+  assert.equal(result.content[0].text, "Your itinerary is ready in Sendero.");
   assert.doesNotMatch(result.content[0].text, /Lisboa|1 day|día/);
   assert.doesNotMatch(JSON.stringify(result), /server-test-key/);
 
@@ -555,11 +572,14 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyItineraryV9Resource = await client.readResource({ uri: LEGACY_ITINERARY_V9_UI_URI });
   assertInlineWidgetResource(legacyItineraryV9Resource, LEGACY_ITINERARY_V9_UI_URI);
   assert.equal(legacyItineraryV9Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV10Resource = await client.readResource({ uri: LEGACY_ITINERARY_V10_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV10Resource, LEGACY_ITINERARY_V10_UI_URI);
+  assert.equal(legacyItineraryV10Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");
   assert.deepEqual(intake.structuredContent.actions, []);
-  assert.equal(intake.content[0].text, "Sendero está listo para continuar.");
+  assert.equal(intake.content[0].text, "Sendero is ready to continue.");
   const menu = await client.callTool({ name: "render_trip_intake", arguments: { mode: "menu" } });
   assert.equal(menu.structuredContent.mode, "menu");
   assert.deepEqual(menu.structuredContent.actions, ["new", "open", "adjust", "refresh"]);
@@ -579,6 +599,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyIntakeV4Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V4_UI_URI });
   assertInlineWidgetResource(legacyIntakeV4Resource, LEGACY_TRIP_INTAKE_V4_UI_URI);
   assert.equal(legacyIntakeV4Resource.contents[0].text, intakeResource.contents[0].text);
+  const legacyIntakeV5Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V5_UI_URI });
+  assertInlineWidgetResource(legacyIntakeV5Resource, LEGACY_TRIP_INTAKE_V5_UI_URI);
+  assert.equal(legacyIntakeV5Resource.contents[0].text, intakeResource.contents[0].text);
 
   const tripListResource = await client.readResource({ uri: TRIP_LIST_UI_URI });
   assertInlineWidgetResource(tripListResource, TRIP_LIST_UI_URI);
@@ -595,6 +618,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyTripListV3Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V3_UI_URI });
   assertInlineWidgetResource(legacyTripListV3Resource, LEGACY_TRIP_LIST_V3_UI_URI);
   assert.equal(legacyTripListV3Resource.contents[0].text, tripListResource.contents[0].text);
+  const legacyTripListV4Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V4_UI_URI });
+  assertInlineWidgetResource(legacyTripListV4Resource, LEGACY_TRIP_LIST_V4_UI_URI);
+  assert.equal(legacyTripListV4Resource.contents[0].text, tripListResource.contents[0].text);
 
   const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
   assertInlineWidgetResource(requirementsResource, TRIP_REQUIREMENTS_UI_URI);
@@ -622,6 +648,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyRequirementsV5Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V5_UI_URI });
   assertInlineWidgetResource(legacyRequirementsV5Resource, LEGACY_TRIP_REQUIREMENTS_V5_UI_URI);
   assert.equal(legacyRequirementsV5Resource.contents[0].text, requirementsResource.contents[0].text);
+  const legacyRequirementsV6Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V6_UI_URI });
+  assertInlineWidgetResource(legacyRequirementsV6Resource, LEGACY_TRIP_REQUIREMENTS_V6_UI_URI);
+  assert.equal(legacyRequirementsV6Resource.contents[0].text, requirementsResource.contents[0].text);
 
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
   assertInlineWidgetResource(publicShareResource, PUBLIC_SHARE_UI_URI);
@@ -642,6 +671,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyPublicShareV3Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V3_UI_URI });
   assertInlineWidgetResource(legacyPublicShareV3Resource, LEGACY_PUBLIC_SHARE_V3_UI_URI);
   assert.equal(legacyPublicShareV3Resource.contents[0].text, publicShareResource.contents[0].text);
+  const legacyPublicShareV4Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V4_UI_URI });
+  assertInlineWidgetResource(legacyPublicShareV4Resource, LEGACY_PUBLIC_SHARE_V4_UI_URI);
+  assert.equal(legacyPublicShareV4Resource.contents[0].text, publicShareResource.contents[0].text);
 
   await client.close();
   await server.close();
@@ -673,6 +705,7 @@ test("accepts a provisional lodging base in a ready trip brief", async () => {
   });
 
   assert.equal(result.structuredContent.ready, true);
+  assert.equal(result.structuredContent.brief.locale, "en");
   assert.deepEqual(result.structuredContent.missing, []);
   assert.match(result.structuredContent.assumptions[0], /Prado/);
 
@@ -692,6 +725,7 @@ test("groups every known critical trip gap into one requirements component", asy
     arguments: { brief: {} },
   });
   assert.equal(prepared.structuredContent.ready, false);
+  assert.equal(prepared.structuredContent.brief.locale, "en");
   assert.deepEqual(prepared.structuredContent.criticalFields, [
     "destination",
     "startDate",
@@ -699,11 +733,11 @@ test("groups every known critical trip gap into one requirements component", asy
     "travellers.adults",
     "transport.modes",
   ]);
-  assert.match(prepared.content[0].text, /destino/);
-  assert.match(prepared.content[0].text, /fecha de llegada/);
-  assert.match(prepared.content[0].text, /fecha de regreso/);
-  assert.match(prepared.content[0].text, /cantidad de adultos/);
-  assert.match(prepared.content[0].text, /cómo quieren moverse/);
+  assert.match(prepared.content[0].text, /destination/);
+  assert.match(prepared.content[0].text, /arrival date/);
+  assert.match(prepared.content[0].text, /return date/);
+  assert.match(prepared.content[0].text, /number of adults/);
+  assert.match(prepared.content[0].text, /how you want to get around/);
   assert.doesNotMatch(prepared.content[0].text, /criticalFields|component above|render_/);
 
   const partiallyKnown = await client.callTool({
@@ -729,6 +763,7 @@ test("groups every known critical trip gap into one requirements component", asy
     },
   });
   assert.equal(requirements.structuredContent.interactionId, "conversation-step-1");
+  assert.equal(requirements.structuredContent.brief.locale, "en");
   assert.deepEqual(requirements.structuredContent.fields, [
     "startDate",
     "endDate",
@@ -736,7 +771,7 @@ test("groups every known critical trip gap into one requirements component", asy
     "transport.modes",
   ]);
   assert.equal(requirements.structuredContent.brief.destination, "Buenos Aires, Argentina");
-  assert.equal(requirements.content[0].text, "Completa los datos esenciales directamente en Sendero.");
+  assert.equal(requirements.content[0].text, "Complete the essential details directly in Sendero.");
   assert.doesNotMatch(requirements.content[0].text, /fecha|adultos|moverse|Buenos Aires/);
   assert.doesNotMatch(requirements.content[0].text, /render_|prepare_|tripId|\{\s*"/);
 
@@ -1278,6 +1313,7 @@ test("returns ambiguity and absence from one atomic open lookup each", async () 
   const matchingTrips = [
     {
       id: "trip_123",
+      locale: "es",
       title: itinerary.title,
       destination: itinerary.destination,
       startDate: itinerary.startDate,
@@ -1288,6 +1324,7 @@ test("returns ambiguity and absence from one atomic open lookup each", async () 
     },
     {
       id: "trip_456",
+      locale: "es",
       title: "Lisboa nocturna",
       destination: itinerary.destination,
       startDate: "2026-09-10",
@@ -1461,6 +1498,7 @@ test("saves and presents the authoritative snapshot with idempotent retry contex
   assert.equal(saveCalls[0].tripId, "trip_123");
   assert.equal(saveCalls[0].expectedVersion, 2);
   assert.equal(saveCalls[0].operationId, "save-present-operation-123");
+  assert.equal(saveCalls[0].changeLanguage, false);
   assert.equal(saveCalls[1].operationId, saveCalls[0].operationId);
   assert.deepEqual(saveCalls[1], saveCalls[0]);
   assert.equal(first.structuredContent.state, "saved");
@@ -1483,7 +1521,7 @@ test("saves and presents the authoritative snapshot with idempotent retry contex
     },
   });
   assert.equal(missingExpectedVersion.isError, true);
-  assert.match(missingExpectedVersion.content[0].text, /expectedVersion is required/i);
+  assert.match(missingExpectedVersion.content[0].text, /current trip version is required/i);
   assert.equal(saveCalls.length, 2);
 
   await client.close();
@@ -1732,6 +1770,7 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
   });
   assert.equal(found.structuredContent.trips.length, 1);
   assert.equal(found.structuredContent.trips[0].id, "trip_123");
+  assert.equal(found.structuredContent.trips[0].locale, "en");
 
   const foundByExactDates = await client.callTool({
     name: "find_itineraries",
@@ -1746,8 +1785,9 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
 
   const listed = await client.callTool({ name: "list_itineraries", arguments: { purpose: "adjust" } });
   assert.equal(listed.structuredContent.trips[0].id, "trip_123");
+  assert.equal(listed.structuredContent.trips[0].locale, "en");
   assert.equal(listed.structuredContent.purpose, "adjust");
-  assert.equal(listed.content[0].text, "Elige un viaje en Sendero.");
+  assert.equal(listed.content[0].text, "Choose a trip in Sendero.");
   assert.doesNotMatch(listed.content[0].text, /Lisboa entre clásicos y barrios|Lisboa, Portugal/);
   assert.doesNotMatch(listed.content[0].text, /trip_123|tripId|list_|get_|render_|\{\s*"/);
 
@@ -1756,6 +1796,7 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
     arguments: { tripId: "trip_123" },
   });
   assert.equal(opened.structuredContent.itinerary.title, itinerary.title);
+  assert.equal(opened.structuredContent.itinerary.locale, "en");
 
   const pendingWithoutAction = structuredClone(itinerary);
   pendingWithoutAction.days[0].activities[1].reservation = { status: "pending" };
@@ -1780,6 +1821,7 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
     },
   });
   assert.equal(saved.structuredContent.version, 1);
+  assert.equal(calls.find(([name]) => name === "save")[1].itinerary.locale, "en");
 
   const unsafeLegacyUpdate = await client.callTool({
     name: "save_itinerary",
@@ -1791,7 +1833,7 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
     },
   });
   assert.equal(unsafeLegacyUpdate.isError, true);
-  assert.match(unsafeLegacyUpdate.content[0].text, /expectedVersion is required/i);
+  assert.match(unsafeLegacyUpdate.content[0].text, /current trip version is required/i);
   assert.equal(calls.filter(([name]) => name === "save").length, 1);
 
   const reservationUpdated = await client.callTool({
@@ -1811,8 +1853,8 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
     reservationUpdated.structuredContent.itinerary.days[0].activities[1].reservation.status,
     "confirmed",
   );
-  assert.match(reservationUpdated.content[0].text, /estado local/i);
-  assert.match(reservationUpdated.content[0].text, /proveedor/i);
+  assert.match(reservationUpdated.content[0].text, /local reservation or ticket status/i);
+  assert.match(reservationUpdated.content[0].text, /provider/i);
 
   const invited = await client.callTool({
     name: "invite_trip_member",
@@ -1840,6 +1882,7 @@ test("saves, lists, opens, invites, and restores trips through the persistence b
   assert.equal(restored.structuredContent.version, 3);
   assert.equal(restored.structuredContent.restoredVersion, 3);
   assert.equal(restored.structuredContent.itinerary.title, itinerary.title);
+  assert.equal(restored.structuredContent.itinerary.locale, "en");
   assert.equal(restored.structuredContent.validation.valid, true);
   assert.deepEqual(
     calls.map(([name]) => name),
@@ -2083,6 +2126,7 @@ test("manages each private-access intent atomically without leaking access ident
 test("previews, publishes, updates, rotates, and revokes a public snapshot without leaking token internals", async () => {
   const calls = [];
   const publicItinerary = sanitizePublicSnapshot(itinerary);
+  assert.equal(publicItinerary.locale, "en");
   let currentVersion = 2;
   let publishedVersion;
   let status = "not_published";
@@ -2092,6 +2136,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
   let publicTokenHash;
   let tokenDerivation;
   const summary = {
+    locale: publicItinerary.locale,
     title: publicItinerary.title,
     destination: publicItinerary.destination,
     startDate: publicItinerary.startDate,
@@ -2178,8 +2223,9 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
   assert.equal(preview.structuredContent.state, "preview");
   assert.equal(preview.structuredContent.action, "publish");
   assert.equal(preview.structuredContent.expectedVersion, 2);
+  assert.equal(preview.structuredContent.itinerary.locale, "en");
   assert.equal(preview.structuredContent.itinerary.lodging, undefined);
-  assert.equal(preview.content[0].text, "Revisa y confirma la vista pública en Sendero.");
+  assert.equal(preview.content[0].text, "Review the public preview in Sendero.");
   assert.doesNotMatch(preview.content[0].text, /Bairro Alto|Lisboa|publicar|actualizar/);
   assert.doesNotMatch(JSON.stringify(preview.structuredContent), /Bairro Alto|Reserva existente/);
 
@@ -2194,6 +2240,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
     arguments: publishArguments,
   });
   assert.equal(published.structuredContent.state, "published");
+  assert.equal(published.structuredContent.locale, "en");
   assert.ok(published.content[0].text.includes(published.structuredContent.publicUrl));
   const firstUrl = new URL(published.structuredContent.publicUrl);
   const firstToken = firstUrl.hash.slice(1);
@@ -2218,6 +2265,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
     arguments: { tripId: "trip_public" },
   });
   assert.equal(stale.structuredContent.state, "active");
+  assert.equal(stale.structuredContent.locale, "en");
   assert.equal(stale.structuredContent.isStale, true);
   assert.equal(stale.structuredContent.publicUrl, undefined);
   assert.doesNotMatch(stale.content[0].text, /https?:\/\//);

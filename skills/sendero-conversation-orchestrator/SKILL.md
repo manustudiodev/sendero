@@ -34,6 +34,8 @@ When the user directly matches one specialized workflow, follow that skill witho
 
 For trip creation, extract the entire brief already present in the conversation before calling `prepare_trip_brief`. If it reports one or several critical gaps, render a single `render_trip_requirements` component containing the complete currently known set as the final action of the turn. Do not ask those fields over several turns and do not add assistant prose after the component. Only a conditionally relevant field may wait for an earlier answer that determines whether it is needed.
 
+Infer and carry `brief.locale` from the user's predominant language for every new trip; never infer language from the destination, and default to English when the language is ambiguous or unsupported. Once an itinerary exists, its saved `locale` governs generated content and component copy across open, adjust, refresh, restore, and share flows. Preserve it unless the user explicitly requests a different language, in which case the new revision must translate all user-visible itinerary copy together and save with `changeLanguage: true`. Omit that flag for ordinary revisions.
+
 ## Treat component events as conversation state
 
 - After rendering a form, menu, or trip list, wait for its result instead of restating the controls in text.

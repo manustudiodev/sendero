@@ -246,7 +246,7 @@ test("resolves an active public snapshot without Auth0 and returns no private en
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     share: {
-      itinerary: safePublicItinerary,
+      itinerary: { ...safePublicItinerary, locale: "en" },
       publishedAt: 1788200000000,
       updatedAt: 1788300000000,
       expiresAt: 1790800000000,

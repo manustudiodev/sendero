@@ -26,7 +26,10 @@ test("accepts only a 43-character base64url public share token", () => {
 
 test("accepts the exact public share response and rejects expired or malformed data", () => {
   const active = { share: { itinerary, publishedAt: 10, expiresAt: 30 } };
-  assert.deepEqual(publicShareFromPayload(active, 20), active.share);
+  assert.deepEqual(publicShareFromPayload(active, 20), {
+    ...active.share,
+    itinerary: { ...itinerary, locale: "en" },
+  });
   assert.equal(publicShareFromPayload(active, 30), null);
   assert.equal(publicShareFromPayload({ share: { itinerary: { title: "Incomplete" } } }, 20), null);
   assert.equal(publicShareFromPayload({}, 20), null);
@@ -39,14 +42,14 @@ test("keeps public-share states presentational and exposes link actions only for
     publishedVersion: 3,
     currentVersion: 4,
   }), {
-    eyebrow: "Enlace activo",
-    title: "Hay cambios sin publicar",
-    detail: "El enlace muestra la versión 3; tu viaje ya está en la 4.",
+    eyebrow: "Active link",
+    title: "There are unpublished changes",
+    detail: "The link shows version 3; your trip is now on version 4.",
   });
   assert.deepEqual(publicSharePresentation({ state: "published" }), {
-    eyebrow: "Enlace no disponible",
-    title: "No pudimos mostrar el enlace",
-    detail: "La operación terminó, pero no recibimos un enlace válido. Vuelve a intentar la solicitud desde la conversación.",
+    eyebrow: "Link unavailable",
+    title: "We couldn't show the link",
+    detail: "The operation finished, but we did not receive a valid link. Try the request again from the conversation.",
   });
   assert.equal(hasPublicShareResultActions({ state: "preview", publicUrl: "https://example.com" }), false);
   assert.equal(hasPublicShareResultActions({ state: "active", publicUrl: "https://example.com" }), true);

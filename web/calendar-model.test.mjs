@@ -38,6 +38,13 @@ test("creates Monday-first weeks with exactly seven cells", () => {
   assert.equal(december.weeks.flat().filter((cell) => cell.inMonth).length, 31);
 });
 
+test("supports Sunday-first calendars for locales such as en-US", () => {
+  const december = buildMonthPage({ days, firstDayOfWeek: 0, monthKey: "2026-12" });
+  assert.equal(december.weeks[0][0].date, "2026-11-29");
+  assert.equal(december.weeks[0][2].date, "2026-12-01");
+  assert.ok(december.weeks.every((week) => week.length === 7));
+});
+
 test("attaches itinerary data only to dates on the current month page", () => {
   const december = buildMonthPage({ days, monthKey: "2026-12" });
   const december20 = december.weeks.flat().find((cell) => cell.date === "2026-12-20");

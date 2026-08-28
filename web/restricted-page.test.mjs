@@ -40,13 +40,17 @@ test("access panel exposes invitation and membership BFF contracts", () => {
 
 test("destructive sharing changes require contextual confirmation", () => {
   assert.match(accessSource, /role="alertdialog"/);
-  assert.match(accessSource, /¿Restringir este viaje\?/);
-  assert.match(accessSource, /¿Crear un enlace público nuevo\?/);
-  assert.match(accessSource, /¿Quitar a \$\{member\.name \|\| member\.email\}\?/);
-  assert.match(accessSource, /¿Revocar la invitación de \$\{invitation\.email\}\?/);
-  assert.match(accessSource, /¿Migrar la invitación de \$\{invitation\.email\}\?/);
-  assert.match(accessSource, /¿Eliminar la invitación antigua de \$\{invitation\.email\}\?/);
-  assert.match(accessSource, /Cancelar/);
+  assert.match(accessSource, /restrictTitle: "¿Restringir este viaje\?"/);
+  assert.match(accessSource, /replaceTitle: "¿Crear un enlace público nuevo\?"/);
+  assert.match(accessSource, /removeTitle: \(name\) => `¿Quitar a \$\{name\}\?`/);
+  assert.match(accessSource, /revokeTitle: \(email\) => `¿Revocar la invitación de \$\{email\}\?`/);
+  assert.match(accessSource, /migrateTitle: \(email\) => `¿Migrar la invitación de \$\{email\}\?`/);
+  assert.match(accessSource, /deleteTitle: \(email\) => `¿Eliminar la invitación antigua de \$\{email\}\?`/);
+  assert.match(accessSource, /title: copy\.removeTitle\(member\.name \|\| member\.email\)/);
+  assert.match(accessSource, /title: copy\.revokeTitle\(invitation\.email\)/);
+  assert.match(accessSource, /title: copy\.migrateTitle\(invitation\.email\)/);
+  assert.match(accessSource, /title: copy\.deleteTitle\(invitation\.email\)/);
+  assert.match(accessSource, /cancel: "Cancelar"/);
 });
 
 test("access UI distinguishes invitation lifecycle and delivery", () => {
@@ -65,9 +69,11 @@ test("owners can explicitly recover or remove non-access-bearing legacy invitati
   assert.match(accessSource, /legacy-invitations\/\$\{encodeURIComponent\(invitation\.id\)\}\/migrate/);
   assert.match(accessSource, /legacy-invitations\/\$\{encodeURIComponent\(invitation\.id\)\}`/);
   assert.match(accessSource, /method:\s*"DELETE"/);
-  assert.match(accessSource, /Migrar y enviar/);
-  assert.match(accessSource, />Eliminar</);
-  assert.match(accessSource, /legacyMigrationNotice\(result\.delivery, invitation\.email\)/);
+  assert.match(accessSource, /migrate: "Migrar y enviar"/);
+  assert.match(accessSource, /delete: "Eliminar"/);
+  assert.match(accessSource, />\{copy\.migrate\}<\/WebButton>/);
+  assert.match(accessSource, />\{copy\.delete\}<\/WebButton>/);
+  assert.match(accessSource, /legacyMigrationNotice\(result\.delivery, invitation\.email, copy\)/);
   assert.match(accessSource, /await load\(\)/);
 });
 

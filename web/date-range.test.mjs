@@ -24,13 +24,23 @@ test("keeps calendar dates stable in UTC, including leap years", () => {
   assert.match(formatDateLabel("2027-08-24", "es"), /24/);
 });
 
-test("builds a six-week month grid starting on Monday", () => {
+test("builds a six-week month grid using the English default week start", () => {
   const cells = monthMatrix("2027-08-01");
   assert.equal(cells.length, 42);
-  assert.equal(cells[0].iso, "2027-07-26");
-  assert.equal(cells.at(-1).iso, "2027-09-05");
-  assert.equal(mondayIndex(cells[0].iso), 0);
+  assert.equal(cells[0].iso, "2027-08-01");
+  assert.equal(cells.at(-1).iso, "2027-09-11");
+  assert.equal(mondayIndex(cells[0].iso), 6);
   assert.equal(cells.filter((cell) => cell.inMonth).length, 31);
+});
+
+test("uses locale-specific week starts and localized labels", () => {
+  assert.equal(monthMatrix("2027-08-01", "en-US")[0].iso, "2027-08-01");
+  assert.equal(monthMatrix("2027-08-01", "en-GB")[0].iso, "2027-07-26");
+  assert.equal(monthMatrix("2027-08-01", "pt-BR")[0].iso, "2027-08-01");
+  assert.match(formatDateLabel("2027-08-24", "en-US"), /Aug/);
+  assert.match(formatDateLabel("2027-08-24", "pt-BR"), /ago/);
+  assert.equal(moveCalendarFocus("2027-08-04", "Home", false, "en-US"), "2027-08-01");
+  assert.equal(moveCalendarFocus("2027-08-04", "Home", false, "es"), "2027-08-02");
 });
 
 test("selects arrival then departure without silently swapping invalid ranges", () => {
@@ -69,7 +79,7 @@ test("marks and navigates a date range with calendar keyboard semantics", () => 
   });
   assert.equal(rangeState("2027-08-21", "2027-08-12", "2027-08-20").inRange, false);
   assert.equal(moveCalendarFocus("2027-08-01", "ArrowLeft"), "2027-07-31");
-  assert.equal(moveCalendarFocus("2027-08-01", "End"), "2027-08-01");
+  assert.equal(moveCalendarFocus("2027-08-01", "End"), "2027-08-07");
   assert.equal(moveCalendarFocus("2027-08-01", "PageDown"), "2027-09-01");
   assert.equal(moveCalendarFocus("2028-02-29", "PageUp", true), "2027-02-28");
 });
