@@ -185,6 +185,10 @@ const publicShareOperation = v.union(
   v.literal("rotate"),
   v.literal("revoke"),
 );
+const publicShareTokenDerivation = v.object({
+  purpose: v.union(v.literal("publish"), v.literal("rotate")),
+  operationId: v.string(),
+});
 const publicShareOperationResult = v.union(
   v.literal("active"),
   v.literal("revoked"),
@@ -383,6 +387,7 @@ export default defineSchema({
     tripId: v.id("trips"),
     ownerId: v.id("users"),
     tokenHash: v.string(),
+    tokenDerivation: v.optional(publicShareTokenDerivation),
     sourceVersion: v.number(),
     publicSnapshot: publicSnapshotValidator,
     status: publicShareStatus,

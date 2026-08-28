@@ -153,7 +153,13 @@ export function AccessPanel({ csrfToken, webId }) {
   const load = useCallback(async () => {
     setError("");
     try {
-      setAccess(normalizeTripAccess(await requestJson(endpoint(webId, "/access"))));
+      const nextAccess = normalizeTripAccess(await requestJson(endpoint(webId, "/access")));
+      setAccess(nextAccess);
+      if (nextAccess.shareUrl) {
+        setGeneratedLink(nextAccess.shareUrl);
+      } else if (nextAccess.generalAccess === "restricted" || !nextAccess.linkRecoverable) {
+        setGeneratedLink("");
+      }
     } catch {
       setError("No pudimos cargar las personas con acceso.");
     }
@@ -292,7 +298,7 @@ export function AccessPanel({ csrfToken, webId }) {
             </div>
             {access.generalAccess === "public_link" && !generatedLink ? (
               <div className="access-link-receipt">
-                <p>El enlace público está activo. Si ya no lo tienes, crea uno nuevo; el anterior dejará de funcionar.</p>
+                <p>Este enlace sigue activo, pero fue creado con una versión antigua de Sendero y no podemos volver a mostrarlo. Sólo reemplázalo si necesitas compartir una URL nueva.</p>
                 <div className="web-actions">
                   <WebButton disabled={busy} onClick={() => requestConfirmation({
                     action: () => mutate("/access/public-link/rotate"),

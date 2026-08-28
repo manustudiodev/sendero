@@ -84,3 +84,40 @@ export function buildPublicShareUrl({ baseUrl, token }) {
   url.hash = validatedToken;
   return url.toString();
 }
+
+export function recoverPublicShareUrl({
+  baseUrl,
+  secret,
+  tripId,
+  sharing,
+}) {
+  if (sharing?.status !== "active") return undefined;
+  const derivation = sharing.tokenDerivation;
+  if (
+    !derivation
+    || (derivation.purpose !== "publish" && derivation.purpose !== "rotate")
+    || typeof derivation.operationId !== "string"
+    || typeof sharing.tokenHash !== "string"
+  ) {
+    return undefined;
+  }
+
+  try {
+    const token = derivePublicShareToken({
+      secret,
+      purpose: derivation.purpose,
+      tripId,
+      operationId: derivation.operationId,
+    });
+    if (hashPublicShareToken(token) !== sharing.tokenHash) return undefined;
+    return buildPublicShareUrl({ baseUrl, token });
+  } catch {
+    return undefined;
+  }
+}
+
+export function isActivePublicShareConflict(error) {
+  return String(error?.message || error).includes(
+    "already has an active public link",
+  );
+}

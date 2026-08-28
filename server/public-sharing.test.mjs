@@ -10,6 +10,7 @@ import {
   hashPublicShareToken,
   isValidPublicShareToken,
   publicShareExpiresAt,
+  recoverPublicShareUrl,
   validatePublicShareToken,
 } from "./public-sharing.mjs";
 
@@ -316,6 +317,46 @@ test("derives a stable opaque token for idempotent publish and rotation retries"
     () => derivePublicShareToken({ ...input, secret: "too-short" }),
     /at least 32 bytes/,
   );
+});
+
+test("recovers a public URL only when its protected descriptor matches the stored hash", () => {
+  const secret = "sendero-test-secret-with-more-than-thirty-two-bytes";
+  const tripId = "trip_123";
+  const tokenDerivation = {
+    purpose: "publish",
+    operationId: "operation-1234",
+  };
+  const token = derivePublicShareToken({ secret, tripId, ...tokenDerivation });
+  const sharing = {
+    status: "active",
+    tokenDerivation,
+    tokenHash: hashPublicShareToken(token),
+  };
+  const url = recoverPublicShareUrl({
+    baseUrl: "https://sendero.example",
+    secret,
+    tripId,
+    sharing,
+  });
+  assert.equal(url, `https://sendero.example/share#${token}`);
+  assert.equal(recoverPublicShareUrl({
+    baseUrl: "https://sendero.example",
+    secret,
+    tripId,
+    sharing: { ...sharing, tokenHash: "A".repeat(43) },
+  }), undefined);
+  assert.equal(recoverPublicShareUrl({
+    baseUrl: "https://sendero.example",
+    secret,
+    tripId,
+    sharing: { status: "active", tokenHash: sharing.tokenHash },
+  }), undefined);
+  assert.equal(recoverPublicShareUrl({
+    baseUrl: "https://sendero.example",
+    secret,
+    tripId,
+    sharing: { ...sharing, status: "revoked" },
+  }), undefined);
 });
 
 test("rejects malformed tokens and unsafe public origins", () => {

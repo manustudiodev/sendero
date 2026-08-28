@@ -188,6 +188,8 @@ export function normalizeTripAccess(payload) {
   const value = unwrapData(payload);
   return {
     generalAccess: value.generalAccess?.mode === "public_link" ? "public_link" : "restricted",
+    linkRecoverable: value.linkRecoverable === true,
+    shareUrl: stringValue(value.shareUrl),
     invitations: (Array.isArray(value.invitations) ? value.invitations : [])
       .map((entry) => normalizeAccessEntry(entry, "invitation"))
       .filter(Boolean),

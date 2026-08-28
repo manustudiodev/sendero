@@ -1,6 +1,6 @@
 {
   "name": "sendero",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "type": "module",
   "description": "Local-first travel planner with personalized itineraries, weather, events, reservations, and daily routes.",

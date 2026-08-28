@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
+import {
+  derivePublicShareToken,
+  hashPublicShareToken,
+} from "./public-sharing.mjs";
 import { registerWebApiRoutes } from "./web-api.mjs";
 
 const WEB_ID = "trip_web_123456789012";
@@ -418,24 +422,35 @@ test("resends through the durable outbox without returning bearer recovery mater
   assert.equal(directProviderCalls, 0);
 });
 
-test("rebuilds the same public URL when the publish response was lost", async () => {
+test("recovers the same public URL after a lost response, reload, or later request", async () => {
   let active = false;
-  const seen = new Set();
+  let tokenHash;
+  let tokenDerivation;
   const { app, calls } = fixture({
     storage: {
       async publicStatus() {
         return active
-          ? { status: "active", currentVersion: 3, isStale: false }
+          ? {
+              status: "active",
+              currentVersion: 3,
+              isStale: false,
+              tokenHash,
+              tokenDerivation,
+            }
           : { status: "not_published", currentVersion: 3, isStale: false };
       },
       async publishPublic(args) {
         calls.push(["publishPublic", args]);
-        if (active && !seen.has(args.operationId)) {
-          throw new Error("This trip already has an active public link");
-        }
         active = true;
-        seen.add(args.operationId);
-        return { status: "active" };
+        tokenHash = args.tokenHash;
+        tokenDerivation = { purpose: "publish", operationId: args.operationId };
+        return {
+          status: "active",
+          currentVersion: 3,
+          isStale: false,
+          tokenHash,
+          tokenDerivation,
+        };
       },
     },
   });
@@ -447,7 +462,108 @@ test("rebuilds the same public URL when the publish response was lost", async ()
   const firstUrl = (await first.json()).data.shareUrl;
   const retry = await app.request(jsonRequest(`/api/trips/${WEB_ID}/access`, body, { method: "PATCH" }));
   assert.equal((await retry.json()).data.shareUrl, firstUrl);
-  assert.equal(calls.filter(([name]) => name === "publishPublic").length, 2);
+  const later = await app.request(jsonRequest(`/api/trips/${WEB_ID}/access`, {
+    ...body,
+    operationId: "sendero-sharing:later-request-2",
+  }, { method: "PATCH" }));
+  assert.equal((await later.json()).data.shareUrl, firstUrl);
+  const reloaded = await app.request(`/api/trips/${WEB_ID}/access`);
+  const reloadResponse = await reloaded.json();
+  const reloadPayload = reloadResponse.data;
+  assert.equal(reloadPayload.shareUrl, firstUrl);
+  assert.equal(reloadPayload.linkRecoverable, true);
+  assert.doesNotMatch(JSON.stringify(reloadResponse), /tokenHash|tokenDerivation/);
+  assert.equal(calls.filter(([name]) => name === "publishPublic").length, 1);
+});
+
+test("recovers the winning public URL when another request publishes concurrently", async () => {
+  let statusReads = 0;
+  const winnerOperationId = "sendero-sharing:concurrent-winner-1";
+  const winnerToken = derivePublicShareToken({
+    secret: SHARE_SECRET,
+    purpose: "publish",
+    tripId: "trip_internal_1",
+    operationId: winnerOperationId,
+  });
+  const { app, calls } = fixture({
+    storage: {
+      async publicStatus() {
+        statusReads += 1;
+        return statusReads === 1
+          ? { status: "not_published", currentVersion: 3, isStale: false }
+          : {
+              status: "active",
+              currentVersion: 3,
+              publishedVersion: 3,
+              isStale: false,
+              tokenHash: hashPublicShareToken(winnerToken),
+              tokenDerivation: {
+                purpose: "publish",
+                operationId: winnerOperationId,
+              },
+            };
+      },
+      async publishPublic(args) {
+        calls.push(["publishPublic", args]);
+        throw new Error("This trip already has an active public link; update or rotate it instead");
+      },
+      async updatePublic(args) {
+        calls.push(["updatePublic", args]);
+        throw new Error("A current concurrent publication must not be updated");
+      },
+    },
+  });
+
+  const response = await app.request(jsonRequest(`/api/trips/${WEB_ID}/access`, {
+    generalAccess: "public_link",
+    operationId: "sendero-sharing:concurrent-loser-1",
+  }, { method: "PATCH" }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    data: {
+      generalAccess: { mode: "public_link" },
+      linkRecoverable: true,
+      shareUrl: `https://sendero.example/share#${winnerToken}`,
+    },
+  });
+  assert.equal(calls.filter(([name]) => name === "publishPublic").length, 1);
+  assert.equal(calls.some(([name]) => name === "updatePublic"), false);
+});
+
+test("keeps a hash-only legacy link active without silently replacing it", async () => {
+  const { app, calls } = fixture({
+    storage: {
+      async publicStatus() {
+        return {
+          status: "active",
+          currentVersion: 3,
+          isStale: false,
+        };
+      },
+    },
+  });
+  const loaded = await app.request(`/api/trips/${WEB_ID}/access`);
+  assert.deepEqual((await loaded.json()).data, {
+    generalAccess: { mode: "public_link" },
+    linkRecoverable: false,
+    invitations: [],
+    legacyInvitations: [],
+    members: [],
+    owner: { email: "owner@example.com", name: "Owner", role: "owner" },
+  });
+
+  const repeated = await app.request(jsonRequest(`/api/trips/${WEB_ID}/access`, {
+    generalAccess: "public_link",
+    operationId: "sendero-sharing:legacy-request-1",
+  }, { method: "PATCH" }));
+  assert.deepEqual(await repeated.json(), {
+    data: {
+      generalAccess: { mode: "public_link" },
+      linkRecoverable: false,
+    },
+  });
+  assert.equal(calls.some(([name]) => name === "publishPublic"), false);
+  assert.equal(calls.some(([name]) => name === "rotatePublic"), false);
 });
 
 test("preserves an invitation through login and accepts it only after an explicit action", async () => {

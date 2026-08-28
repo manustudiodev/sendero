@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalQuery,
   mutation,
@@ -54,23 +54,32 @@ async function shareForTrip(ctx: ReadContext, tripId: Id<"trips">) {
     .unique();
 }
 
-function ownerStatus(
+async function recoverTokenDerivation(
+  ctx: ReadContext,
+  share: Doc<"publicShares">,
+) {
+  if (share.tokenDerivation) return share.tokenDerivation;
+  const operations = await ctx.db
+    .query("publicShareOperations")
+    .withIndex("by_trip", (q) => q.eq("tripId", share.tripId))
+    .collect();
+  const source = operations
+    .filter((operation) =>
+      (operation.operation === "publish" || operation.operation === "rotate")
+      && operation.resultStatus === "active"
+      && operation.generation === share.generation
+      && operation.tokenHash === share.tokenHash,
+    )
+    .sort((left, right) => right.createdAt - left.createdAt)[0];
+  return source
+    ? { purpose: source.operation, operationId: source.operationId }
+    : undefined;
+}
+
+async function ownerStatus(
+  ctx: ReadContext,
   trip: { currentVersion: number },
-  share: {
-    sourceVersion: number;
-    publicSnapshot: {
-      title: string;
-      destination: string;
-      startDate: string;
-      endDate: string;
-    };
-    status: "active" | "revoked";
-    expiresAt: number;
-    publishedAt: number;
-    updatedAt: number;
-    revokedAt?: number;
-    rotatedAt?: number;
-  } | null,
+  share: Doc<"publicShares"> | null,
   now: number,
 ) {
   if (!share) {
@@ -80,8 +89,12 @@ function ownerStatus(
       isStale: false,
     };
   }
+  const status = publicShareState(share, now);
+  const tokenDerivation = status === "active"
+    ? await recoverTokenDerivation(ctx, share)
+    : undefined;
   return {
-    status: publicShareState(share, now),
+    status,
     currentVersion: trip.currentVersion,
     publishedVersion: share.sourceVersion,
     isStale: share.sourceVersion !== trip.currentVersion,
@@ -96,6 +109,9 @@ function ownerStatus(
     },
     ...(share.revokedAt !== undefined ? { revokedAt: share.revokedAt } : {}),
     ...(share.rotatedAt !== undefined ? { rotatedAt: share.rotatedAt } : {}),
+    ...(tokenDerivation
+      ? { tokenDerivation, tokenHash: share.tokenHash }
+      : {}),
   };
 }
 
@@ -233,7 +249,7 @@ export const preview = query({
     return {
       itinerary: sanitizePublicSnapshot(trip.snapshot),
       version: trip.currentVersion,
-      sharing: ownerStatus(trip, share, Date.now()),
+      sharing: await ownerStatus(ctx, trip, share, Date.now()),
     };
   },
 });
@@ -242,7 +258,7 @@ export const status = query({
   args: { tripId: v.id("trips") },
   handler: async (ctx, { tripId }) => {
     const { trip } = await requireOwner(ctx, tripId);
-    return ownerStatus(trip, await shareForTrip(ctx, tripId), Date.now());
+    return ownerStatus(ctx, trip, await shareForTrip(ctx, tripId), Date.now());
   },
 });
 
@@ -272,7 +288,7 @@ export const publish = mutation({
       requestFingerprint,
       now,
     });
-    if (repeated.repeated) return ownerStatus(trip, repeated.share, now);
+    if (repeated.repeated) return ownerStatus(ctx, trip, repeated.share, now);
 
     assertExpectedVersion(trip, args.expectedVersion);
     assertExpiry(args.expiresAt, now);
@@ -297,6 +313,7 @@ export const publish = mutation({
       await ctx.db.patch(shareId, {
         ownerId: user._id,
         tokenHash: args.tokenHash,
+        tokenDerivation: { purpose: "publish", operationId: args.operationId },
         sourceVersion: trip.currentVersion,
         publicSnapshot,
         status: "active",
@@ -312,6 +329,7 @@ export const publish = mutation({
         tripId: args.tripId,
         ownerId: user._id,
         tokenHash: args.tokenHash,
+        tokenDerivation: { purpose: "publish", operationId: args.operationId },
         sourceVersion: trip.currentVersion,
         publicSnapshot,
         status: "active",
@@ -334,7 +352,7 @@ export const publish = mutation({
     });
     const share = await ctx.db.get(shareId);
     if (!share) throw new Error("Unable to publish trip");
-    return ownerStatus(trip, share, now);
+    return ownerStatus(ctx, trip, share, now);
   },
 });
 
@@ -358,7 +376,7 @@ export const update = mutation({
       requestFingerprint,
       now,
     });
-    if (repeated.repeated) return ownerStatus(trip, repeated.share, now);
+    if (repeated.repeated) return ownerStatus(ctx, trip, repeated.share, now);
 
     assertExpectedVersion(trip, args.expectedVersion);
     const share = await shareForTrip(ctx, args.tripId);
@@ -382,7 +400,7 @@ export const update = mutation({
     });
     const updated = await ctx.db.get(share._id);
     if (!updated) throw new Error("Unable to update public trip");
-    return ownerStatus(trip, updated, now);
+    return ownerStatus(ctx, trip, updated, now);
   },
 });
 
@@ -408,7 +426,7 @@ export const rotate = mutation({
       requestFingerprint,
       now,
     });
-    if (repeated.repeated) return ownerStatus(trip, repeated.share, now);
+    if (repeated.repeated) return ownerStatus(ctx, trip, repeated.share, now);
 
     const share = await shareForTrip(ctx, args.tripId);
     if (!share || publicShareState(share, now) !== "active") {
@@ -421,6 +439,7 @@ export const rotate = mutation({
     const generation = share.generation + 1;
     await ctx.db.patch(share._id, {
       tokenHash: args.tokenHash,
+      tokenDerivation: { purpose: "rotate", operationId: args.operationId },
       generation,
       rotatedAt: now,
       updatedAt: now,
@@ -438,7 +457,7 @@ export const rotate = mutation({
     });
     const rotated = await ctx.db.get(share._id);
     if (!rotated) throw new Error("Unable to rotate public link");
-    return ownerStatus(trip, rotated, now);
+    return ownerStatus(ctx, trip, rotated, now);
   },
 });
 
@@ -456,7 +475,7 @@ export const revoke = mutation({
       requestFingerprint,
       now,
     });
-    if (repeated.repeated) return ownerStatus(trip, repeated.share, now);
+    if (repeated.repeated) return ownerStatus(ctx, trip, repeated.share, now);
 
     const share = await shareForTrip(ctx, args.tripId);
     if (!share) {
@@ -470,7 +489,7 @@ export const revoke = mutation({
         generation: 0,
         now,
       });
-      return ownerStatus(trip, null, now);
+      return ownerStatus(ctx, trip, null, now);
     }
     const generation = share.generation + 1;
     await ctx.db.patch(share._id, {
@@ -491,7 +510,7 @@ export const revoke = mutation({
     });
     const revoked = await ctx.db.get(share._id);
     if (!revoked) throw new Error("Unable to revoke public link");
-    return ownerStatus(trip, revoked, now);
+    return ownerStatus(ctx, trip, revoked, now);
   },
 });
 

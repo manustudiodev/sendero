@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { AUTH_SCOPES, authorizeTool, toolSecuritySchemes } from "./auth.mjs";
@@ -40,7 +41,9 @@ import {
   DEFAULT_PUBLIC_SHARE_DAYS,
   derivePublicShareToken,
   hashPublicShareToken,
+  isActivePublicShareConflict,
   publicShareExpiresAt,
+  recoverPublicShareUrl,
 } from "./public-sharing.mjs";
 import {
   deriveInvitationToken,
@@ -450,6 +453,22 @@ const publicShareOperationIdSchema = z
   .min(8)
   .max(128)
   .regex(/^[A-Za-z0-9._:-]+$/, "Use only letters, numbers, dots, underscores, colons, and hyphens");
+const shareTripPubliclyInputSchema = z
+  .object({
+    tripId: tripReferenceTextSchema
+      .describe("Opaque stable trip ID returned by Sendero; never invent this value.")
+      .optional(),
+    selector: z.enum(["latest_updated"]).optional(),
+    query: tripReferenceTextSchema.optional(),
+    reference: tripReferenceTextSchema.optional(),
+    startDate: isoDate.optional(),
+    endDate: isoDate.optional(),
+    expiresInDays: z.number().int().min(1).max(365).optional(),
+    operationId: publicShareOperationIdSchema.describe(
+      "Create one operation ID for this explicit sharing request and reuse it unchanged on an exact retry.",
+    ),
+  })
+  .strict();
 const reservationOperationIdSchema = z
   .string()
   .min(8)
@@ -536,7 +555,17 @@ const publicShareStatusFields = {
   publishedAt: z.number().optional(),
   updatedAt: z.number().optional(),
   expiresAt: z.number().optional(),
+  publicUrl: url.optional(),
 };
+
+const {
+  operationId: _publicShareOperationIdField,
+  ...publicShareReceiptFields
+} = publicShareStatusFields;
+const {
+  publicUrl: _publicShareUrlField,
+  ...publicShareStatusOnlyFields
+} = publicShareStatusFields;
 
 function minutes(time) {
   const [hours, mins] = time.split(":").map(Number);
@@ -1044,6 +1073,13 @@ function newPublicShareOperationId() {
   return `sendero-share:${crypto.randomUUID()}`;
 }
 
+function publicShareFacadeOperationId(operationId, action) {
+  const digest = createHash("sha256")
+    .update(`${operationId}:${action}`)
+    .digest("base64url");
+  return `sendero-share:${action}:${digest}`;
+}
+
 function internalMemberPermission(role) {
   return role === "collaborator" ? "editor" : "viewer";
 }
@@ -1092,7 +1128,14 @@ function publicShareSummary(itinerary) {
   };
 }
 
-function publicShareStatusOutput({ tripId, itinerary, sharing, operationId, state }) {
+function publicShareStatusOutput({
+  tripId,
+  itinerary,
+  sharing,
+  operationId,
+  state,
+  publicUrl,
+}) {
   const summary = itinerary
     ? publicShareSummary(itinerary)
     : sharing.summary
@@ -1111,13 +1154,22 @@ function publicShareStatusOutput({ tripId, itinerary, sharing, operationId, stat
     ...(sharing.publishedAt !== undefined ? { publishedAt: sharing.publishedAt } : {}),
     ...(sharing.updatedAt !== undefined ? { updatedAt: sharing.updatedAt } : {}),
     ...(sharing.expiresAt !== undefined ? { expiresAt: sharing.expiresAt } : {}),
+    ...(publicUrl ? { publicUrl } : {}),
   };
 }
 
-function publicShareToolMeta(invoking, invoked) {
+function publicShareReceiptOutput(args) {
+  const { operationId: _operationId, ...receipt } = publicShareStatusOutput(args);
+  return receipt;
+}
+
+function publicShareToolMeta(invoking, invoked, visibility) {
   return {
     securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]),
-    ui: { resourceUri: PUBLIC_SHARE_UI_URI },
+    ui: {
+      resourceUri: PUBLIC_SHARE_UI_URI,
+      ...(visibility ? { visibility } : {}),
+    },
     "openai/outputTemplate": PUBLIC_SHARE_UI_URI,
     "openai/toolInvocation/invoking": invoking,
     "openai/toolInvocation/invoked": invoked,
@@ -1132,13 +1184,14 @@ const SERVER_INSTRUCTIONS = [
   "Use save_and_present_trip once when the user asked to persist a new trip or revision. Reuse its operationId on retries and supply expectedVersion for updates.",
   "After explicit confirmation of an exact historical version, use restore_itinerary_version once with expectedVersion and an idempotent operationId; it already returns and presents the authoritative restored snapshot.",
   "find_itineraries, get_itinerary, validate_itinerary, save_itinerary, and render_itinerary are compatibility primitives. Never chain them for an ordinary open, present, save-and-present, or restore-and-present interaction.",
+  "Use share_trip_publicly once when the owner explicitly asks to publish, share by public link, or update the public copy of a saved trip. That explicit imperative is authorization: the facade resolves the human trip reference, derives the sanitized preview internally, and publishes or updates atomically without a second preview or confirmation. Use preview_public_share only when the owner asks to inspect what would be exposed before deciding.",
   "For private trip access, use exactly one dedicated access tool for the user's current intent: get_trip_access, invite_trip_member, resend_trip_invitation, revoke_trip_invitation, change_trip_member_role, or remove_trip_member. Do not substitute a chain of generic trip tools, and never expose tool names or stable access identifiers in user-facing prose.",
-  "A single user intent may still pause for grouped critical input, genuine ambiguity, current external research, authentication recovery, or an explicit confirmation for publication, sharing, destructive, or sensitive actions.",
+  "A single user intent may still pause for grouped critical input, genuine ambiguity, current external research, authentication recovery, or a destructive or sensitive action the user has not explicitly requested. A complete imperative is already explicit authorization for that exact action; do not ask for a second ritual confirmation.",
   "For trip creation, extract every supplied fact into prepare_trip_brief. If critical fields are missing, render_trip_requirements once with all current gaps together and stop; otherwise research and build the plan before calling the appropriate final facade.",
   "Treat a rendered Sendero component as the complete answer. Do not restate its visible contents, tool names, stable IDs, JSON, or mechanics in prose.",
   "Use contextual non-redundant titles, preserve locked activities and confirmed reservations, distinguish reservation versus ticket and requirement versus lifecycle status, and never claim current facts without a source.",
   "Keep activity.description concise and operational for Recorrido: what happens, practical context, and logistics. For every real public place, add activity.guide with a source-backed overview explaining its history, cultural relevance, interesting facts, and what a visitor should notice; include up to four useful highlights and one to four reliable sources. Do not invent guide facts, do not recycle logistics as guide copy, and omit guide for transit, rest, free time, or an unnamed placeholder.",
-  "Reservation controls only update Sendero; they never book, buy, or cancel with a provider. Public sharing remains preview then explicit confirmation then publish or update, and rotating or revoking remains explicit.",
+  "Reservation controls and conversational reservation-status updates only change Sendero's tracker; they never book, buy, or cancel with a provider. Public sharing uses a preview only when the owner asks to inspect it; an explicit publish, share, or update request goes directly through share_trip_publicly. Rotating or revoking remains explicit.",
 ].join(" ");
 
 export function createTripPlannerServer({
@@ -1155,6 +1208,16 @@ export function createTripPlannerServer({
       throw new Error("Sendero storage is unavailable in this environment.");
     }
     return persistence;
+  }
+
+  function currentPublicUrl(tripId, sharing) {
+    if (!publicShareSecret) return undefined;
+    return recoverPublicShareUrl({
+      baseUrl: publicWebUrl,
+      secret: publicShareSecret,
+      tripId,
+      sharing,
+    });
   }
 
   function tripPresentation(result) {
@@ -1189,7 +1252,7 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.8.0" },
+    { name: "sendero", version: "0.8.1" },
     {
       instructions: SERVER_INSTRUCTIONS,
     },
@@ -1524,7 +1587,7 @@ export function createTripPlannerServer({
     {
       title: "Update a reservation or ticket in Sendero",
       description:
-        "Update only Sendero's saved reservation or ticket tracker for one itinerary activity. This never books, buys, or cancels anything with an external provider. Use the operation ID supplied by the component so retries are idempotent.",
+        "Update only Sendero's saved reservation or ticket tracker for one itinerary activity. Use this for an explicit natural-language statement such as ya reservé, ya compré, todavía no reservé, or cancelé, as well as for the component control. This never books, buys, contacts, or cancels anything with an external provider. Use the component operation ID when supplied; otherwise create one for the conversational request and reuse it unchanged on an exact retry.",
       inputSchema: {
         tripId: z.string().min(1),
         dayDate: isoDate,
@@ -1548,7 +1611,7 @@ export function createTripPlannerServer({
       },
       _meta: {
         securitySchemes: toolSecuritySchemes([AUTH_SCOPES.write]),
-        ui: { visibility: ["app"] },
+        ui: { visibility: ["model", "app"] },
         "openai/widgetAccessible": true,
       },
     },
@@ -2265,11 +2328,190 @@ export function createTripPlannerServer({
   );
 
   server.registerTool(
+    "share_trip_publicly",
+    {
+      title: "Share a trip publicly",
+      description:
+        "Publish a saved trip through one secure read-only Sendero link, or update its existing public copy while preserving the link. Use this single action when the owner explicitly asks to publish, share by public link, or update the public version. Accepts an exact ID, latest or last-saved wording, a trip name or destination, and optional exact dates. It resolves the reference and derives the sanitized public snapshot internally. The user's explicit imperative is authorization: do not preview first and do not ask for a second confirmation. Reuse operationId unchanged on an exact retry.",
+      inputSchema: shareTripPubliclyInputSchema,
+      outputSchema: {
+        ...publicShareReceiptFields,
+        state: z.union([
+          z.literal("published"),
+          z.literal("updated"),
+          z.literal("active"),
+        ]),
+        publicUrl: url.optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+      _meta: publicShareToolMeta(
+        "Publishing the public trip…",
+        "Public trip ready.",
+        ["model", "app"],
+      ),
+    },
+    async ({
+      tripId,
+      query,
+      reference,
+      selector,
+      startDate,
+      endDate,
+      expiresInDays = DEFAULT_PUBLIC_SHARE_DAYS,
+      operationId,
+    }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+
+      const resolved = await storage().open(
+        canonicalTripReference({
+          tripId,
+          selector,
+          query,
+          reference,
+          startDate,
+          endDate,
+        }),
+      );
+      if (resolved.state === "needs_selection") {
+        throw new Error(
+          "Several saved trips match that reference. Ask the owner which trip they mean before publishing.",
+        );
+      }
+      if (resolved.state === "not_found") {
+        throw new Error("No saved trip matches that reference.");
+      }
+
+      const preview = await storage().publicPreview(resolved.id);
+      const itinerary = publicItinerarySchema.parse(preview.itinerary);
+      if (preview.sharing.status === "active") {
+        const result = preview.sharing.isStale
+          ? await storage().updatePublic({
+              tripId: resolved.id,
+              expectedVersion: preview.version,
+              operationId: publicShareFacadeOperationId(operationId, "update"),
+            })
+          : preview.sharing;
+        const publicUrl = currentPublicUrl(resolved.id, result);
+        const state = preview.sharing.isStale ? "updated" : "active";
+        const output = publicShareReceiptOutput({
+          tripId: resolved.id,
+          itinerary,
+          sharing: result,
+          operationId,
+          state,
+          publicUrl,
+        });
+        return {
+          structuredContent: output,
+          content: [{
+            type: "text",
+            text: publicUrl
+              ? `El enlace público de solo lectura sigue siendo el mismo: ${publicUrl}`
+              : "El enlace público sigue activo, pero pertenece a una generación antigua que Sendero no puede volver a mostrar. Sólo reemplázalo si el propietario pide expresamente un enlace nuevo.",
+          }],
+        };
+      }
+
+      const publishOperationId = publicShareFacadeOperationId(operationId, "publish");
+      const token = derivePublicShareToken({
+        secret: publicShareSecret,
+        purpose: "publish",
+        tripId: resolved.id,
+        operationId: publishOperationId,
+      });
+
+      let publishConflict;
+      try {
+        const result = await storage().publishPublic({
+          tripId: resolved.id,
+          expectedVersion: preview.version,
+          tokenHash: hashPublicShareToken(token),
+          expiresAt: publicShareExpiresAt(expiresInDays),
+          operationId: publishOperationId,
+        });
+        const publicUrl = buildPublicShareUrl({ baseUrl: publicWebUrl, token });
+        const output = {
+          ...publicShareReceiptOutput({
+            tripId: resolved.id,
+            itinerary,
+            sharing: result,
+            operationId,
+            state: "published",
+          }),
+          publicUrl,
+        };
+        return {
+          structuredContent: output,
+          content: [
+            {
+              type: "text",
+              text: `El enlace público de solo lectura ya está listo: ${publicUrl}`,
+            },
+          ],
+        };
+      } catch (error) {
+        if (!isActivePublicShareConflict(error)) throw error;
+        publishConflict = error;
+      }
+
+      const winner = await storage().publicStatus(resolved.id);
+      if (winner.status !== "active") throw publishConflict;
+
+      let result = winner;
+      let receiptItinerary;
+      let state = "active";
+      if (winner.isStale) {
+        const freshPreview = await storage().publicPreview(resolved.id);
+        if (freshPreview.sharing.status !== "active") throw publishConflict;
+        receiptItinerary = publicItinerarySchema.parse(freshPreview.itinerary);
+        if (freshPreview.sharing.isStale) {
+          result = await storage().updatePublic({
+            tripId: resolved.id,
+            expectedVersion: freshPreview.version,
+            operationId: publicShareFacadeOperationId(operationId, "update"),
+          });
+          state = "updated";
+        } else {
+          result = freshPreview.sharing;
+        }
+      }
+      const publicUrl = currentPublicUrl(resolved.id, result);
+      const output = publicShareReceiptOutput({
+        tripId: resolved.id,
+        itinerary: receiptItinerary,
+        sharing: result,
+        operationId,
+        state,
+        publicUrl,
+      });
+      return {
+        structuredContent: output,
+        content: [
+          {
+            type: "text",
+            text: publicUrl
+              ? state === "updated"
+                ? `La vista pública ya refleja la versión actual del viaje y conserva este enlace: ${publicUrl}`
+                : `El enlace público de solo lectura sigue siendo el mismo: ${publicUrl}`
+              : "La vista pública ya refleja la versión actual del viaje, pero Sendero no puede volver a mostrar esta generación antigua del enlace. Sólo reemplázalo si el propietario lo pide expresamente.",
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
     "preview_public_share",
     {
       title: "Preview a public trip",
       description:
-        "Show the owner the exact sanitized, version-specific itinerary that a public read-only link would expose. Always use this before first publication or before updating an existing publication, then wait for explicit confirmation in the component. The component is the complete answer; do not summarize the preview afterward.",
+        "Show the owner the exact sanitized, version-specific itinerary that a public read-only link would expose, without publishing or updating anything. Use only when the owner explicitly asks to inspect the public preview before deciding. For an explicit publish, share, or update request, use share_trip_publicly directly instead.",
       inputSchema: {
         tripId: z.string().min(1),
         expiresInDays: z.number().int().min(1).max(365).optional(),
@@ -2326,7 +2568,7 @@ export function createTripPlannerServer({
       description:
         "Show the owner whether a trip has an active, stale, expired, revoked, or not-yet-created public read-only publication.",
       inputSchema: { tripId: z.string().min(1) },
-      outputSchema: publicShareStatusFields,
+      outputSchema: publicShareStatusOnlyFields,
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: publicShareToolMeta("Checking the public link…", "Public link status ready."),
     },
@@ -2360,7 +2602,7 @@ export function createTripPlannerServer({
     {
       title: "Create a public trip link",
       description:
-        "After the owner confirms the exact preview, publish that trip version as a frozen, sanitized, read-only page. Recreates expired or revoked publications with a new link.",
+        "Compatibility primitive that publishes an exact previously prepared public-share payload. Prefer share_trip_publicly for an owner's explicit natural-language request.",
       inputSchema: {
         tripId: z.string().min(1),
         expectedVersion: z.number().int().positive(),
@@ -2373,7 +2615,11 @@ export function createTripPlannerServer({
         publicUrl: url,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      _meta: publicShareToolMeta("Creating the public link…", "Public link created."),
+      _meta: publicShareToolMeta(
+        "Creating the public link…",
+        "Public link created.",
+        ["app"],
+      ),
     },
     async ({ tripId, expectedVersion, proposedExpiresAt, operationId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
@@ -2418,7 +2664,7 @@ export function createTripPlannerServer({
     {
       title: "Update a public trip",
       description:
-        "After the owner confirms the exact preview, replace an active public snapshot with the current private trip version while preserving the same link.",
+        "Compatibility primitive that updates an exact previously prepared public-share payload while preserving its link. Prefer share_trip_publicly for an owner's explicit natural-language request.",
       inputSchema: {
         tripId: z.string().min(1),
         expectedVersion: z.number().int().positive(),
@@ -2429,24 +2675,32 @@ export function createTripPlannerServer({
         state: z.literal("updated"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      _meta: publicShareToolMeta("Updating the public trip…", "Public trip updated."),
+      _meta: publicShareToolMeta(
+        "Updating the public trip…",
+        "Public trip updated.",
+        ["app"],
+      ),
     },
     async ({ tripId, expectedVersion, operationId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
       if (denied) return denied;
       const result = await storage().updatePublic({ tripId, expectedVersion, operationId });
+      const publicUrl = currentPublicUrl(tripId, result);
       const output = publicShareStatusOutput({
         tripId,
         sharing: result,
         operationId,
         state: "updated",
+        publicUrl,
       });
       return {
         structuredContent: output,
         content: [
           {
             type: "text",
-            text: "La vista pública ahora refleja la versión que acabas de revisar. El enlace sigue siendo el mismo.",
+            text: publicUrl
+              ? `La vista pública ahora refleja la versión que acabas de revisar y conserva este enlace: ${publicUrl}`
+              : "La vista pública ahora refleja la versión que acabas de revisar. El enlace sigue activo, pero esta generación antigua no se puede volver a mostrar.",
           },
         ],
       };

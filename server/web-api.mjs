@@ -8,7 +8,9 @@ import {
   buildPublicShareUrl,
   derivePublicShareToken,
   hashPublicShareToken,
+  isActivePublicShareConflict,
   publicShareExpiresAt,
+  recoverPublicShareUrl,
 } from "./public-sharing.mjs";
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -168,6 +170,16 @@ export function registerWebApiRoutes(app, {
   publicWebUrl,
   webAuth,
 } = {}) {
+  function currentPublicUrl(tripId, sharing) {
+    if (!publicShareSecret) return undefined;
+    return recoverPublicShareUrl({
+      baseUrl: publicWebUrl,
+      secret: publicShareSecret,
+      tripId,
+      sharing,
+    });
+  }
+
   async function sessionContext(context, { mutate = false } = {}) {
     const session = await webAuth.accessSession(context);
     if (!session) {
@@ -223,9 +235,13 @@ export function registerWebApiRoutes(app, {
       storage.listAccess(trip.id),
       storage.publicStatus(trip.id),
     ]);
+    const shareUrl = currentPublicUrl(trip.id, sharing);
+    const publicLinkActive = activePublicShare(sharing);
     return context.json({
       data: {
-        generalAccess: { mode: activePublicShare(sharing) ? "public_link" : "restricted" },
+        generalAccess: { mode: publicLinkActive ? "public_link" : "restricted" },
+        ...(publicLinkActive ? { linkRecoverable: Boolean(shareUrl) } : {}),
+        ...(shareUrl ? { shareUrl } : {}),
         invitations: (access.invitations || [])
           .filter((entry) => entry.status === "pending" || entry.status === "expired")
           .map((entry) => ({
@@ -255,54 +271,62 @@ export function registerWebApiRoutes(app, {
         return context.json({ data: { generalAccess: { mode: "restricted" } } });
       }
 
+      if (activePublicShare(status)) {
+        const currentUrl = currentPublicUrl(trip.id, status);
+        let updatedStatus = status;
+        if (status.isStale) {
+          updatedStatus = await storage.updatePublic({
+            tripId: trip.id,
+            expectedVersion: trip.version,
+            operationId: input.operationId,
+          });
+        }
+        const shareUrl = currentUrl || currentPublicUrl(trip.id, updatedStatus);
+        return context.json({ data: {
+          generalAccess: { mode: "public_link" },
+          linkRecoverable: Boolean(shareUrl),
+          ...(shareUrl ? { shareUrl } : {}),
+        } });
+      }
+
       const token = derivePublicShareToken({
         secret: publicShareSecret,
         purpose: "publish",
         tripId: trip.id,
         operationId: input.operationId,
       });
-      if (activePublicShare(status)) {
-        if (status.isStale) {
-          await storage.updatePublic({
-            tripId: trip.id,
-            expectedVersion: trip.version,
+      try {
+        await storage.publishPublic({
+          tripId: trip.id,
+          expectedVersion: trip.version,
+          tokenHash: hashPublicShareToken(token),
+          expiresAt: publicShareExpiresAt(365, now()),
+          operationId: input.operationId,
+        });
+      } catch (error) {
+        if (!isActivePublicShareConflict(error)) throw error;
+        const winner = await storage.publicStatus(trip.id);
+        if (!activePublicShare(winner)) throw error;
+        let current = winner;
+        if (winner.isStale) {
+          const freshTrip = await tripByWebId(storage, context);
+          current = await storage.updatePublic({
+            tripId: freshTrip.id,
+            expectedVersion: freshTrip.version,
             operationId: input.operationId,
           });
-          return context.json({ data: { generalAccess: { mode: "public_link" } } });
         }
-        try {
-          // A lost HTTP response must be recoverable with the same operationId.
-          // Convex recognizes the replay and the deterministic token rebuilds
-          // the exact URL without persisting the bearer value.
-          await storage.publishPublic({
-            tripId: trip.id,
-            expectedVersion: trip.version,
-            tokenHash: hashPublicShareToken(token),
-            expiresAt: publicShareExpiresAt(365, now()),
-            operationId: input.operationId,
-          });
-          return context.json({ data: {
-            generalAccess: { mode: "public_link" },
-            shareUrl: buildPublicShareUrl({ baseUrl: publicWebUrl, token }),
-          } });
-        } catch (error) {
-          if (/already has an active public link/i.test(error?.message || "")) {
-            return context.json({ data: { generalAccess: { mode: "public_link" } } });
-          }
-          throw error;
-        }
+        const shareUrl = currentPublicUrl(trip.id, current);
+        return context.json({ data: {
+          generalAccess: { mode: "public_link" },
+          linkRecoverable: Boolean(shareUrl),
+          ...(shareUrl ? { shareUrl } : {}),
+        } });
       }
-
-      await storage.publishPublic({
-        tripId: trip.id,
-        expectedVersion: trip.version,
-        tokenHash: hashPublicShareToken(token),
-        expiresAt: publicShareExpiresAt(365, now()),
-        operationId: input.operationId,
-      });
       return context.json({
         data: {
           generalAccess: { mode: "public_link" },
+          linkRecoverable: true,
           shareUrl: buildPublicShareUrl({ baseUrl: publicWebUrl, token }),
         },
       });
@@ -330,6 +354,7 @@ export function registerWebApiRoutes(app, {
       });
       return context.json({ data: {
         generalAccess: { mode: "public_link" },
+        linkRecoverable: true,
         shareUrl: buildPublicShareUrl({ baseUrl: publicWebUrl, token }),
       } });
     },

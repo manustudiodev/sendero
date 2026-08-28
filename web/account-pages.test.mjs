@@ -109,7 +109,9 @@ test("authenticated page frame exposes safe account switching and logout", () =>
 
 test("access normalization preserves invitation state, expiration, and delivery", () => {
   const access = normalizeTripAccess({
-    generalAccess: { mode: "restricted" },
+    generalAccess: { mode: "public_link" },
+    linkRecoverable: true,
+    shareUrl: "https://sendero.example/share#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     invitations: [{
       delivery: {
         attemptCount: 2,
@@ -131,6 +133,12 @@ test("access normalization preserves invitation state, expiration, and delivery"
       role: "viewer",
     }],
   });
+  assert.equal(access.generalAccess, "public_link");
+  assert.equal(access.linkRecoverable, true);
+  assert.equal(
+    access.shareUrl,
+    "https://sendero.example/share#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  );
   assert.equal(access.invitations[0].status, "expired");
   assert.equal(access.invitations[0].expiresAt, "2026-09-03T12:00:00.000Z");
   assert.deepEqual(access.invitations[0].delivery, {

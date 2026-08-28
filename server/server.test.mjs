@@ -373,6 +373,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
       "rotate_public_share",
       "save_and_present_trip",
       "save_itinerary",
+      "share_trip_publicly",
       "update_public_share",
       "update_reservation_status",
       "validate_itinerary",
@@ -433,7 +434,7 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.deepEqual(reservationTool._meta.securitySchemes, [
     { type: "oauth2", scopes: [AUTH_SCOPES.write] },
   ]);
-  assert.deepEqual(reservationTool._meta.ui.visibility, ["app"]);
+  assert.deepEqual(reservationTool._meta.ui.visibility, ["model", "app"]);
   assert.equal(reservationTool._meta["openai/widgetAccessible"], true);
   assert.deepEqual(getItineraryTool._meta.ui.visibility, ["model", "app"]);
   assert.equal(getItineraryTool._meta["openai/widgetAccessible"], true);
@@ -625,9 +626,11 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
   assertInlineWidgetResource(publicShareResource, PUBLIC_SHARE_UI_URI);
   assert.match(publicShareResource.contents[0].text, /share-exact-preview/);
-  assert.match(publicShareResource.contents[0].text, /publish_public_share/);
   assert.match(publicShareResource.contents[0].text, /proposedExpiresAt/);
-  assert.match(publicShareResource.contents[0].text, /Reemplazar enlace/);
+  assert.match(publicShareResource.contents[0].text, /Copiar enlace/);
+  assert.match(publicShareResource.contents[0].text, /Abrir/);
+  assert.doesNotMatch(publicShareResource.contents[0].text, /publish_public_share/);
+  assert.doesNotMatch(publicShareResource.contents[0].text, /Reemplazar enlace/);
   assert.match(publicShareResource.contents[0]._meta["openai/widgetDescription"], /public read-only trip link/i);
 
   const legacyPublicShareResource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_UI_URI });
@@ -2086,6 +2089,8 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
   let publishedAt;
   let updatedAt;
   let expiresAt;
+  let publicTokenHash;
+  let tokenDerivation;
   const summary = {
     title: publicItinerary.title,
     destination: publicItinerary.destination,
@@ -2103,6 +2108,9 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
       ...(updatedAt ? { updatedAt } : {}),
       ...(expiresAt ? { expiresAt } : {}),
       ...(publishedVersion ? { summary } : {}),
+      ...(status === "active" && publicTokenHash && tokenDerivation
+        ? { tokenHash: publicTokenHash, tokenDerivation }
+        : {}),
     };
   }
 
@@ -2123,6 +2131,8 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
       publishedAt ||= 1_800_000_000_000;
       updatedAt = publishedAt;
       expiresAt = input.expiresAt;
+      publicTokenHash = input.tokenHash;
+      tokenDerivation = { purpose: "publish", operationId: input.operationId };
       return sharing();
     },
     async updatePublic(input) {
@@ -2134,6 +2144,8 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
     async rotatePublic(input) {
       calls.push(["rotate", input]);
       updatedAt = 1_800_000_200_000;
+      publicTokenHash = input.tokenHash;
+      tokenDerivation = { purpose: "rotate", operationId: input.operationId };
       return sharing();
     },
     async revokePublic(input) {
@@ -2208,6 +2220,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
   assert.equal(stale.structuredContent.state, "active");
   assert.equal(stale.structuredContent.isStale, true);
   assert.equal(stale.structuredContent.publicUrl, undefined);
+  assert.doesNotMatch(stale.content[0].text, /https?:\/\//);
   assert.equal(calls.at(-1)[0], "status");
 
   const updatePreview = await client.callTool({
@@ -2226,7 +2239,7 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
   });
   assert.equal(updated.structuredContent.state, "updated");
   assert.equal(updated.structuredContent.isStale, false);
-  assert.equal(updated.structuredContent.publicUrl, undefined);
+  assert.equal(updated.structuredContent.publicUrl, published.structuredContent.publicUrl);
   assert.equal(calls.filter(([name]) => name === "preview").length, 2);
 
   const rotateArguments = {
@@ -2259,6 +2272,11 @@ test("previews, publishes, updates, rotates, and revokes a public snapshot witho
       .map((content) => content.text || "")
       .join(" "),
     /trip_public|tokenHash|operationId|preview_public_share|publish_public_share/,
+  );
+  assert.doesNotMatch(
+    JSON.stringify([published, stale, updated, rotated, revoked]
+      .map((result) => result.structuredContent)),
+    /tokenHash|tokenDerivation/,
   );
 
   await client.close();
