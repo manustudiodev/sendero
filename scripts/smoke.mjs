@@ -28,7 +28,13 @@ try {
   await expectHtml("/", "Sendero · Planifica conversando");
   await expectHtml("/privacy", "Privacidad · Sendero");
   await expectHtml("/terms", "Términos · Sendero");
-  await expectHtml("/share", "Viaje compartido · Sendero");
+  await expectHtml(
+    "/share",
+    "Viaje compartido · Sendero",
+    "get_shared_trip_context",
+    "preview_guest_arrival",
+    "registerTool",
+  );
   await expectHtml("/app", "Tus viajes · Sendero");
   await expectHtml("/invite/smoke-id", "Invitación · Sendero");
   await expectHtml("/app/trips/smoke-id", "Itinerario privado · Sendero");
@@ -63,12 +69,14 @@ try {
   if (server) await new Promise((resolvePromise) => server.close(resolvePromise));
 }
 
-async function expectHtml(path, expectedText) {
+async function expectHtml(path, ...expectedTexts) {
   const response = await fetch(`${baseUrl}${path}`, { redirect: "manual" });
   assert(response.status === 200, `${path} returned ${response.status}, expected 200.`);
   assert(response.headers.get("content-type")?.includes("text/html"), `${path} did not return HTML.`);
   const html = await response.text();
-  assert(html.includes(expectedText), `${path} did not contain its expected page title.`);
+  for (const expectedText of expectedTexts) {
+    assert(html.includes(expectedText), `${path} did not contain expected content: ${expectedText}.`);
+  }
 }
 
 async function expectJson(path, status) {

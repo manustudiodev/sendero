@@ -5,11 +5,12 @@
 **Project:** Sendero Shared Trip Companion
 **Challenge implementation baseline:** `a8ebc826c5814d3dfc7a88e658ffade748eb039f`
 **Last pre-challenge-opening reference:** `123bd07bf91ef69e3182646a6f550a4c614c7465`
-**Submission SHA:** pending commit
-**Live WebMCP demo:** pending authorized deployment
+**Implementation commit:** `48dcf1ca652b435ed087db1778cb0240749650ad`
+**Production application:** https://sendero-alpha.vercel.app
+**Live challenge walkthrough:** pending a durable active public-share URL and demo video
 **Public repository and license:** pending owner decision
 
-This file describes the implementation currently present in the working tree. It must be updated with the final public URLs, license, submission SHA, and compare link before submission.
+This file describes the implementation deployed from the commit above. The final active share URL, video, public-repository status, license, and submission SHA must be added before the Devpost submission.
 
 ## What Sendero was before the challenge
 
@@ -127,12 +128,16 @@ The page remains fully usable in an ordinary browser. To exercise the site tools
 ```bash
 npm test
 npm run smoke:local
+SENDERO_SMOKE_BASE_URL=https://sendero-alpha.vercel.app npm run smoke:remote
 npm run check:generated
 npm run check:diff
 ```
 
 - 254 automated tests pass.
 - The local smoke test passes.
+- The GitHub `verify` workflow passed for the implementation commit.
+- Vercel completed the production deployment and the remote smoke passed against `https://sendero-alpha.vercel.app`.
+- The deployed `/share` bundle exposes the WebMCP registration path and challenge tool names.
 - Generated UI matches its sources.
 - A real-browser check registered exactly six tools and executed `preview_guest_arrival` against the public sample.
 - Desktop and 390 px mobile checks showed the temporary receipt and focused route without horizontal overflow.
@@ -154,19 +159,14 @@ npm run check:diff
 - The arrival preview is schedule-only. It adds the guest's supplied readiness estimate and does not claim to calculate live traffic or an unverified transfer.
 - Publications created before timezone support must be republished before arrival preview is available; read tools continue to work.
 - The current implementation focuses a public place or a schematic marker; it does not draw a guest-origin route.
-- The live production deployment still points to the pre-WebMCP baseline until deployment is explicitly authorized.
+- The production application is live, but the final challenge walkthrough still needs a durable active public-share URL and a demo video.
 - The repository is currently private and has no selected open-source license, so it is not submission-ready yet.
 
 ## Repository comparison
 
-Before a final commit, the working-tree delta can be inspected with:
+The immutable implementation delta is:
 
-```bash
-git diff --stat a8ebc826c5814d3dfc7a88e658ffade748eb039f
-git diff a8ebc826c5814d3dfc7a88e658ffade748eb039f
-```
-
-After the submission commit is created, replace this section with its immutable compare URL and SHA.
+https://github.com/manustudiodev/sendero/compare/a8ebc826c5814d3dfc7a88e658ffade748eb039f...48dcf1ca652b435ed087db1778cb0240749650ad
 
 ## License
 
