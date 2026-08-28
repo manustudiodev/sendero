@@ -24,6 +24,12 @@ if (remoteMode) {
 try {
   const health = await expectJson("/health", 200);
   assert(health.status === "ok" && health.service === "sendero", "/health did not identify a healthy Sendero service.");
+  if (remoteMode) {
+    assert(
+      health.webAuthentication === "configured",
+      `/health reported webAuthentication=${health.webAuthentication || "missing"}, expected configured.`,
+    );
+  }
 
   await expectHtml("/", "Sendero · Planifica conversando");
   await expectHtml("/privacy", "Privacidad · Sendero");
@@ -44,6 +50,7 @@ try {
   for (const scope of ["trips:read", "trips:write", "trips:share"]) {
     assert(metadata.scopes_supported.includes(scope), `OAuth metadata is missing ${scope}.`);
   }
+  if (remoteMode) await expectRemoteLoginRedirect(metadata);
 
   const initialize = await mcpCall(1, "initialize", initializeParams());
   assert(initialize.result?.serverInfo?.name === "sendero", "MCP initialize did not identify Sendero.");
@@ -84,6 +91,24 @@ async function expectJson(path, status) {
   assert(response.status === status, `${path} returned ${response.status}, expected ${status}.`);
   assert(response.headers.get("content-type")?.includes("application/json"), `${path} did not return JSON.`);
   return response.json();
+}
+
+async function expectRemoteLoginRedirect(metadata) {
+  const response = await fetch(`${baseUrl}/auth/login?returnTo=%2Fapp`, { redirect: "manual" });
+  assert(response.status === 302, `/auth/login returned ${response.status}, expected 302.`);
+
+  const location = response.headers.get("location");
+  assert(location, "/auth/login did not include a Location header.");
+  const redirect = new URL(location);
+  const authorizationServer = new URL(metadata.authorization_servers?.[0] || "");
+  assert(
+    redirect.origin === authorizationServer.origin,
+    "/auth/login did not redirect to the configured authorization server.",
+  );
+  assert(
+    redirect.searchParams.get("redirect_uri") === `${baseUrl}/auth/callback`,
+    "/auth/login used an unexpected callback URL.",
+  );
 }
 
 async function mcpCall(id, method, params) {
