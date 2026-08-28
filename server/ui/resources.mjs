@@ -59,7 +59,7 @@ function escapeHtmlAttribute(value) {
     .replaceAll(">", "&gt;");
 }
 
-function withGoogleMapsEmbedKey(html, apiKey) {
+export function withGoogleMapsEmbedKey(html, apiKey) {
   const key = typeof apiKey === "string" ? apiKey.trim() : "";
   if (!key) return html;
   const meta = `<meta name="sendero-google-maps-embed-key" content="${escapeHtmlAttribute(key)}" />`;

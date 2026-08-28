@@ -350,24 +350,29 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   assert.deepEqual(
     tools.tools.map((tool) => tool.name).sort(),
     [
+      "change_trip_member_role",
       "find_itineraries",
       "get_itinerary",
       "get_public_share_status",
+      "get_trip_access",
+      "invite_trip_member",
       "list_itineraries",
       "open_trip",
       "prepare_trip_brief",
       "present_trip",
       "preview_public_share",
       "publish_public_share",
+      "remove_trip_member",
       "render_itinerary",
       "render_trip_intake",
       "render_trip_requirements",
+      "resend_trip_invitation",
       "restore_itinerary_version",
       "revoke_public_share",
+      "revoke_trip_invitation",
       "rotate_public_share",
       "save_and_present_trip",
       "save_itinerary",
-      "share_itinerary",
       "update_public_share",
       "update_reservation_status",
       "validate_itinerary",
@@ -392,6 +397,14 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const openTripTool = tools.tools.find((tool) => tool.name === "open_trip");
   const presentTripTool = tools.tools.find((tool) => tool.name === "present_trip");
   const saveAndPresentTool = tools.tools.find((tool) => tool.name === "save_and_present_trip");
+  const accessTool = tools.tools.find((tool) => tool.name === "get_trip_access");
+  const accessMutationTools = [
+    "invite_trip_member",
+    "resend_trip_invitation",
+    "revoke_trip_invitation",
+    "change_trip_member_role",
+    "remove_trip_member",
+  ].map((name) => tools.tools.find((tool) => tool.name === name));
   assert.deepEqual(publicTool._meta.securitySchemes, [{ type: "noauth" }]);
   assert.equal(findTool._meta.ui, undefined);
   assert.equal(publicTool._meta.ui.resourceUri, ITINERARY_UI_URI);
@@ -452,6 +465,19 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
     { type: "oauth2", scopes: [AUTH_SCOPES.write] },
   ]);
   assert.deepEqual(saveAndPresentTool.inputSchema.required.includes("operationId"), true);
+  assert.equal(accessTool.annotations.readOnlyHint, true);
+  assert.deepEqual(accessTool._meta.securitySchemes, [
+    { type: "oauth2", scopes: [AUTH_SCOPES.share] },
+  ]);
+  for (const tool of accessMutationTools) {
+    assert.equal(tool.annotations.idempotentHint, true);
+    assert.equal(tool.inputSchema.required.includes("operationId"), true);
+    assert.equal(tool.inputSchema.properties.operationId.maxLength, 128);
+    assert.equal(tool.inputSchema.properties.operationId.pattern, "^[A-Za-z0-9._:-]+$");
+    assert.deepEqual(tool._meta.securitySchemes, [
+      { type: "oauth2", scopes: [AUTH_SCOPES.share] },
+    ]);
+  }
 
   const result = await client.callTool({
     name: "render_itinerary",
@@ -830,6 +856,95 @@ test("requires write access before changing Sendero reservation tracking", async
   assert.equal(result.isError, true);
   assert.equal(storageCalled, false);
   assert.match(result._meta["mcp/www_authenticate"][0], /scope="trips:write"/);
+
+  await client.close();
+  await server.close();
+});
+
+test("requires private-sharing access before reading or changing trip members", async () => {
+  let storageCalled = false;
+  const persistence = {
+    async listAccess() {
+      storageCalled = true;
+      throw new Error("must not be reached");
+    },
+    async get() {
+      storageCalled = true;
+      throw new Error("must not be reached");
+    },
+  };
+  const server = createTripPlannerServer({
+    persistence,
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.read, AUTH_SCOPES.write],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+  });
+  const client = new Client({ name: "sendero-access-auth-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const read = await client.callTool({
+    name: "get_trip_access",
+    arguments: { tripId: "trip_123" },
+  });
+  assert.equal(read.isError, true);
+  assert.match(read._meta["mcp/www_authenticate"][0], /error="insufficient_scope"/);
+  assert.match(read._meta["mcp/www_authenticate"][0], /scope="trips:share"/);
+
+  const mutations = [
+    {
+      name: "invite_trip_member",
+      arguments: {
+        tripId: "trip_123",
+        email: "friend@example.com",
+        role: "viewer",
+        operationId: "invite-auth-operation-123",
+      },
+    },
+    {
+      name: "resend_trip_invitation",
+      arguments: {
+        tripId: "trip_123",
+        invitationId: "invitation_123",
+        operationId: "resend-auth-operation-123",
+      },
+    },
+    {
+      name: "revoke_trip_invitation",
+      arguments: {
+        tripId: "trip_123",
+        invitationId: "invitation_123",
+        operationId: "revoke-auth-operation-123",
+      },
+    },
+    {
+      name: "change_trip_member_role",
+      arguments: {
+        tripId: "trip_123",
+        memberId: "member_123",
+        role: "collaborator",
+        operationId: "role-auth-operation-123",
+      },
+    },
+    {
+      name: "remove_trip_member",
+      arguments: {
+        tripId: "trip_123",
+        memberId: "member_123",
+        operationId: "remove-auth-operation-123",
+      },
+    },
+  ];
+  for (const request of mutations) {
+    const mutation = await client.callTool(request);
+    assert.equal(mutation.isError, true);
+    assert.match(mutation._meta["mcp/www_authenticate"][0], /scope="trips:share"/);
+  }
+  assert.equal(storageCalled, false);
 
   await client.close();
   await server.close();
@@ -1494,7 +1609,7 @@ test("rejects an invalid historical snapshot before restore can mutate the trip"
   await server.close();
 });
 
-test("saves, lists, opens, shares, and restores trips through the persistence boundary", async () => {
+test("saves, lists, opens, invites, and restores trips through the persistence boundary", async () => {
   const calls = [];
   const persistence = {
     async list() {
@@ -1526,6 +1641,7 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
       calls.push(["get", tripId]);
       return {
         id: tripId,
+        webId: "trip_web_1234567890123456",
         role: "owner",
         version: 2,
         itinerary,
@@ -1548,9 +1664,24 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
         itinerary: updated,
       };
     },
-    async share(input) {
-      calls.push(["share", input]);
-      return { collaboratorId: "collab_123", role: input.role, status: "pending" };
+    async listAccess(tripId) {
+      calls.push(["listAccess", tripId]);
+      return {
+        owner: { name: "Manuel", email: "owner@example.com", role: "owner" },
+        collaborators: [],
+        invitations: [],
+      };
+    },
+    async invite(input) {
+      calls.push(["invite", input]);
+      return {
+        invitationId: "invitation_123",
+        role: input.role,
+        status: "pending",
+        delivery: { outboxId: "outbox_123", status: "queued" },
+        changed: true,
+        replayed: false,
+      };
     },
     async getRevision(input) {
       calls.push(["getRevision", input]);
@@ -1583,6 +1714,9 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
       resourceMetadataUrl:
         "https://sendero.example/.well-known/oauth-protected-resource",
     },
+    publicWebUrl: "https://sendero.example",
+    invitationPepper: "sendero-test-invitation-pepper-at-least-thirty-two-bytes",
+    invitationSender: async () => ({ status: "sent" }),
   });
   const client = new Client({ name: "sendero-persistence-test", version: "0.1.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -1677,11 +1811,19 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
   assert.match(reservationUpdated.content[0].text, /estado local/i);
   assert.match(reservationUpdated.content[0].text, /proveedor/i);
 
-  const shared = await client.callTool({
-    name: "share_itinerary",
-    arguments: { tripId: "trip_123", email: "friend@example.com", role: "editor" },
+  const invited = await client.callTool({
+    name: "invite_trip_member",
+    arguments: {
+      tripId: "trip_123",
+      email: "friend@example.com",
+      role: "collaborator",
+      operationId: "invite-operation-123",
+    },
   });
-  assert.equal(shared.structuredContent.status, "pending");
+  assert.equal(invited.structuredContent.status, "pending");
+  assert.equal(invited.structuredContent.role, "collaborator");
+  assert.equal(invited.structuredContent.delivery, "queued");
+  assert.doesNotMatch(invited.content[0].text, /invitation_123|invite_trip_member|trip_123/);
 
   const restored = await client.callTool({
     name: "restore_itinerary_version",
@@ -1705,11 +1847,231 @@ test("saves, lists, opens, shares, and restores trips through the persistence bo
       "get",
       "save",
       "updateReservation",
-      "share",
+      "invite",
       "getRevision",
       "restore",
     ],
   );
+
+  await client.close();
+  await server.close();
+});
+
+test("manages each private-access intent atomically without leaking access identifiers in prose", async () => {
+  const calls = [];
+  const sent = [];
+  const inviteOperations = new Map();
+  const persistence = {
+    async get(tripId) {
+      calls.push(["get", tripId]);
+      return {
+        id: tripId,
+        webId: "trip_web_1234567890123456",
+        role: "owner",
+        version: 2,
+        itinerary,
+        revisions: [],
+      };
+    },
+    async listAccess(tripId) {
+      calls.push(["listAccess", tripId]);
+      return {
+        owner: { name: "Manuel", email: "owner@example.com", role: "owner" },
+        collaborators: [
+          {
+            id: "member_123",
+            name: "Ana",
+            email: "ana@example.com",
+            role: "editor",
+            status: "accepted",
+            createdAt: 1786800000000,
+            updatedAt: 1786900000000,
+          },
+        ],
+        invitations: [
+          {
+            id: "invitation_123",
+            email: "friend@example.com",
+            role: "viewer",
+            status: "pending",
+            expiresAt: 1787500000000,
+            sentAt: 1786900000000,
+            delivery: {
+              purpose: "invite",
+              status: "retry_scheduled",
+              attemptCount: 1,
+              maxAttempts: 5,
+              lastErrorCode: "provider_http_429",
+              updatedAt: 1786900001000,
+            },
+          },
+        ],
+      };
+    },
+    async invite(input) {
+      calls.push(["invite", input]);
+      const replayed = inviteOperations.has(input.operationId);
+      inviteOperations.set(input.operationId, input);
+      return {
+        invitationId: "invitation_new",
+        role: input.role,
+        status: "pending",
+        delivery: { outboxId: "outbox_new", status: "queued" },
+        changed: !replayed,
+        replayed,
+      };
+    },
+    async resendInvitation(input) {
+      calls.push(["resendInvitation", input]);
+      return {
+        invitationId: input.invitationId,
+        role: "viewer",
+        status: "pending",
+        expiresAt: 1787600000000,
+        sentAt: 1787000000000,
+        delivery: { outboxId: "outbox_resend", status: "queued" },
+        changed: true,
+        replayed: false,
+      };
+    },
+    async revokeInvitation(input) {
+      calls.push(["revokeInvitation", input]);
+      return {
+        invitationId: input.invitationId,
+        role: "viewer",
+        status: "revoked",
+        changed: true,
+        replayed: false,
+      };
+    },
+    async changeRole(input) {
+      calls.push(["changeRole", input]);
+      return {
+        collaboratorId: input.collaboratorId,
+        role: input.role,
+        status: "updated",
+        changed: true,
+        replayed: false,
+      };
+    },
+    async removeCollaborator(input) {
+      calls.push(["removeCollaborator", input]);
+      return {
+        collaboratorId: input.collaboratorId,
+        role: "viewer",
+        status: "removed",
+        changed: true,
+        replayed: false,
+      };
+    },
+  };
+  const server = createTripPlannerServer({
+    persistence,
+    auth: {
+      authenticated: true,
+      scopes: [AUTH_SCOPES.share],
+      resourceMetadataUrl:
+        "https://sendero.example/.well-known/oauth-protected-resource",
+    },
+    publicWebUrl: "https://sendero.example",
+    invitationPepper: "sendero-test-invitation-pepper-at-least-thirty-two-bytes",
+    invitationSender: async () => {
+      sent.push("unexpected direct delivery");
+      throw new Error("The MCP request must not send email directly");
+    },
+  });
+  const client = new Client({ name: "sendero-private-access-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const access = await client.callTool({
+    name: "get_trip_access",
+    arguments: { tripId: "trip_access" },
+  });
+  assert.equal(access.structuredContent.members[0].role, "collaborator");
+  assert.equal(access.structuredContent.invitations[0].role, "viewer");
+  assert.deepEqual(access.structuredContent.invitations[0].delivery, {
+    purpose: "invite",
+    status: "retry_scheduled",
+    attemptCount: 1,
+    maxAttempts: 5,
+    lastErrorCode: "provider_http_429",
+    updatedAt: 1786900001000,
+  });
+  assert.match(access.content[0].text, /1 persona con acceso/i);
+  assert.doesNotMatch(access.content[0].text, /member_123|invitation_123|trip_access|get_trip_access/);
+
+  const inviteArguments = {
+    tripId: "trip_access",
+    email: "new@example.com",
+    role: "collaborator",
+    operationId: "invite-access-operation-123",
+  };
+  const invited = await client.callTool({ name: "invite_trip_member", arguments: inviteArguments });
+  const inviteReplay = await client.callTool({
+    name: "invite_trip_member",
+    arguments: inviteArguments,
+  });
+  assert.equal(invited.structuredContent.role, "collaborator");
+  assert.equal(invited.structuredContent.delivery, "queued");
+  assert.equal(inviteReplay.structuredContent.delivery, "queued");
+  assert.equal(sent.length, 0);
+  assert.equal(calls.find(([name]) => name === "invite")[1].role, "editor");
+  assert.doesNotMatch(JSON.stringify(invited), /#token=|SENDERO_INVITE|tokenHash/);
+  assert.doesNotMatch(invited.content[0].text, /invitation_new|trip_access|invite_trip_member/);
+
+  const resent = await client.callTool({
+    name: "resend_trip_invitation",
+    arguments: {
+      tripId: "trip_access",
+      invitationId: "invitation_123",
+      operationId: "resend-access-operation-123",
+    },
+  });
+  assert.equal(resent.structuredContent.delivery, "queued");
+  assert.equal(resent.structuredContent.email, "friend@example.com");
+  assert.equal(sent.length, 0);
+  const invitationTokens = calls
+    .filter(([name]) => name === "invite" || name === "resendInvitation")
+    .map(([, input]) => input.tokenHash);
+  assert.equal(new Set(invitationTokens).size, 2);
+
+  const revoked = await client.callTool({
+    name: "revoke_trip_invitation",
+    arguments: {
+      tripId: "trip_access",
+      invitationId: "invitation_123",
+      operationId: "revoke-access-operation-123",
+    },
+  });
+  assert.equal(revoked.structuredContent.status, "revoked");
+  assert.equal(revoked.content[0].text, "La invitación quedó revocada.");
+
+  const changed = await client.callTool({
+    name: "change_trip_member_role",
+    arguments: {
+      tripId: "trip_access",
+      memberId: "member_123",
+      role: "viewer",
+      operationId: "role-access-operation-123",
+    },
+  });
+  assert.equal(changed.structuredContent.role, "viewer");
+  assert.equal(calls.find(([name]) => name === "changeRole")[1].role, "viewer");
+  assert.doesNotMatch(changed.content[0].text, /member_123|change_trip_member_role/);
+
+  const removed = await client.callTool({
+    name: "remove_trip_member",
+    arguments: {
+      tripId: "trip_access",
+      memberId: "member_123",
+      operationId: "remove-access-operation-123",
+    },
+  });
+  assert.equal(removed.structuredContent.status, "removed");
+  assert.equal(removed.content[0].text, "Esa persona ya no tiene acceso al viaje.");
+  assert.doesNotMatch(removed.content[0].text, /member_123|remove_trip_member/);
 
   await client.close();
   await server.close();

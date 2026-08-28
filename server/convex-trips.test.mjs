@@ -24,6 +24,9 @@ function createDatabase() {
   const tables = {
     collaborators: [],
     reservationOperations: [],
+    tripAccessAuditEvents: [],
+    tripAccessOperations: [],
+    tripInvitations: [],
     tripWriteOperations: [],
     tripRevisions: [],
     trips: [
@@ -230,9 +233,48 @@ test("new trip save retries return the existing authoritative trip", async () =>
   const created = await save._handler(ctx, request);
   const retry = await save._handler(ctx, request);
   assert.equal(created.tripId, retry.tripId);
+  assert.match(created.webId, /^[a-f0-9]{32}$/);
+  assert.equal(retry.webId, created.webId);
+  assert.equal(db.tables.trips[1].webId, created.webId);
   assert.equal(retry.replayed, true);
   assert.equal(db.tables.trips.length, 2);
+  assert.equal(db.tables.collaborators.length, 0);
   assert.equal(db.tables.tripWriteOperations.length, 1);
+});
+
+test("existing trips receive one stable web ID and resolve it without exposing database IDs in URLs", async () => {
+  const { ensureWebId, getByWebId } = await loadTripsModule();
+  const db = createDatabase();
+  const ctx = {
+    auth: {
+      async getUserIdentity() {
+        return {
+          tokenIdentifier: "auth0|user-1",
+          email: "traveler@example.com",
+          email_verified: true,
+          name: "Traveler",
+        };
+      },
+    },
+    db,
+  };
+
+  const backfilled = await ensureWebId._handler(ctx, { tripId: "trip_1" });
+  assert.equal(backfilled.changed, true);
+  assert.match(backfilled.webId, /^[a-f0-9]{32}$/);
+  assert.notEqual(backfilled.webId, "trip_1");
+
+  const repeated = await ensureWebId._handler(ctx, { tripId: "trip_1" });
+  assert.deepEqual(repeated, {
+    tripId: "trip_1",
+    webId: backfilled.webId,
+    changed: false,
+  });
+
+  const resolved = await getByWebId._handler(ctx, { webId: backfilled.webId });
+  assert.equal(resolved._id, "trip_1");
+  assert.equal(resolved.webId, backfilled.webId);
+  assert.equal(resolved.role, "owner");
 });
 
 test("trip opening resolves exact, latest, natural, ambiguous, and missing references atomically", async () => {

@@ -70,7 +70,7 @@ test("an exact publish retry succeeds while the share remains active", () => {
   });
 });
 
-test("a reused operation ID rejects a different request fingerprint", () => {
+test("a publish retry keeps the first expiry when the server clock advances", () => {
   const fixture = retryFixture("publish");
   fixture.request.requestFingerprint = publicShareOperationFingerprint(
     "publish",
@@ -79,10 +79,20 @@ test("a reused operation ID rejects a different request fingerprint", () => {
       expiresAt: operationArgs("publish").expiresAt + 1,
     },
   );
-  assert.throws(
-    () => evaluatePublicShareOperationRetry(fixture),
-    /different arguments/,
+  assert.deepEqual(evaluatePublicShareOperationRetry(fixture), {
+    repeated: true,
+    share: fixture.share,
+  });
+});
+
+test("a reused publish operation ID still rejects a different token", () => {
+  const fixture = retryFixture("publish");
+  fixture.request.tokenHash = TOKEN_B;
+  fixture.request.requestFingerprint = publicShareOperationFingerprint(
+    "publish",
+    { ...operationArgs("publish"), tokenHash: TOKEN_B },
   );
+  assert.throws(() => evaluatePublicShareOperationRetry(fixture), /different arguments/);
 });
 
 for (const operation of ["publish", "update", "rotate"]) {

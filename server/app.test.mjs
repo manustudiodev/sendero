@@ -13,6 +13,7 @@ test("reports whether Convex storage is configured", async () => {
     service: "sendero",
     storage: "configured",
     authentication: "not_configured",
+    webAuthentication: "not_configured",
     publicSharing: "not_configured",
     mapsEmbed: "not_configured",
   });
@@ -54,6 +55,64 @@ test("publishes OAuth protected-resource metadata for ChatGPT and MCP clients", 
       resource_name: "Sendero",
     });
   }
+});
+
+test("serves the public landing and legal pages from the same Vercel/Hono app", async () => {
+  const app = createApp({ publicWebUrl: "https://sendero.example" });
+  const pages = [
+    ["/", /Planifica conversando/i],
+    ["/privacy", /Privacidad/i],
+    ["/terms", /Términos/i],
+  ];
+  for (const [path, content] of pages) {
+    const response = await app.request(path);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/html/);
+    assert.match(await response.text(), content);
+    assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+    assert.equal(response.headers.get("x-robots-tag"), null);
+  }
+});
+
+test("serves a cacheable Sendero favicon", async () => {
+  const app = createApp();
+  const response = await app.request("/favicon.ico");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") || "", /image\/svg\+xml/);
+  assert.match(await response.text(), /#a2d45e/);
+});
+
+test("serves authenticated web shells with private caching, no indexing, and same-origin APIs", async () => {
+  const app = createApp({ mapsEmbedApiKey: 'restricted-test-key-<not-real>&"' });
+  const pages = [
+    ["/app", /<title>Tus viajes · Sendero<\/title>/],
+    ["/invite", /<title>Invitación · Sendero<\/title>/],
+    ["/invite/trip_web_1234567890", /<title>Invitación · Sendero<\/title>/],
+    ["/app/trips/trip_web_1234567890", /<title>Itinerario privado · Sendero<\/title>/],
+  ];
+
+  for (const [path, content] of pages) {
+    const response = await app.request(path);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/html/);
+    assert.match(await response.clone().text(), content);
+    assert.match(response.headers.get("cache-control"), /no-store/);
+    assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
+    assert.equal(response.headers.get("cross-origin-resource-policy"), "same-origin");
+    assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
+    assert.match(response.headers.get("content-security-policy"), /connect-src 'self'/);
+    assert.match(response.headers.get("content-security-policy"), /form-action 'self'/);
+    if (!path.startsWith("/app/trips/")) {
+      assert.doesNotMatch(response.headers.get("content-security-policy"), /frame-src/);
+    }
+    assert.equal(response.headers.get("access-control-allow-origin"), null);
+  }
+
+  const restricted = await app.request("/app/trips/trip_web_1234567890");
+  const html = await restricted.text();
+  assert.match(html, /<meta name="sendero-google-maps-embed-key"/);
+  assert.match(html, /restricted-test-key-&lt;not-real&gt;&amp;&quot;/);
+  assert.match(restricted.headers.get("content-security-policy"), /frame-src https:\/\/www\.google\.com/);
 });
 
 test("rejects malformed and invalid bearer tokens with an OAuth challenge", async () => {
@@ -106,13 +165,23 @@ test("requires an authenticated token before reading Convex", async () => {
 });
 
 test("serves the public read-only shell without authentication or cross-origin access", async () => {
-  const app = createApp({ convexUrl: "https://example.convex.cloud" });
+  const app = createApp({
+    convexUrl: "https://example.convex.cloud",
+    mapsEmbedApiKey: 'public-test-key-<not-real>&"',
+  });
   const response = await app.request("/share");
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type"), /text\/html/);
-  assert.match(await response.text(), /api\/public-shares\/resolve/);
+  const html = await response.text();
+  assert.match(html, /api\/public-shares\/resolve/);
+  assert.match(html, /<meta name="sendero-google-maps-embed-key"/);
+  assert.match(html, /public-test-key-&lt;not-real&gt;&amp;&quot;/);
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+  assert.match(
+    response.headers.get("content-security-policy"),
+    /frame-src https:\/\/www\.google\.com/,
+  );
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
   assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
   assert.equal(response.headers.get("access-control-allow-origin"), null);

@@ -42,6 +42,10 @@ import {
   hashPublicShareToken,
   publicShareExpiresAt,
 } from "./public-sharing.mjs";
+import {
+  deriveInvitationToken,
+  hashInvitationToken,
+} from "./invitations.mjs";
 
 export {
   ITINERARY_UI_URI,
@@ -456,6 +460,68 @@ const tripWriteOperationIdSchema = z
   .min(8)
   .max(128)
   .regex(/^[A-Za-z0-9._:-]+$/, "Use only letters, numbers, dots, underscores, colons, and hyphens");
+const accessOperationIdSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .regex(/^[A-Za-z0-9._:-]+$/, "Use only letters, numbers, dots, underscores, colons, and hyphens");
+const memberPermissionSchema = z.enum(["viewer", "collaborator"]);
+const invitationLifecycleSchema = z.enum([
+  "pending",
+  "accepted",
+  "declined",
+  "expired",
+  "revoked",
+]);
+const invitationDeliverySchema = z.enum([
+  "queued",
+  "processing",
+  "retry_scheduled",
+  "sent",
+  "not_configured",
+  "failed",
+  "unknown",
+]);
+const invitationDeliveryReceiptSchema = z.object({
+  purpose: z.enum(["invite", "resend"]),
+  status: invitationDeliverySchema,
+  attemptCount: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().positive(),
+  provider: z.string().optional(),
+  providerEvent: z.enum([
+    "accepted",
+    "delivered",
+    "delayed",
+    "bounced",
+    "complained",
+    "failed",
+  ]).optional(),
+  lastErrorCode: z.string().optional(),
+  updatedAt: z.number().int(),
+});
+const accessOwnerSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().email().optional(),
+  role: z.literal("owner"),
+});
+const accessMemberSchema = z.object({
+  memberId: z.string().min(1),
+  name: z.string().optional(),
+  email: z.string().email().optional(),
+  role: memberPermissionSchema,
+  status: z.literal("active"),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+});
+const accessInvitationSchema = z.object({
+  invitationId: z.string().min(1),
+  email: z.string().email(),
+  role: memberPermissionSchema,
+  status: invitationLifecycleSchema,
+  expiresAt: z.number().int(),
+  sentAt: z.number().int().optional(),
+  delivery: invitationDeliveryReceiptSchema.optional(),
+});
 const publicShareStatusFields = {
   state: publicShareStateSchema,
   tripId: z.string().min(1),
@@ -978,6 +1044,45 @@ function newPublicShareOperationId() {
   return `sendero-share:${crypto.randomUUID()}`;
 }
 
+function internalMemberPermission(role) {
+  return role === "collaborator" ? "editor" : "viewer";
+}
+
+function externalMemberPermission(role) {
+  return role === "editor" ? "collaborator" : "viewer";
+}
+
+function memberPermissionLabel(role) {
+  return role === "collaborator" ? "colaborador" : "solo lectura";
+}
+
+function invitationMaterial({ pepper, tripId, email, operationId, purpose }) {
+  const token = deriveInvitationToken({
+    pepper,
+    tripId,
+    email,
+    operationId,
+    purpose,
+  });
+  return { token, tokenHash: hashInvitationToken(token, pepper) };
+}
+
+function invitationDeliveryText(delivery, email, action = "enviada") {
+  if (delivery === "sent") {
+    return `El servicio de correo aceptó la invitación para ${email}.`;
+  }
+  if (["queued", "processing", "retry_scheduled"].includes(delivery)) {
+    return `La invitación para ${email} quedó en cola de envío.`;
+  }
+  if (delivery === "not_configured") {
+    return `La invitación para ${email} quedó creada, pero el envío de correo aún no está configurado.`;
+  }
+  if (delivery === "failed") {
+    return `La invitación para ${email} quedó creada, pero el correo no pudo enviarse. Puedes reenviarla sin crear otra invitación.`;
+  }
+  return `La invitación para ${email} quedó creada; consulta Sendero para confirmar su estado de envío.`;
+}
+
 function publicShareSummary(itinerary) {
   return {
     title: itinerary.title,
@@ -1027,6 +1132,7 @@ const SERVER_INSTRUCTIONS = [
   "Use save_and_present_trip once when the user asked to persist a new trip or revision. Reuse its operationId on retries and supply expectedVersion for updates.",
   "After explicit confirmation of an exact historical version, use restore_itinerary_version once with expectedVersion and an idempotent operationId; it already returns and presents the authoritative restored snapshot.",
   "find_itineraries, get_itinerary, validate_itinerary, save_itinerary, and render_itinerary are compatibility primitives. Never chain them for an ordinary open, present, save-and-present, or restore-and-present interaction.",
+  "For private trip access, use exactly one dedicated access tool for the user's current intent: get_trip_access, invite_trip_member, resend_trip_invitation, revoke_trip_invitation, change_trip_member_role, or remove_trip_member. Do not substitute a chain of generic trip tools, and never expose tool names or stable access identifiers in user-facing prose.",
   "A single user intent may still pause for grouped critical input, genuine ambiguity, current external research, authentication recovery, or an explicit confirmation for publication, sharing, destructive, or sensitive actions.",
   "For trip creation, extract every supplied fact into prepare_trip_brief. If critical fields are missing, render_trip_requirements once with all current gaps together and stop; otherwise research and build the plan before calling the appropriate final facade.",
   "Treat a rendered Sendero component as the complete answer. Do not restate its visible contents, tool names, stable IDs, JSON, or mechanics in prose.",
@@ -1042,6 +1148,7 @@ export function createTripPlannerServer({
   mapsEmbedApiKey = process.env.GOOGLE_MAPS_EMBED_API_KEY,
   publicWebUrl = "http://localhost:8788",
   publicShareSecret,
+  invitationPepper = process.env.SENDERO_INVITE_TOKEN_PEPPER,
 } = {}) {
   function storage() {
     if (!persistence) {
@@ -1063,6 +1170,21 @@ export function createTripPlannerServer({
       ...presented,
       trips: [],
       purpose: "open",
+    };
+  }
+
+  async function invitationContext(tripId) {
+    const [trip, access] = await Promise.all([
+      storage().get(tripId),
+      storage().listAccess(tripId),
+    ]);
+    const webId = trip.webId || (await storage().ensureWebId(tripId)).webId;
+    return {
+      trip,
+      access,
+      webId,
+      title: trip.itinerary.title,
+      ownerName: access.owner.name,
     };
   }
 
@@ -1788,37 +1910,354 @@ export function createTripPlannerServer({
   );
 
   server.registerTool(
-    "share_itinerary",
+    "get_trip_access",
     {
-      title: "Invite a trip collaborator",
+      title: "Review private trip access",
       description:
-        "Invite a specific person by email to collaborate on a saved trip as an editor or viewer. This is not the public read-only link. Only the trip owner can manage access.",
-      inputSchema: {
-        tripId: z.string().min(1),
-        email: z.string().email(),
-        role: z.enum(["editor", "viewer"]),
-      },
+        "Return the owner, active members, and invitation states for one saved trip. Use this single read-only operation when the owner asks who can see or edit a trip. It is not the public-link status.",
+      inputSchema: { tripId: z.string().min(1) },
       outputSchema: {
-        collaboratorId: z.string(),
-        role: z.enum(["editor", "viewer"]),
-        status: z.enum(["pending", "accepted"]),
+        owner: accessOwnerSchema,
+        members: z.array(accessMemberSchema),
+        invitations: z.array(accessInvitationSchema),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
     },
-    async ({ tripId, email, role }) => {
+    async ({ tripId }) => {
       const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
       if (denied) return denied;
-      const result = await storage().share({ tripId, email, role });
+      const access = await storage().listAccess(tripId);
+      const members = access.collaborators.map((member) => ({
+        memberId: member.id,
+        ...(member.name ? { name: member.name } : {}),
+        ...(member.email ? { email: member.email } : {}),
+        role: externalMemberPermission(member.role),
+        status: "active",
+        ...(member.createdAt !== undefined ? { createdAt: member.createdAt } : {}),
+        ...(member.updatedAt !== undefined ? { updatedAt: member.updatedAt } : {}),
+      }));
+      const invitations = access.invitations.map((invitation) => ({
+        invitationId: invitation.id,
+        email: invitation.email,
+        role: externalMemberPermission(invitation.role),
+        status: invitation.status,
+        expiresAt: invitation.expiresAt,
+        ...(invitation.sentAt !== undefined ? { sentAt: invitation.sentAt } : {}),
+        ...(invitation.delivery ? { delivery: invitation.delivery } : {}),
+      }));
+      const activeInvitations = invitations.filter(
+        (invitation) => invitation.status === "pending",
+      ).length;
       return {
-        structuredContent: result,
+        structuredContent: {
+          owner: {
+            ...(access.owner.name ? { name: access.owner.name } : {}),
+            ...(access.owner.email ? { email: access.owner.email } : {}),
+            role: "owner",
+          },
+          members,
+          invitations,
+        },
         content: [
           {
             type: "text",
-            text:
-              result.status === "accepted"
-                ? `${email} ya puede colaborar en el viaje con permiso ${role}.`
-                : `La invitación para ${email} quedó pendiente con permiso ${role}.`,
+            text: `Este viaje tiene ${members.length} persona${members.length === 1 ? "" : "s"} con acceso y ${activeInvitations} invitación${activeInvitations === 1 ? "" : "es"} pendiente${activeInvitations === 1 ? "" : "s"}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "invite_trip_member",
+    {
+      title: "Invite someone to a private trip",
+      description:
+        "Create and queue one private-trip invitation as viewer or collaborator. Use this single operation only after the owner has specified the person, permission, and trip. Reuse operationId for an exact retry. This does not create a public link.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        email: z.string().email(),
+        role: memberPermissionSchema,
+        operationId: accessOperationIdSchema,
+      },
+      outputSchema: {
+        invitationId: z.string().min(1),
+        email: z.string().email(),
+        role: memberPermissionSchema,
+        status: z.literal("pending"),
+        delivery: invitationDeliverySchema,
+        changed: z.boolean(),
+        replayed: z.boolean(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
+    },
+    async ({ tripId, email, role, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const { tokenHash } = invitationMaterial({
+        pepper: invitationPepper,
+        tripId,
+        email,
+        operationId,
+        purpose: "invite",
+      });
+      const result = await storage().invite({
+        tripId,
+        email,
+        role: internalMemberPermission(role),
+        tokenHash,
+        operationId,
+      });
+      const delivery = result.delivery?.status || "unknown";
+      return {
+        structuredContent: {
+          invitationId: result.invitationId,
+          email,
+          role,
+          status: "pending",
+          delivery,
+          changed: result.changed,
+          replayed: result.replayed,
+        },
+        content: [
+          {
+            type: "text",
+            text: `${invitationDeliveryText(delivery, email)} El permiso es ${memberPermissionLabel(role)}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "resend_trip_invitation",
+    {
+      title: "Resend a private trip invitation",
+      description:
+        "Rotate the invitation token and resend one existing pending or expired private-trip invitation. Use this single operation for an explicit resend request and reuse operationId only for an exact retry.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        invitationId: z.string().min(1),
+        operationId: accessOperationIdSchema,
+      },
+      outputSchema: {
+        invitationId: z.string().min(1),
+        email: z.string().email(),
+        role: memberPermissionSchema,
+        status: z.literal("pending"),
+        expiresAt: z.number().int(),
+        sentAt: z.number().int(),
+        delivery: invitationDeliverySchema,
+        changed: z.boolean(),
+        replayed: z.boolean(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
+    },
+    async ({ tripId, invitationId, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const context = await invitationContext(tripId);
+      const target = context.access.invitations.find(
+        (invitation) => invitation.id === invitationId,
+      );
+      if (!target) throw new Error("No encontramos esa invitación en este viaje.");
+      const role = externalMemberPermission(target.role);
+      const { tokenHash } = invitationMaterial({
+        pepper: invitationPepper,
+        tripId,
+        email: target.email,
+        operationId,
+        purpose: "resend",
+      });
+      const result = await storage().resendInvitation({
+        tripId,
+        invitationId,
+        tokenHash,
+        operationId,
+      });
+      const delivery = result.delivery?.status || "unknown";
+      return {
+        structuredContent: {
+          invitationId: result.invitationId,
+          email: target.email,
+          role,
+          status: "pending",
+          expiresAt: result.expiresAt,
+          sentAt: result.sentAt,
+          delivery,
+          changed: result.changed,
+          replayed: result.replayed,
+        },
+        content: [
+          {
+            type: "text",
+            text: invitationDeliveryText(delivery, target.email, "reenviada"),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "revoke_trip_invitation",
+    {
+      title: "Revoke a private trip invitation",
+      description:
+        "Revoke one unaccepted private-trip invitation so its link can no longer grant access. Use remove_trip_member instead for someone who already accepted. Reuse operationId for an exact retry.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        invitationId: z.string().min(1),
+        operationId: accessOperationIdSchema,
+      },
+      outputSchema: {
+        invitationId: z.string().min(1),
+        role: memberPermissionSchema,
+        status: z.literal("revoked"),
+        changed: z.boolean(),
+        replayed: z.boolean(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
+    },
+    async ({ tripId, invitationId, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const result = await storage().revokeInvitation({ tripId, invitationId, operationId });
+      return {
+        structuredContent: {
+          invitationId: result.invitationId,
+          role: externalMemberPermission(result.role),
+          status: "revoked",
+          changed: result.changed,
+          replayed: result.replayed,
+        },
+        content: [{ type: "text", text: "La invitación quedó revocada." }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "change_trip_member_role",
+    {
+      title: "Change a private trip permission",
+      description:
+        "Change one accepted trip member between viewer and collaborator. Use this single operation only after the owner has specified the new permission. Reuse operationId for an exact retry.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        memberId: z.string().min(1),
+        role: memberPermissionSchema,
+        operationId: accessOperationIdSchema,
+      },
+      outputSchema: {
+        memberId: z.string().min(1),
+        role: memberPermissionSchema,
+        status: z.literal("active"),
+        changed: z.boolean(),
+        replayed: z.boolean(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
+    },
+    async ({ tripId, memberId, role, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const result = await storage().changeRole({
+        tripId,
+        collaboratorId: memberId,
+        role: internalMemberPermission(role),
+        operationId,
+      });
+      return {
+        structuredContent: {
+          memberId: result.collaboratorId,
+          role,
+          status: "active",
+          changed: result.changed,
+          replayed: result.replayed,
+        },
+        content: [
+          {
+            type: "text",
+            text: result.changed
+              ? `El permiso quedó actualizado a ${memberPermissionLabel(role)}.`
+              : `Esa persona ya tenía permiso de ${memberPermissionLabel(role)}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "remove_trip_member",
+    {
+      title: "Remove someone from a private trip",
+      description:
+        "Remove one accepted member from a private trip and revoke their access. Use this single operation only after the owner explicitly asks to remove that person. Reuse operationId for an exact retry.",
+      inputSchema: {
+        tripId: z.string().min(1),
+        memberId: z.string().min(1),
+        operationId: accessOperationIdSchema,
+      },
+      outputSchema: {
+        memberId: z.string().min(1),
+        role: memberPermissionSchema,
+        status: z.literal("removed"),
+        changed: z.boolean(),
+        replayed: z.boolean(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { securitySchemes: toolSecuritySchemes([AUTH_SCOPES.share]) },
+    },
+    async ({ tripId, memberId, operationId }) => {
+      const denied = authorizeTool(auth, [AUTH_SCOPES.share]);
+      if (denied) return denied;
+      const result = await storage().removeCollaborator({
+        tripId,
+        collaboratorId: memberId,
+        operationId,
+      });
+      return {
+        structuredContent: {
+          memberId: result.collaboratorId,
+          role: externalMemberPermission(result.role),
+          status: "removed",
+          changed: result.changed,
+          replayed: result.replayed,
+        },
+        content: [
+          {
+            type: "text",
+            text: result.changed
+              ? "Esa persona ya no tiene acceso al viaje."
+              : "Esa persona ya no tenía acceso al viaje.",
           },
         ],
       };

@@ -1,7 +1,15 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { publicSharePageHtml } from "./ui/generated/widgets.mjs";
+import {
+  accountPageHtml,
+  invitePageHtml,
+  landingPageHtml,
+  privacyPageHtml,
+  publicSharePageHtml,
+  restrictedTripPageHtml,
+  termsPageHtml,
+} from "./ui/generated/widgets.mjs";
 import {
   bearerChallenge,
   createAuthConfig,
@@ -11,6 +19,9 @@ import {
 import { createConvexPersistence } from "./persistence.mjs";
 import { isValidPublicShareToken } from "./public-sharing.mjs";
 import { createTripPlannerServer, publicItinerarySchema } from "./server.mjs";
+import { withGoogleMapsEmbedKey } from "./ui/resources.mjs";
+import { createWebAuth, registerWebAuthRoutes } from "./web-auth.mjs";
+import { registerWebApiRoutes } from "./web-api.mjs";
 
 function authorizationToken(request) {
   const authorization = request.header("Authorization");
@@ -34,7 +45,7 @@ function defaultPublicWebUrl(resourceServerUrl) {
 const publicSecurityHeaders = Object.freeze({
   "Cache-Control": "no-store, max-age=0",
   "Content-Security-Policy":
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; font-src 'self' data:; frame-src https://www.google.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Resource-Policy": "same-origin",
   "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
@@ -44,9 +55,53 @@ const publicSecurityHeaders = Object.freeze({
   "X-Robots-Tag": "noindex, nofollow, noarchive",
 });
 
+const siteSecurityHeaders = Object.freeze({
+  "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
+  "Content-Security-Policy":
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+});
+
+const authenticatedPageSecurityHeaders = Object.freeze({
+  "Cache-Control": "private, no-store, max-age=0",
+  "Content-Security-Policy":
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+  "Referrer-Policy": "same-origin",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-Robots-Tag": "noindex, nofollow, noarchive",
+});
+
+const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="18" fill="#a2d45e"/><path fill="#003834" d="M22 18h21v8H30v5h11v8H30v7h14v8H22z"/></svg>`;
+
 function setPublicSecurityHeaders(context) {
   for (const [name, value] of Object.entries(publicSecurityHeaders)) {
     context.header(name, value);
+  }
+}
+
+function setSiteSecurityHeaders(context) {
+  for (const [name, value] of Object.entries(siteSecurityHeaders)) {
+    context.header(name, value);
+  }
+}
+
+function setAuthenticatedPageSecurityHeaders(context, { includeMaps = false } = {}) {
+  for (const [name, value] of Object.entries(authenticatedPageSecurityHeaders)) {
+    context.header(
+      name,
+      includeMaps && name === "Content-Security-Policy"
+        ? value.replace("frame-ancestors", "frame-src https://www.google.com; frame-ancestors")
+        : value,
+    );
   }
 }
 
@@ -70,7 +125,9 @@ export function createApp({
   persistenceFactory = createConvexPersistence,
   publicWebUrl,
   publicShareSecret = process.env.SENDERO_SHARE_SECRET,
+  invitePepper = process.env.SENDERO_INVITE_TOKEN_PEPPER,
   mapsEmbedApiKey = process.env.GOOGLE_MAPS_EMBED_API_KEY,
+  webAuth,
   logger = console,
   app = new Hono(),
 } = {}) {
@@ -91,9 +148,59 @@ export function createApp({
 
   const metadata = protectedResourceMetadata(authConfig);
   const resolvedPublicWebUrl = publicWebUrl || defaultPublicWebUrl(authConfig.resourceServerUrl);
+  const resolvedWebAuth = webAuth || createWebAuth({
+    issuer: process.env.AUTH0_ISSUER,
+    audience: process.env.AUTH0_AUDIENCE,
+    clientId: process.env.AUTH0_WEB_CLIENT_ID,
+    clientSecret: process.env.AUTH0_WEB_CLIENT_SECRET,
+    publicWebUrl: resolvedPublicWebUrl,
+    sessionSecret: process.env.SENDERO_WEB_SESSION_KEY,
+    onAuthenticated: async ({ accessToken }) => {
+      await persistenceFactory({ convexUrl, authToken: accessToken }).bootstrap();
+    },
+    ...(process.env.AUTH0_WEB_SCOPES
+      ? { scopes: process.env.AUTH0_WEB_SCOPES.split(/\s+/).filter(Boolean) }
+      : {}),
+  });
 
   app.get("/.well-known/oauth-protected-resource", (context) => context.json(metadata));
   app.get("/.well-known/oauth-protected-resource/mcp", (context) => context.json(metadata));
+  registerWebAuthRoutes(app, resolvedWebAuth);
+  registerWebApiRoutes(app, {
+    convexUrl,
+    invitePepper,
+    logger,
+    persistenceFactory,
+    publicShareSecret,
+    publicWebUrl: resolvedPublicWebUrl,
+    webAuth: resolvedWebAuth,
+  });
+
+  const renderSitePage = (html) => (context) => {
+    setSiteSecurityHeaders(context);
+    return context.html(html);
+  };
+  app.get("/", renderSitePage(landingPageHtml));
+  app.get("/privacy", renderSitePage(privacyPageHtml));
+  app.get("/terms", renderSitePage(termsPageHtml));
+  app.get("/favicon.ico", (context) => {
+    context.header("Cache-Control", "public, max-age=86400");
+    context.header("Content-Type", "image/svg+xml");
+    context.header("X-Content-Type-Options", "nosniff");
+    return context.body(faviconSvg);
+  });
+
+  const renderAuthenticatedPage = (html, { includeMaps = false } = {}) => (context) => {
+    setAuthenticatedPageSecurityHeaders(context, { includeMaps });
+    return context.html(includeMaps ? withGoogleMapsEmbedKey(html, mapsEmbedApiKey) : html);
+  };
+  app.get("/app", renderAuthenticatedPage(accountPageHtml));
+  app.get("/invite", renderAuthenticatedPage(invitePageHtml));
+  app.get("/invite/:webId", renderAuthenticatedPage(invitePageHtml));
+  app.get(
+    "/app/trips/:webId",
+    renderAuthenticatedPage(restrictedTripPageHtml, { includeMaps: true }),
+  );
 
   app.get("/health", (context) =>
     context.json({
@@ -101,6 +208,7 @@ export function createApp({
       service: "sendero",
       storage: convexUrl ? "configured" : "not_configured",
       authentication: authConfig.configured ? "configured" : "not_configured",
+      webAuthentication: resolvedWebAuth.configured ? "configured" : "not_configured",
       publicSharing:
         typeof publicShareSecret === "string" && Buffer.byteLength(publicShareSecret, "utf8") >= 32
           ? "configured"
@@ -113,7 +221,7 @@ export function createApp({
 
   app.get("/share", (context) => {
     setPublicSecurityHeaders(context);
-    return context.html(publicSharePageHtml);
+    return context.html(withGoogleMapsEmbedKey(publicSharePageHtml, mapsEmbedApiKey));
   });
 
   app.post("/api/public-shares/resolve", async (context) => {
@@ -214,6 +322,7 @@ export function createApp({
       mapsEmbedApiKey,
       publicWebUrl: resolvedPublicWebUrl,
       publicShareSecret,
+      invitationPepper: invitePepper,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
     await server.connect(transport);

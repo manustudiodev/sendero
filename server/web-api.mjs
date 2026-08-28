@@ -1,0 +1,604 @@
+import { z } from "zod";
+import {
+  deriveInvitationToken,
+  hashInvitationToken,
+  isValidInvitationToken,
+} from "./invitations.mjs";
+import {
+  buildPublicShareUrl,
+  derivePublicShareToken,
+  hashPublicShareToken,
+  publicShareExpiresAt,
+} from "./public-sharing.mjs";
+
+const MAX_BODY_BYTES = 16 * 1024;
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const WEB_ID_PATTERN = /^[A-Za-z0-9_-]{20,64}$/;
+const OPERATION_ID_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/;
+
+const webIdSchema = z.string().regex(WEB_ID_PATTERN);
+const operationIdSchema = z.string().regex(OPERATION_ID_PATTERN);
+const memberRoleSchema = z.enum(["viewer", "editor"]);
+const emailSchema = z.string().trim().email().max(254).transform((value) => value.toLowerCase());
+const reservationStatusSchema = z.enum(["pending", "confirmed", "cancelled"]);
+
+const reservationSchema = z.object({
+  activityId: z.string().min(1).max(160),
+  dayDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  expectedVersion: z.number().int().positive(),
+  operationId: operationIdSchema,
+  status: reservationStatusSchema,
+}).strict();
+
+const inviteSchema = z.object({
+  email: emailSchema,
+  operationId: operationIdSchema,
+  role: memberRoleSchema,
+}).strict();
+
+const operationSchema = z.object({ operationId: operationIdSchema }).strict();
+const roleSchema = z.object({
+  operationId: operationIdSchema,
+  role: memberRoleSchema,
+}).strict();
+const accessSchema = z.object({
+  generalAccess: z.enum(["restricted", "public_link"]),
+  operationId: operationIdSchema,
+}).strict();
+const inspectSchema = z.object({
+  token: z.string().optional(),
+  webId: z.string().optional(),
+}).strict();
+
+function permissionsForRole(role) {
+  return {
+    editInSendero: role === "owner" || role === "editor",
+    manageAccess: role === "owner",
+    publish: role === "owner",
+    updateReservationStatus: role === "owner" || role === "editor",
+    view: true,
+  };
+}
+
+function isoTime(value) {
+  return Number.isFinite(Number(value)) ? new Date(Number(value)).toISOString() : "";
+}
+
+function safeTripSummary(trip) {
+  return {
+    webId: trip.webId,
+    title: trip.title,
+    destination: trip.destination,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    currentVersion: trip.currentVersion,
+    role: trip.role,
+    updatedAt: isoTime(trip.updatedAt),
+  };
+}
+
+function tripEnvelope(trip) {
+  return {
+    trip: {
+      webId: trip.webId,
+      role: trip.role,
+      version: trip.version,
+      updatedAt: isoTime(trip.updatedAt),
+      itinerary: trip.itinerary,
+      permissions: permissionsForRole(trip.role),
+    },
+  };
+}
+
+function invitationDetails(inspection, invitedEmail = "") {
+  return {
+    destination: inspection.trip?.destination || "",
+    expiresAt: isoTime(inspection.expiresAt),
+    invitedEmail,
+    inviterName: inspection.inviterName || "",
+    role: inspection.role,
+    title: inspection.trip?.title || "Viaje compartido",
+    webId: inspection.trip?.webId || "",
+  };
+}
+
+function errorResponse(context, code, status, message, retryable = status >= 500) {
+  return context.json({ error: { code, message, retryable } }, status);
+}
+
+function mappedFailure(context, error, logger) {
+  const message = typeof error?.message === "string" ? error.message : "";
+  if (/Unauthenticated|Sign in|authentication/i.test(message)) {
+    return errorResponse(context, "authentication_required", 401, "Inicia sesión para continuar.");
+  }
+  if (/Owner access|Only the trip owner|Editor access|access denied|required access/i.test(message)) {
+    return errorResponse(context, "forbidden", 403, "No tienes permiso para hacer ese cambio.");
+  }
+  if (/not found/i.test(message)) {
+    return errorResponse(context, "not_found", 404, "No encontramos ese recurso.");
+  }
+  if (/version changed|changed after|already has|already used|cannot be resent|is revoked|is declined|is accepted/i.test(message)) {
+    return errorResponse(context, "conflict", 409, "El estado cambió. Actualiza la página e intenta nuevamente.");
+  }
+  if (/valid|invalid|required|expiry|expired|does not have a reservation/i.test(message)) {
+    return errorResponse(context, "invalid_request", 400, "Revisa los datos e intenta nuevamente.");
+  }
+  logger.warn?.("[sendero.web-api] request failed", { code: "request_failed" });
+  return errorResponse(
+    context,
+    "temporarily_unavailable",
+    503,
+    "Sendero no está disponible temporalmente.",
+    true,
+  );
+}
+
+async function readJson(context, schema) {
+  if (!context.req.header("Content-Type")?.toLowerCase().startsWith("application/json")) {
+    throw new Error("A valid JSON body is required");
+  }
+  const declaredLength = Number(context.req.header("Content-Length") || 0);
+  if (declaredLength > MAX_BODY_BYTES) throw new Error("Invalid request body");
+  const raw = await context.req.text();
+  if (raw.length > MAX_BODY_BYTES) throw new Error("Invalid request body");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid JSON body");
+  }
+  return schema.parse(parsed);
+}
+
+function requireWebId(context) {
+  return webIdSchema.parse(context.req.param("webId"));
+}
+
+function activePublicShare(status) {
+  return status?.status === "active";
+}
+
+export function registerWebApiRoutes(app, {
+  convexUrl,
+  invitePepper,
+  logger = console,
+  now = () => Date.now(),
+  persistenceFactory,
+  publicShareSecret,
+  publicWebUrl,
+  webAuth,
+} = {}) {
+  async function sessionContext(context, { mutate = false } = {}) {
+    const session = await webAuth.accessSession(context);
+    if (!session) {
+      return { response: errorResponse(context, "authentication_required", 401, "Inicia sesión para continuar.") };
+    }
+    if (mutate && !webAuth.validateCsrf(context, session)) {
+      return { response: errorResponse(context, "invalid_csrf", 403, "Actualiza la página e intenta nuevamente.") };
+    }
+    return {
+      session,
+      storage: persistenceFactory({ convexUrl, authToken: session.accessToken }),
+    };
+  }
+
+  async function authenticated(context, handler, options) {
+    const access = await sessionContext(context, options);
+    if (access.response) return access.response;
+    try {
+      return await handler(access);
+    } catch (error) {
+      return mappedFailure(context, error, logger);
+    }
+  }
+
+  async function tripByWebId(storage, context) {
+    return storage.getByWebId(requireWebId(context));
+  }
+
+  app.get("/api/trips", (context) => authenticated(context, async ({ storage }) => {
+    const trips = await storage.list();
+    return context.json({ data: { trips: trips.map(safeTripSummary) } });
+  }));
+
+  app.get("/api/trips/:webId", (context) => authenticated(context, async ({ storage }) => {
+    const trip = await tripByWebId(storage, context);
+    return context.json({ data: tripEnvelope(trip) });
+  }));
+
+  app.patch("/api/trips/:webId/reservations/status", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, reservationSchema);
+      const trip = await tripByWebId(storage, context);
+      await storage.updateReservation({ tripId: trip.id, ...input });
+      return context.json({ data: tripEnvelope(await storage.getByWebId(trip.webId)) });
+    },
+    { mutate: true },
+  ));
+
+  app.get("/api/trips/:webId/access", (context) => authenticated(context, async ({ storage }) => {
+    const trip = await tripByWebId(storage, context);
+    const [access, sharing] = await Promise.all([
+      storage.listAccess(trip.id),
+      storage.publicStatus(trip.id),
+    ]);
+    return context.json({
+      data: {
+        generalAccess: { mode: activePublicShare(sharing) ? "public_link" : "restricted" },
+        invitations: (access.invitations || [])
+          .filter((entry) => entry.status === "pending" || entry.status === "expired")
+          .map((entry) => ({
+            ...entry,
+            expiresAt: isoTime(entry.expiresAt),
+          })),
+        // Historical pending collaborator rows are recovery candidates only.
+        // They stay separate from members and bearer-backed invitations so
+        // merely matching an email can never look like, or become, access.
+        legacyInvitations: access.legacyInvitations || [],
+        members: access.collaborators || [],
+        owner: access.owner,
+      },
+    });
+  }));
+
+  app.patch("/api/trips/:webId/access", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, accessSchema);
+      const trip = await tripByWebId(storage, context);
+      const status = await storage.publicStatus(trip.id);
+      if (input.generalAccess === "restricted") {
+        if (activePublicShare(status)) {
+          await storage.revokePublic({ tripId: trip.id, operationId: input.operationId });
+        }
+        return context.json({ data: { generalAccess: { mode: "restricted" } } });
+      }
+
+      const token = derivePublicShareToken({
+        secret: publicShareSecret,
+        purpose: "publish",
+        tripId: trip.id,
+        operationId: input.operationId,
+      });
+      if (activePublicShare(status)) {
+        if (status.isStale) {
+          await storage.updatePublic({
+            tripId: trip.id,
+            expectedVersion: trip.version,
+            operationId: input.operationId,
+          });
+          return context.json({ data: { generalAccess: { mode: "public_link" } } });
+        }
+        try {
+          // A lost HTTP response must be recoverable with the same operationId.
+          // Convex recognizes the replay and the deterministic token rebuilds
+          // the exact URL without persisting the bearer value.
+          await storage.publishPublic({
+            tripId: trip.id,
+            expectedVersion: trip.version,
+            tokenHash: hashPublicShareToken(token),
+            expiresAt: publicShareExpiresAt(365, now()),
+            operationId: input.operationId,
+          });
+          return context.json({ data: {
+            generalAccess: { mode: "public_link" },
+            shareUrl: buildPublicShareUrl({ baseUrl: publicWebUrl, token }),
+          } });
+        } catch (error) {
+          if (/already has an active public link/i.test(error?.message || "")) {
+            return context.json({ data: { generalAccess: { mode: "public_link" } } });
+          }
+          throw error;
+        }
+      }
+
+      await storage.publishPublic({
+        tripId: trip.id,
+        expectedVersion: trip.version,
+        tokenHash: hashPublicShareToken(token),
+        expiresAt: publicShareExpiresAt(365, now()),
+        operationId: input.operationId,
+      });
+      return context.json({
+        data: {
+          generalAccess: { mode: "public_link" },
+          shareUrl: buildPublicShareUrl({ baseUrl: publicWebUrl, token }),
+        },
+      });
+    },
+    { mutate: true },
+  ));
+
+  app.post("/api/trips/:webId/access/public-link/rotate", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, operationSchema);
+      const trip = await tripByWebId(storage, context);
+      const status = await storage.publicStatus(trip.id);
+      if (!activePublicShare(status)) throw new Error("Public link not found");
+      const token = derivePublicShareToken({
+        secret: publicShareSecret,
+        purpose: "rotate",
+        tripId: trip.id,
+        operationId: input.operationId,
+      });
+      await storage.rotatePublic({
+        tripId: trip.id,
+        tokenHash: hashPublicShareToken(token),
+        operationId: input.operationId,
+      });
+      return context.json({ data: {
+        generalAccess: { mode: "public_link" },
+        shareUrl: buildPublicShareUrl({ baseUrl: publicWebUrl, token }),
+      } });
+    },
+    { mutate: true },
+  ));
+
+  app.post("/api/trips/:webId/invitations", (context) => authenticated(
+    context,
+    async ({ session, storage }) => {
+      const input = await readJson(context, inviteSchema);
+      const trip = await tripByWebId(storage, context);
+      const token = deriveInvitationToken({
+        pepper: invitePepper,
+        tripId: trip.id,
+        email: input.email,
+        operationId: input.operationId,
+        purpose: "invite",
+      });
+      const expiresAt = now() + INVITATION_TTL_MS;
+      const result = await storage.invite({
+        tripId: trip.id,
+        email: input.email,
+        role: input.role,
+        expiresAt,
+        tokenHash: hashInvitationToken(token, invitePepper),
+        operationId: input.operationId,
+      });
+      return context.json({
+        data: {
+          invitationId: result.invitationId,
+          status: result.status,
+          // The Convex mutation transactionally persisted and scheduled this
+          // delivery. Do not add a second synchronous provider call here: the
+          // durable worker owns retries and provider idempotency.
+          delivery: result.delivery?.status || "unknown",
+        },
+      }, 201);
+    },
+    { mutate: true },
+  ));
+
+  app.post("/api/trips/:webId/legacy-invitations/:collaboratorId/migrate", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, operationSchema);
+      const trip = await tripByWebId(storage, context);
+      // This owner-only lookup can also resolve an already-migrated row, which
+      // lets a lost HTTP response replay the exact bearer generation without
+      // exposing revoked legacy rows in the normal access list.
+      const legacyInvitation = await storage.getLegacyInvitationForMigration({
+        tripId: trip.id,
+        collaboratorId: context.req.param("collaboratorId"),
+      });
+      const token = deriveInvitationToken({
+        pepper: invitePepper,
+        tripId: trip.id,
+        email: legacyInvitation.email,
+        operationId: input.operationId,
+        purpose: "invite",
+      });
+      const result = await storage.migrateLegacyInvitation({
+        tripId: trip.id,
+        collaboratorId: legacyInvitation.id,
+        tokenHash: hashInvitationToken(token, invitePepper),
+        operationId: input.operationId,
+      });
+      return context.json({
+        data: {
+          invitationId: result.invitationId,
+          legacyCollaboratorId: result.legacyCollaboratorId,
+          status: result.status,
+          delivery: result.delivery?.status || "unknown",
+        },
+      }, 201);
+    },
+    { mutate: true },
+  ));
+
+  app.delete("/api/trips/:webId/legacy-invitations/:collaboratorId", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, operationSchema);
+      const trip = await tripByWebId(storage, context);
+      const result = await storage.removeCollaborator({
+        tripId: trip.id,
+        collaboratorId: context.req.param("collaboratorId"),
+        operationId: input.operationId,
+      });
+      return context.json({ data: result });
+    },
+    { mutate: true },
+  ));
+
+  app.post("/api/trips/:webId/invitations/:invitationId/resend", (context) => authenticated(
+    context,
+    async ({ session, storage }) => {
+      const input = await readJson(context, operationSchema);
+      const trip = await tripByWebId(storage, context);
+      const access = await storage.listAccess(trip.id);
+      const invitation = (access.invitations || []).find(
+        (entry) => entry.id === context.req.param("invitationId"),
+      );
+      if (!invitation) throw new Error("Invitation not found");
+      const token = deriveInvitationToken({
+        pepper: invitePepper,
+        tripId: trip.id,
+        email: invitation.email,
+        operationId: input.operationId,
+        purpose: "resend",
+      });
+      const expiresAt = now() + INVITATION_TTL_MS;
+      const result = await storage.resendInvitation({
+        tripId: trip.id,
+        invitationId: invitation.id,
+        tokenHash: hashInvitationToken(token, invitePepper),
+        expiresAt,
+        operationId: input.operationId,
+      });
+      return context.json({ data: {
+        invitationId: result.invitationId,
+        status: result.status,
+        delivery: result.delivery?.status || "unknown",
+      } });
+    },
+    { mutate: true },
+  ));
+
+  app.delete("/api/trips/:webId/invitations/:invitationId", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, operationSchema);
+      const trip = await tripByWebId(storage, context);
+      const result = await storage.revokeInvitation({
+        tripId: trip.id,
+        invitationId: context.req.param("invitationId"),
+        operationId: input.operationId,
+      });
+      return context.json({ data: result });
+    },
+    { mutate: true },
+  ));
+
+  app.patch("/api/trips/:webId/access/:collaboratorId", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, roleSchema);
+      const trip = await tripByWebId(storage, context);
+      const result = await storage.changeRole({
+        tripId: trip.id,
+        collaboratorId: context.req.param("collaboratorId"),
+        role: input.role,
+        operationId: input.operationId,
+      });
+      return context.json({ data: result });
+    },
+    { mutate: true },
+  ));
+
+  app.delete("/api/trips/:webId/access/:collaboratorId", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const input = await readJson(context, operationSchema);
+      const trip = await tripByWebId(storage, context);
+      const result = await storage.removeCollaborator({
+        tripId: trip.id,
+        collaboratorId: context.req.param("collaboratorId"),
+        operationId: input.operationId,
+      });
+      return context.json({ data: result });
+    },
+    { mutate: true },
+  ));
+
+  app.post("/api/invitations/inspect", async (context) => {
+    try {
+      const input = await readJson(context, inspectSchema);
+      let pending;
+      if (input.token) {
+        if (!input.webId || !isValidInvitationToken(input.token)) {
+          return context.json({ data: { state: "unavailable" } });
+        }
+        pending = {
+          webId: webIdSchema.parse(input.webId),
+          tokenHash: hashInvitationToken(input.token, invitePepper),
+        };
+      } else {
+        pending = await webAuth.readPendingInvitation(context);
+      }
+      if (!pending?.webId || !pending?.tokenHash) {
+        return context.json({ data: { state: "unavailable" } });
+      }
+
+      const publicStorage = persistenceFactory({ convexUrl });
+      const inspection = await publicStorage.inspectInvitation(pending);
+      if (inspection?.state !== "available") {
+        webAuth.clearPendingInvitation(context);
+        return context.json({ data: { state: "unavailable" } });
+      }
+      await webAuth.storePendingInvitation(context, pending);
+      const session = await webAuth.accessSession(context);
+      if (!session) {
+        return context.json({ data: {
+          state: "signed_out",
+          invitation: invitationDetails(inspection),
+        } });
+      }
+      if (session.emailVerified !== true) {
+        return context.json({ data: {
+          state: "email_unverified",
+          invitation: invitationDetails(inspection),
+        } });
+      }
+      const storage = persistenceFactory({ convexUrl, authToken: session.accessToken });
+      const mine = await storage.listInvitations();
+      const invitation = mine.find((entry) => entry.id === inspection.invitationId);
+      if (!invitation) {
+        return context.json({ data: {
+          state: "email_mismatch",
+          invitation: invitationDetails(inspection),
+        } });
+      }
+      return context.json({ data: {
+        state: "ready",
+        invitation: invitationDetails(inspection, session.email),
+      } });
+    } catch {
+      return context.json({ data: { state: "unavailable" } });
+    }
+  });
+
+  async function respondToInvitation(context, decision) {
+    return authenticated(context, async ({ storage }) => {
+      const input = await readJson(context, operationSchema);
+      const pending = await webAuth.readPendingInvitation(context);
+      if (!pending?.webId || !pending?.tokenHash) throw new Error("Invitation not found");
+      const inspection = await persistenceFactory({ convexUrl }).inspectInvitation(pending);
+      if (inspection?.state !== "available") throw new Error("Invitation not found");
+      const mine = await storage.listInvitations();
+      const invitation = mine.find((entry) => entry.id === inspection.invitationId);
+      if (!invitation) throw new Error("Invitation not found for this verified email");
+      const result = decision === "accept"
+        ? await storage.acceptInvitation({
+          invitationId: invitation.id,
+          tokenHash: pending.tokenHash,
+          operationId: input.operationId,
+        })
+        : await storage.declineInvitation({
+          invitationId: invitation.id,
+          tokenHash: pending.tokenHash,
+          operationId: input.operationId,
+        });
+      webAuth.clearPendingInvitation(context);
+      const expectedStatus = decision === "accept" ? "accepted" : "declined";
+      if (result.status !== expectedStatus) {
+        return errorResponse(
+          context,
+          "invitation_unavailable",
+          409,
+          "La invitación ya no está disponible.",
+          false,
+        );
+      }
+      return context.json({ data: {
+        status: result.status,
+        webId: inspection.trip.webId,
+      } });
+    }, { mutate: true });
+  }
+
+  app.post("/api/invitations/accept", (context) => respondToInvitation(context, "accept"));
+  app.post("/api/invitations/decline", (context) => respondToInvitation(context, "decline"));
+}

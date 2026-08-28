@@ -1,112 +1,13 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-
-type Role = "owner" | "editor" | "viewer";
-type ReadContext = QueryCtx | MutationCtx;
-
-const roleRank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
-
-function cleanEmail(value: string | undefined) {
-  return value?.trim().toLowerCase() || undefined;
-}
-
-function customIdentityValue(
-  identity: Record<string, unknown>,
-  field: "email" | "name",
-) {
-  const namespace = process.env.AUTH0_CLAIMS_NAMESPACE?.replace(/\/$/, "");
-  const value = namespace ? identity[`${namespace}/${field}`] : undefined;
-  return typeof value === "string" ? value : undefined;
-}
-
-async function identity(ctx: ReadContext) {
-  const value = await ctx.auth.getUserIdentity();
-  if (!value) throw new Error("Unauthenticated");
-  return value;
-}
-
-async function findCurrentUser(ctx: ReadContext) {
-  const currentIdentity = await identity(ctx);
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_token_identifier", (q) =>
-      q.eq("tokenIdentifier", currentIdentity.tokenIdentifier),
-    )
-    .unique();
-  return { currentIdentity, user };
-}
-
-async function ensureCurrentUser(ctx: MutationCtx) {
-  const { currentIdentity, user } = await findCurrentUser(ctx);
-  const now = Date.now();
-  const identityClaims = currentIdentity as unknown as Record<string, unknown>;
-  const email = cleanEmail(
-    currentIdentity.email || customIdentityValue(identityClaims, "email"),
-  );
-  const name =
-    (currentIdentity.name || customIdentityValue(identityClaims, "name"))?.trim() ||
-    undefined;
-
-  let userId = user?._id;
-  if (!userId) {
-    userId = await ctx.db.insert("users", {
-      tokenIdentifier: currentIdentity.tokenIdentifier,
-      email,
-      name,
-      createdAt: now,
-      updatedAt: now,
-    });
-  } else if (user.email !== email || user.name !== name) {
-    await ctx.db.patch(userId, { email, name, updatedAt: now });
-  }
-
-  if (email) {
-    const invitations = await ctx.db
-      .query("collaborators")
-      .withIndex("by_invited_email", (q) => q.eq("invitedEmail", email))
-      .collect();
-    for (const invitation of invitations) {
-      if (invitation.status === "pending") {
-        await ctx.db.patch(invitation._id, {
-          userId,
-          status: "accepted",
-          updatedAt: now,
-        });
-      }
-    }
-  }
-
-  const ensured = await ctx.db.get(userId);
-  if (!ensured) throw new Error("Unable to provision user");
-  return ensured;
-}
-
-async function requireAccess(
-  ctx: ReadContext,
-  tripId: Id<"trips">,
-  minimumRole: Role,
-) {
-  const trip = await ctx.db.get(tripId);
-  if (!trip) throw new Error("Trip not found");
-
-  const { user } = await findCurrentUser(ctx);
-  if (!user) throw new Error("User profile not provisioned");
-
-  if (trip.ownerId === user._id) return { trip, user, role: "owner" as const };
-
-  const collaborator = await ctx.db
-    .query("collaborators")
-    .withIndex("by_trip_and_user", (q) => q.eq("tripId", tripId).eq("userId", user._id))
-    .unique();
-  if (!collaborator || collaborator.status !== "accepted") {
-    throw new Error("Trip access denied");
-  }
-  if (roleRank[collaborator.role] < roleRank[minimumRole]) {
-    throw new Error(`${minimumRole} access required`);
-  }
-  return { trip, user, role: collaborator.role };
-}
+import { mutation, query, type MutationCtx } from "./_generated/server";
+import {
+  bootstrapCurrentUser,
+  ensureCurrentUser,
+  listAccessibleTrips,
+  requireAccess,
+  type ReadContext,
+} from "./tripAccess";
 
 function itineraryMetadata(snapshot: unknown) {
   if (!snapshot || typeof snapshot !== "object") throw new Error("Invalid itinerary snapshot");
@@ -157,42 +58,10 @@ function normalizeSearchText(value: string) {
     .trim();
 }
 
-async function listAccessibleTrips(ctx: ReadContext) {
-  const { user } = await findCurrentUser(ctx);
-  if (!user) return [];
-
-  const owned = await ctx.db
-    .query("trips")
-    .withIndex("by_owner_and_status", (q) =>
-      q.eq("ownerId", user._id).eq("status", "active"),
-    )
-    .collect();
-  const memberships = await ctx.db
-    .query("collaborators")
-    .withIndex("by_user", (q) => q.eq("userId", user._id))
-    .collect();
-
-  const results = new Map<string, Record<string, unknown>>();
-  for (const trip of owned) {
-    results.set(trip._id, { ...trip, role: "owner" });
-  }
-  for (const membership of memberships) {
-    if (membership.status !== "accepted" || membership.role === "owner") continue;
-    const trip = await ctx.db.get(membership.tripId);
-    if (trip?.status === "active") {
-      results.set(trip._id, { ...trip, role: membership.role });
-    }
-  }
-  return [...results.values()].sort(
-    (left, right) =>
-      Number(right.updatedAt) - Number(left.updatedAt) ||
-      String(left._id).localeCompare(String(right._id)),
-  );
-}
-
 function tripSummary(trip: Record<string, unknown>) {
   return {
     id: trip._id,
+    webId: trip.webId,
     title: trip.title,
     destination: trip.destination,
     startDate: trip.startDate,
@@ -201,6 +70,23 @@ function tripSummary(trip: Record<string, unknown>) {
     role: trip.role,
     updatedAt: trip.updatedAt,
   };
+}
+
+function assertWebId(value: string) {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(value)) throw new Error("Invalid trip web ID");
+  return value;
+}
+
+async function allocateWebId(ctx: MutationCtx) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const webId = crypto.randomUUID().replace(/-/g, "");
+    const existing = await ctx.db
+      .query("trips")
+      .withIndex("by_web_id", (q) => q.eq("webId", webId))
+      .unique();
+    if (!existing) return webId;
+  }
+  throw new Error("Unable to allocate a unique trip web ID");
 }
 
 async function revisionSummaries(ctx: ReadContext, tripId: Id<"trips">) {
@@ -216,6 +102,18 @@ async function revisionSummaries(ctx: ReadContext, tripId: Id<"trips">) {
 export const listMine = query({
   args: {},
   handler: async (ctx) => listAccessibleTrips(ctx),
+});
+
+export const bootstrapSession = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const result = await bootstrapCurrentUser(ctx);
+    return {
+      userId: result.user._id,
+      email: result.user.email,
+      emailVerified: result.user.emailVerified === true,
+    };
+  },
 });
 
 export const open = query({
@@ -290,6 +188,35 @@ export const get = query({
   },
 });
 
+export const getByWebId = query({
+  args: { webId: v.string() },
+  handler: async (ctx, { webId }) => {
+    const trip = await ctx.db
+      .query("trips")
+      .withIndex("by_web_id", (q) => q.eq("webId", assertWebId(webId)))
+      .unique();
+    if (!trip) throw new Error("Trip not found");
+    const access = await requireAccess(ctx, trip._id, "viewer");
+    return {
+      ...access.trip,
+      role: access.role,
+      revisions: await revisionSummaries(ctx, trip._id),
+    };
+  },
+});
+
+export const ensureWebId = mutation({
+  args: { tripId: v.id("trips") },
+  handler: async (ctx, { tripId }) => {
+    await ensureCurrentUser(ctx);
+    const access = await requireAccess(ctx, tripId, "owner");
+    if (access.trip.webId) return { tripId, webId: access.trip.webId, changed: false };
+    const webId = await allocateWebId(ctx);
+    await ctx.db.patch(tripId, { webId, updatedAt: Date.now() });
+    return { tripId, webId, changed: true };
+  },
+});
+
 export const getRevision = query({
   args: {
     tripId: v.id("trips"),
@@ -350,6 +277,7 @@ export const save = mutation({
       const access = await requireAccess(ctx, existingOperation.tripId, "viewer");
       return {
         tripId: existingOperation.tripId,
+        webId: access.trip.webId,
         version: access.trip.currentVersion,
         savedVersion: existingOperation.resultVersion,
         role: access.role,
@@ -362,21 +290,14 @@ export const save = mutation({
       if (expectedVersion !== undefined) {
         throw new Error("expectedVersion is only valid when updating a saved trip");
       }
+      const webId = await allocateWebId(ctx);
       const createdTripId = await ctx.db.insert("trips", {
         ownerId: user._id,
+        webId,
         ...metadata,
         snapshot: itinerary,
         currentVersion: 1,
         status: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
-      await ctx.db.insert("collaborators", {
-        tripId: createdTripId,
-        userId: user._id,
-        invitedEmail: user.email,
-        role: "owner",
-        status: "accepted",
         createdAt: now,
         updatedAt: now,
       });
@@ -402,6 +323,7 @@ export const save = mutation({
         version: 1,
         savedVersion: 1,
         role: "owner" as const,
+        webId,
         itinerary,
         replayed: false,
       };
@@ -442,6 +364,7 @@ export const save = mutation({
     });
     return {
       tripId,
+      webId: access.trip.webId,
       version,
       savedVersion: version,
       role: access.role,
@@ -587,55 +510,6 @@ export const updateReservationStatus = mutation({
       changed,
       itinerary: snapshot,
     };
-  },
-});
-
-export const share = mutation({
-  args: {
-    tripId: v.id("trips"),
-    email: v.string(),
-    role: v.union(v.literal("editor"), v.literal("viewer")),
-  },
-  handler: async (ctx, { tripId, email, role }) => {
-    await ensureCurrentUser(ctx);
-    await requireAccess(ctx, tripId, "owner");
-    const invitedEmail = cleanEmail(email);
-    if (!invitedEmail) throw new Error("A valid email is required");
-
-    const now = Date.now();
-    const invitedUser = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", invitedEmail))
-      .unique();
-    const existing = await ctx.db
-      .query("collaborators")
-      .withIndex("by_trip_and_email", (q) =>
-        q.eq("tripId", tripId).eq("invitedEmail", invitedEmail),
-      )
-      .unique();
-    const status = invitedUser ? "accepted" : "pending";
-
-    if (existing) {
-      if (existing.role === "owner") throw new Error("The trip owner role cannot be changed");
-      await ctx.db.patch(existing._id, {
-        userId: invitedUser?._id,
-        role,
-        status,
-        updatedAt: now,
-      });
-      return { collaboratorId: existing._id, role, status };
-    }
-
-    const collaboratorId = await ctx.db.insert("collaborators", {
-      tripId,
-      userId: invitedUser?._id,
-      invitedEmail,
-      role,
-      status,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return { collaboratorId, role, status };
   },
 });
 

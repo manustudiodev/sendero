@@ -11,7 +11,6 @@ export function publicShareOperationFingerprint(operation, args = {}) {
       operation,
       args.expectedVersion,
       args.tokenHash,
-      args.expiresAt,
     ]);
   }
   if (operation === "update") {

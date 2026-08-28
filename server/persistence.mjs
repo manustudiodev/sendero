@@ -2,12 +2,14 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
 const listMine = makeFunctionReference("trips:listMine");
+const bootstrapSession = makeFunctionReference("trips:bootstrapSession");
 const openTrip = makeFunctionReference("trips:open");
 const getTrip = makeFunctionReference("trips:get");
+const getTripByWebId = makeFunctionReference("trips:getByWebId");
+const ensureTripWebId = makeFunctionReference("trips:ensureWebId");
 const getTripRevision = makeFunctionReference("trips:getRevision");
 const saveTrip = makeFunctionReference("trips:save");
 const updateReservationStatus = makeFunctionReference("trips:updateReservationStatus");
-const shareTrip = makeFunctionReference("trips:share");
 const restoreTripRevision = makeFunctionReference("trips:restoreRevision");
 const previewPublicShare = makeFunctionReference("publicShares:preview");
 const getPublicShareStatus = makeFunctionReference("publicShares:status");
@@ -16,6 +18,19 @@ const updatePublicShare = makeFunctionReference("publicShares:update");
 const rotatePublicShare = makeFunctionReference("publicShares:rotate");
 const revokePublicShare = makeFunctionReference("publicShares:revoke");
 const resolvePublicShare = makeFunctionReference("publicShareResolver:resolve");
+const listMyInvitations = makeFunctionReference("tripInvitations:listMine");
+const inspectTripInvitation = makeFunctionReference("tripInvitations:inspect");
+const listTripAccess = makeFunctionReference("tripInvitations:listAccess");
+const getLegacyTripInvitationForMigration = makeFunctionReference("tripInvitations:getLegacyInvitationForMigration");
+const listTripAccessAudit = makeFunctionReference("tripInvitations:listAudit");
+const inviteTripMember = makeFunctionReference("tripInvitations:invite");
+const migrateLegacyTripInvitation = makeFunctionReference("tripInvitations:migrateLegacyInvitation");
+const resendTripInvitation = makeFunctionReference("tripInvitations:resendInvitation");
+const changeTripMemberRole = makeFunctionReference("tripInvitations:changeRole");
+const removeTripMember = makeFunctionReference("tripInvitations:removeCollaborator");
+const revokeTripInvitation = makeFunctionReference("tripInvitations:revokeInvitation");
+const acceptTripInvitation = makeFunctionReference("tripInvitations:accept");
+const declineTripInvitation = makeFunctionReference("tripInvitations:decline");
 
 function requireValue(value, message) {
   if (!value) throw new Error(message);
@@ -46,6 +61,10 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
   }
 
   return {
+    async bootstrap() {
+      return client().mutation(bootstrapSession, {});
+    },
+
     async open(reference) {
       const result = await client().query(openTrip, { reference });
       if (result.state !== "opened") {
@@ -57,6 +76,7 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       return {
         state: "opened",
         id: result.trip._id,
+        webId: result.trip.webId,
         role: result.trip.role,
         version: result.trip.currentVersion,
         itinerary: result.trip.snapshot,
@@ -73,6 +93,7 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       const trips = await client().query(listMine, {});
       return trips.map((trip) => ({
         id: trip._id,
+        webId: trip.webId,
         title: trip.title,
         destination: trip.destination,
         startDate: trip.startDate,
@@ -87,6 +108,7 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       const trip = await client().query(getTrip, { tripId });
       return {
         id: trip._id,
+        webId: trip.webId,
         role: trip.role,
         version: trip.currentVersion,
         itinerary: trip.snapshot,
@@ -96,6 +118,27 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
           createdAt: revision.createdAt,
         })),
       };
+    },
+
+    async getByWebId(webId) {
+      const trip = await client().query(getTripByWebId, { webId });
+      return {
+        id: trip._id,
+        webId: trip.webId,
+        role: trip.role,
+        version: trip.currentVersion,
+        updatedAt: trip.updatedAt,
+        itinerary: trip.snapshot,
+        revisions: trip.revisions.map((revision) => ({
+          version: revision.version,
+          reason: revision.reason,
+          createdAt: revision.createdAt,
+        })),
+      };
+    },
+
+    async ensureWebId(tripId) {
+      return client().mutation(ensureTripWebId, { tripId });
     },
 
     async getRevision({ tripId, version }) {
@@ -136,8 +179,105 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       });
     },
 
-    async share({ tripId, email, role }) {
-      return client().mutation(shareTrip, { tripId, email, role });
+    async listInvitations() {
+      return client().query(listMyInvitations, {});
+    },
+
+    async inspectInvitation({ webId, tokenHash }) {
+      return publicClient().query(inspectTripInvitation, { webId, tokenHash });
+    },
+
+    async listAccess(tripId) {
+      return client().query(listTripAccess, { tripId });
+    },
+
+    async getLegacyInvitationForMigration({ tripId, collaboratorId }) {
+      return client().query(getLegacyTripInvitationForMigration, {
+        tripId,
+        collaboratorId,
+      });
+    },
+
+    async listAccessAudit(tripId) {
+      return client().query(listTripAccessAudit, { tripId });
+    },
+
+    async invite({ tripId, email, role, expiresAt, tokenHash, operationId }) {
+      return client().mutation(inviteTripMember, {
+        tripId,
+        email,
+        role,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+        tokenHash,
+        operationId,
+      });
+    },
+
+    async migrateLegacyInvitation({
+      tripId,
+      collaboratorId,
+      tokenHash,
+      expiresAt,
+      operationId,
+    }) {
+      return client().mutation(migrateLegacyTripInvitation, {
+        tripId,
+        collaboratorId,
+        tokenHash,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+        operationId,
+      });
+    },
+
+    async resendInvitation({ tripId, invitationId, tokenHash, expiresAt, operationId }) {
+      return client().mutation(resendTripInvitation, {
+        tripId,
+        invitationId,
+        tokenHash,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+        operationId,
+      });
+    },
+
+    async changeRole({ tripId, collaboratorId, role, operationId }) {
+      return client().mutation(changeTripMemberRole, {
+        tripId,
+        collaboratorId,
+        role,
+        operationId,
+      });
+    },
+
+    async removeCollaborator({ tripId, collaboratorId, operationId }) {
+      return client().mutation(removeTripMember, {
+        tripId,
+        collaboratorId,
+        operationId,
+      });
+    },
+
+    async revokeInvitation({ tripId, invitationId, operationId }) {
+      return client().mutation(revokeTripInvitation, {
+        tripId,
+        invitationId,
+        operationId,
+      });
+    },
+
+    async acceptInvitation({ invitationId, tokenHash, operationId }) {
+      return client().mutation(acceptTripInvitation, {
+        invitationId,
+        ...(tokenHash ? { tokenHash } : {}),
+        operationId,
+      });
+    },
+
+    async declineInvitation({ invitationId, tokenHash, operationId }) {
+      return client().mutation(declineTripInvitation, {
+        invitationId,
+        ...(tokenHash ? { tokenHash } : {}),
+        operationId,
+      });
     },
 
     async restore({ tripId, version, expectedVersion, operationId }) {
