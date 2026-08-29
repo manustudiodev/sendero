@@ -683,6 +683,18 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   await server.close();
 });
 
+test("advertises a distinct MCP identity in development", async () => {
+  const server = createTripPlannerServer({ environment: "development" });
+  const client = new Client({ name: "sendero-dev-test", version: "0.1.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  assert.equal(client.getServerVersion()?.name, "sendero-dev");
+  await client.close();
+});
+
 test("accepts a provisional lodging base in a ready trip brief", async () => {
   const server = createTripPlannerServer();
   const client = new Client({ name: "sendero-test", version: "0.1.0" });

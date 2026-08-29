@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { senderoEnvironmentIdentity } from "../config/environment.mjs";
 
 export const AUTH_SCOPES = Object.freeze({
   read: "trips:read",
@@ -43,13 +44,17 @@ export function createAuthConfig({ issuer, audience, resourceServerUrl } = {}) {
   };
 }
 
-export function protectedResourceMetadata(config) {
+export function protectedResourceMetadata(
+  config,
+  { environment = process.env.SENDERO_ENVIRONMENT } = {},
+) {
+  const identity = senderoEnvironmentIdentity(environment);
   return {
     resource: config.resourceServerUrl,
     ...(config.issuer ? { authorization_servers: [config.issuer] } : {}),
     scopes_supported: [...SUPPORTED_AUTH_SCOPES],
     bearer_methods_supported: ["header"],
-    resource_name: "Sendero",
+    resource_name: identity.displayName,
   };
 }
 

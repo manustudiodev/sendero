@@ -1,6 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { senderoEnvironmentIdentity } from "../config/environment.mjs";
 import {
   accountPageHtml,
   invitePageHtml,
@@ -130,7 +131,9 @@ export function createApp({
   webAuth,
   logger = console,
   app = new Hono(),
+  environment = process.env.SENDERO_ENVIRONMENT,
 } = {}) {
+  const environmentIdentity = senderoEnvironmentIdentity(environment);
   const mcpCors = cors({
     origin: "*",
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
@@ -146,7 +149,7 @@ export function createApp({
   app.use("/mcp", mcpCors);
   app.use("/.well-known/*", mcpCors);
 
-  const metadata = protectedResourceMetadata(authConfig);
+  const metadata = protectedResourceMetadata(authConfig, { environment: environmentIdentity.environment });
   const resolvedPublicWebUrl = publicWebUrl || defaultPublicWebUrl(authConfig.resourceServerUrl);
   const resolvedWebAuth = webAuth || createWebAuth({
     issuer: process.env.AUTH0_ISSUER,
@@ -206,6 +209,7 @@ export function createApp({
     context.json({
       status: "ok",
       service: "sendero",
+      environment: environmentIdentity.environment,
       storage: convexUrl ? "configured" : "not_configured",
       authentication: authConfig.configured ? "configured" : "not_configured",
       webAuthentication: resolvedWebAuth.configured ? "configured" : "not_configured",
@@ -325,6 +329,7 @@ export function createApp({
       publicWebUrl: resolvedPublicWebUrl,
       publicShareSecret,
       invitationPepper: invitePepper,
+      environment: environmentIdentity.environment,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
     await server.connect(transport);

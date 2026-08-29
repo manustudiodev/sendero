@@ -11,6 +11,7 @@ test("reports whether Convex storage is configured", async () => {
   assert.deepEqual(await configuredResponse.json(), {
     status: "ok",
     service: "sendero",
+    environment: "production",
     storage: "configured",
     authentication: "not_configured",
     webAuthentication: "not_configured",
@@ -31,6 +32,21 @@ test("reports whether Convex storage is configured", async () => {
 
   const mapsConfigured = createApp({ mapsEmbedApiKey: "test-key" });
   assert.equal((await (await mapsConfigured.request("/health")).json()).mapsEmbed, "configured");
+});
+
+test("identifies the development web and OAuth surfaces", async () => {
+  const authConfig = createAuthConfig({
+    issuer: "https://sendero.us.auth0.com",
+    audience: "https://sendero-dev.example/mcp",
+    resourceServerUrl: "https://sendero-dev.example/mcp",
+  });
+  const app = createApp({ authConfig, environment: "development" });
+
+  assert.equal((await (await app.request("/health")).json()).environment, "development");
+  assert.equal(
+    (await (await app.request("/.well-known/oauth-protected-resource")).json()).resource_name,
+    "Sendero Dev",
+  );
 });
 
 test("publishes OAuth protected-resource metadata for ChatGPT and MCP clients", async () => {

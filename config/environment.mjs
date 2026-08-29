@@ -1,6 +1,42 @@
 export const deploymentProfiles = Object.freeze(["local", "preview", "production"]);
 
+export const senderoEnvironments = Object.freeze(["development", "production"]);
+
+export function normalizeSenderoEnvironment(value) {
+  const environment = String(value || "production").trim().toLowerCase();
+  if (!senderoEnvironments.includes(environment)) {
+    throw new Error(
+      `Unknown SENDERO_ENVIRONMENT \"${environment}\". Expected one of: ${senderoEnvironments.join(", ")}.`,
+    );
+  }
+  return environment;
+}
+
+export function senderoEnvironmentIdentity(value) {
+  const environment = normalizeSenderoEnvironment(value);
+  return environment === "development"
+    ? {
+        environment,
+        badge: "DEV",
+        displayName: "Sendero Dev",
+        mcpServerName: "sendero-dev",
+      }
+    : {
+        environment,
+        badge: "",
+        displayName: "Sendero",
+        mcpServerName: "sendero",
+      };
+}
+
 export const environmentVariables = Object.freeze([
+  {
+    name: "SENDERO_ENVIRONMENT",
+    kind: "config",
+    allowedValues: senderoEnvironments,
+    description: "Logical Sendero environment displayed by the web and MCP app.",
+    requiredIn: [],
+  },
   {
     name: "CONVEX_URL",
     kind: "url",

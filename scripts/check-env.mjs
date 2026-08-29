@@ -46,6 +46,9 @@ if (exampleMode) {
     }
     if (!value) continue;
     if (variable.kind === "url") validateUrl(variable.name, value, profile, failures);
+    if (variable.allowedValues && !variable.allowedValues.includes(value)) {
+      failures.push(`${variable.name} must be one of: ${variable.allowedValues.join(", ")}.`);
+    }
     if (variable.minBytes && Buffer.byteLength(value, "utf8") < variable.minBytes) {
       failures.push(`${variable.name} must contain at least ${variable.minBytes} bytes.`);
     }

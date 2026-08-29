@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { senderoEnvironmentIdentity } from "../config/environment.mjs";
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(webRoot, "..");
@@ -9,6 +10,8 @@ const generatedPath = process.env.SENDERO_UI_OUTPUT_PATH
   ? resolve(process.env.SENDERO_UI_OUTPUT_PATH)
   : resolve(projectRoot, "server/ui/generated/widgets.mjs");
 const styles = await readFile(resolve(webRoot, "src/styles.css"), "utf8");
+const environmentIdentity = senderoEnvironmentIdentity(process.env.SENDERO_ENVIRONMENT);
+const isDevelopment = environmentIdentity.environment === "development";
 
 const widgets = [
   { exportName: "itineraryWidgetHtml", entry: "src/itinerary/index.jsx", documentClass: "widget-document" },
@@ -134,7 +137,9 @@ function escapeHtml(value) {
 }
 
 function pageHead(metadata = {}) {
-  const title = metadata.title || "Sendero";
+  const title = isDevelopment
+    ? `${metadata.title || "Sendero"} · Dev`
+    : metadata.title || "Sendero";
   const description = metadata.description || "Planifica y comparte viajes con Sendero.";
   const canonical = publicWebUrl && metadata.canonicalPath !== undefined
     ? new URL(metadata.canonicalPath || "/", `${publicWebUrl}/`).href
@@ -179,16 +184,25 @@ async function bundleDocument(entry, documentClass = "", metadata = null) {
   const javascript = result.outputFiles.find((file) => file.path.endsWith(".js")) || result.outputFiles[0];
   if (!javascript) throw new Error(`No JavaScript output generated for ${entry}`);
   const documentClassAttribute = documentClass ? ` class="${documentClass}"` : "";
+  const environmentAttribute = isDevelopment
+    ? ` data-sendero-environment="${environmentIdentity.environment}"`
+    : "";
+  const environmentMeta = isDevelopment
+    ? `\n    <meta name="sendero-environment" content="${environmentIdentity.environment}" />`
+    : "";
+  const environmentBadge = isDevelopment
+    ? `\n    <div aria-label="Ambiente de desarrollo" class="sendero-environment-badge" role="status">${environmentIdentity.badge}</div>`
+    : "";
   return `<!doctype html>
-<html${documentClassAttribute} lang="es">
+<html${documentClassAttribute} lang="es"${environmentAttribute}>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />${environmentMeta}
     ${metadata ? pageHead(metadata) : ""}
     <style>${styles}</style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>${environmentBadge}
     <script>${safeInlineScript(javascript.text)}</script>
   </body>
 </html>`;

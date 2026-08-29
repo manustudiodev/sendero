@@ -24,6 +24,10 @@ if (remoteMode) {
 try {
   const health = await expectJson("/health", 200);
   assert(health.status === "ok" && health.service === "sendero", "/health did not identify a healthy Sendero service.");
+  assert(
+    ["development", "production"].includes(health.environment),
+    `/health reported an unknown Sendero environment: ${health.environment || "missing"}.`,
+  );
   if (remoteMode) {
     assert(
       health.webAuthentication === "configured",
@@ -53,7 +57,11 @@ try {
   if (remoteMode) await expectRemoteLoginRedirect(metadata);
 
   const initialize = await mcpCall(1, "initialize", initializeParams());
-  assert(initialize.result?.serverInfo?.name === "sendero", "MCP initialize did not identify Sendero.");
+  const expectedServerName = health.environment === "development" ? "sendero-dev" : "sendero";
+  assert(
+    initialize.result?.serverInfo?.name === expectedServerName,
+    `MCP initialize identified ${initialize.result?.serverInfo?.name || "nothing"}, expected ${expectedServerName}.`,
+  );
   const tools = await mcpCall(2, "tools/list", {});
   const toolNames = new Set(tools.result?.tools?.map(({ name }) => name));
   for (const toolName of ["open_trip", "render_itinerary", "invite_trip_member"]) {
@@ -166,6 +174,7 @@ function scrubExternalConfiguration() {
     "RESEND_API_KEY",
     "SENDERO_EMAIL_FROM",
     "GOOGLE_MAPS_EMBED_API_KEY",
+    "SENDERO_ENVIRONMENT",
   ]) delete process.env[name];
   process.env.MCP_SERVER_URL = "http://127.0.0.1:8788/mcp";
   process.env.PUBLIC_WEB_URL = "http://127.0.0.1:8788";

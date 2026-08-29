@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { senderoEnvironmentIdentity } from "../config/environment.mjs";
 import { AUTH_SCOPES, authorizeTool, toolSecuritySchemes } from "./auth.mjs";
 import {
   ITINERARY_UI_URI,
@@ -1305,7 +1306,9 @@ export function createTripPlannerServer({
   publicWebUrl = "http://localhost:8788",
   publicShareSecret,
   invitationPepper = process.env.SENDERO_INVITE_TOKEN_PEPPER,
+  environment = process.env.SENDERO_ENVIRONMENT,
 } = {}) {
+  const environmentIdentity = senderoEnvironmentIdentity(environment);
   function storage() {
     if (!persistence) {
       throw new Error("Sendero storage is unavailable in this environment.");
@@ -1355,7 +1358,7 @@ export function createTripPlannerServer({
   }
 
   const server = new McpServer(
-    { name: "sendero", version: "0.9.0" },
+    { name: environmentIdentity.mcpServerName, version: "0.9.0" },
     {
       instructions: SERVER_INSTRUCTIONS,
     },

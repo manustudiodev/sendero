@@ -6,6 +6,7 @@ Este documento hace reproducible el build y la verificación de Sendero sin guar
 
 | Variable | Local | Preview | Production | Convex deployment | Secreto | Uso |
 | --- | --- | --- | --- | --- | --- | --- |
+| `SENDERO_ENVIRONMENT` | opcional | opcional | opcional | no | no | Identidad visible `development` o `production`; si falta usa `production` |
 | `CONVEX_URL` | opcional | requerida | requerida | no | no | Runtime Hono hacia Convex |
 | `CONVEX_SITE_URL` | opcional | opcional | opcional | no | no | Reservada para HTTP Actions directas |
 | `CONVEX_DEPLOY_KEY` | no usar | requerida, clave del staging fijo | requerida, clave Production | no | sí | Build de Vercel y deploy de Convex |
@@ -65,6 +66,16 @@ Los dos últimos archivos son solo ejemplos de nombres locales y continúan excl
 6. ejecuta `git diff --check` y exige que el build no deje diferencias.
 
 El workflow no posee secretos y no despliega.
+
+## Acceso inequívoco a Dev y Production
+
+- **Production** vive en el proyecto Vercel `sendero`, usa Convex `dutiful-sparrow-339`, se anuncia como `sendero` y no muestra insignia.
+- **Dev** vive en el proyecto Vercel `sendero-dev`, usa Convex `hallowed-possum-528`, se anuncia como `sendero-dev` y muestra una insignia `DEV` en la web y dentro de los componentes MCP.
+- En ChatGPT se crean dos conexiones distintas: `Sendero` con el endpoint productivo y `Sendero Dev` con el endpoint Dev. Una conexión no cambia de backend durante una conversación.
+- Ambos proyectos Vercel están separados por aliases, deployments y variables. En el plan Hobby comparten solamente el cupo gratuito de la cuenta; Dev debe mantenerse para pruebas manuales y no para tráfico público.
+- Auth0 conserva un solo tenant y el mismo pool de usuarios, pero Dev usa su propio API audience y su propia Regular Web Application con callback al dominio Dev.
+
+`SENDERO_ENVIRONMENT=development` es obligatorio por convención en `sendero-dev`. Omitirlo mantiene el comportamiento de Production para no alterar el proyecto existente.
 
 ## Build de Vercel y Convex
 
