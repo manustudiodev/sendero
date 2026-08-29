@@ -243,7 +243,7 @@ export const ensureWebId = mutation({
   args: { tripId: v.id("trips") },
   handler: async (ctx, { tripId }) => {
     await ensureCurrentUser(ctx);
-    const access = await requireAccess(ctx, tripId, "owner");
+    const access = await requireAccess(ctx, tripId, "viewer");
     if (access.trip.webId) return { tripId, webId: access.trip.webId, changed: false };
     const webId = await allocateWebId(ctx);
     await ctx.db.patch(tripId, { webId, updatedAt: Date.now() });

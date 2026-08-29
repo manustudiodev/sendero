@@ -98,6 +98,12 @@ function safeTripSummary(trip) {
   };
 }
 
+async function ensureWebTripSummary(storage, trip) {
+  if (trip.webId) return safeTripSummary(trip);
+  const { webId } = await storage.ensureWebId(trip.id);
+  return safeTripSummary({ ...trip, webId });
+}
+
 function tripEnvelope(trip) {
   const locale = localeForTrip(trip);
   return {
@@ -238,7 +244,10 @@ export function registerWebApiRoutes(app, {
 
   app.get("/api/trips", (context) => authenticated(context, async ({ storage }) => {
     const trips = await storage.list();
-    return context.json({ data: { trips: trips.map(safeTripSummary) } });
+    const summaries = await Promise.all(
+      trips.map((trip) => ensureWebTripSummary(storage, trip)),
+    );
+    return context.json({ data: { trips: summaries } });
   }));
 
   app.get("/api/trips/:webId", (context) => authenticated(context, async ({ storage }) => {

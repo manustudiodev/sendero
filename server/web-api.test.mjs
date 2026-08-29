@@ -220,7 +220,7 @@ function jsonRequest(path, body, { csrf = CSRF, method = "POST" } = {}) {
 }
 
 test("lists only safe trip summaries for an authenticated account", async () => {
-  const { app } = fixture();
+  const { app, calls } = fixture();
   const response = await app.request("/api/trips");
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
@@ -238,6 +238,37 @@ test("lists only safe trip summaries for an authenticated account", async () => 
       }],
     },
   });
+  assert.deepEqual(calls, [["list"]]);
+});
+
+test("backfills stable web IDs before returning historical trips", async () => {
+  const backfilled = [];
+  const { app } = fixture({
+    storage: {
+      async list() {
+        return [{
+          id: "trip_legacy_1",
+          locale: "es",
+          title: "Sevilla histórica",
+          destination: "Sevilla, España",
+          startDate: "2027-03-21",
+          endDate: "2027-03-27",
+          currentVersion: 1,
+          role: "viewer",
+          updatedAt: Date.UTC(2026, 7, 20, 12),
+        }];
+      },
+      async ensureWebId(tripId) {
+        backfilled.push(tripId);
+        return { tripId, webId: WEB_ID, changed: true };
+      },
+    },
+  });
+
+  const response = await app.request("/api/trips");
+  assert.equal(response.status, 200);
+  assert.deepEqual(backfilled, ["trip_legacy_1"]);
+  assert.equal((await response.json()).data.trips[0].webId, WEB_ID);
 });
 
 test("returns the saved locale with an authenticated trip envelope", async () => {

@@ -397,6 +397,45 @@ test("existing trips receive one stable web ID and resolve it without exposing d
   assert.equal(resolved.snapshot.locale, "en");
 });
 
+test("authorized collaborators can backfill a stable web ID for historical trips", async () => {
+  const { ensureWebId } = await loadTripsModule();
+  const db = createDatabase();
+  db.tables.users.push({
+    _id: "user_2",
+    tokenIdentifier: "auth0|user-2",
+    email: "viewer@example.com",
+    name: "Viewer",
+    createdAt: 2,
+    updatedAt: 2,
+  });
+  db.tables.collaborators.push({
+    _id: "collaborator_1",
+    tripId: "trip_1",
+    userId: "user_2",
+    role: "viewer",
+    status: "accepted",
+    createdAt: 2,
+    updatedAt: 2,
+  });
+  const ctx = {
+    auth: {
+      async getUserIdentity() {
+        return {
+          tokenIdentifier: "auth0|user-2",
+          email: "viewer@example.com",
+          name: "Viewer",
+        };
+      },
+    },
+    db,
+  };
+
+  const result = await ensureWebId._handler(ctx, { tripId: "trip_1" });
+  assert.equal(result.changed, true);
+  assert.match(result.webId, /^[a-f0-9]{32}$/);
+  assert.equal(db.tables.trips[0].webId, result.webId);
+});
+
 test("trip opening resolves exact, latest, natural, ambiguous, and missing references atomically", async () => {
   const { listMine, open } = await loadTripsModule();
   const db = createDatabase();
