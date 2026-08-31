@@ -43,7 +43,7 @@ function installThemeSync() {
 }
 
 function supportedHostLocale(value) {
-  return ["es", "en", "pt"].includes(localeLanguage(value)) ? uiLocale(value) : "";
+  return ["es", "en", "pt", "fr", "de"].includes(localeLanguage(value)) ? uiLocale(value) : "";
 }
 
 function applyHostLocale(value) {
@@ -210,7 +210,7 @@ export function useHostLocale() {
 
 export function useComponentLocale(contentLocale) {
   const fallbackLocale = useHostLocale();
-  const hasContentLocale = ["es", "en", "pt"].includes(localeLanguage(contentLocale));
+  const hasContentLocale = ["es", "en", "pt", "fr", "de"].includes(localeLanguage(contentLocale));
   const locale = hasContentLocale ? resolveContentLocale(contentLocale) : uiLocale(fallbackLocale);
   useEffect(() => {
     activeContentLocale = hasContentLocale ? locale : "";

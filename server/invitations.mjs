@@ -128,6 +128,21 @@ function requireOutboxJob(job) {
 /**
  * Delivers one already-claimed outbox job. The durable state transition remains
  * in Convex; this function only materializes the token and calls the provider.
+ *
+ * @param {unknown} job
+ * @param {{
+ *   pepper?: string,
+ *   publicWebUrl?: string,
+ *   send?: typeof sendInvitationEmail,
+ * }} [options]
+ * @returns {Promise<
+ *   | { outcome: "sent", provider: string, providerMessageId?: string }
+ *   | {
+ *       outcome: "retry" | "failed" | "not_configured",
+ *       errorCode: string,
+ *       retryAfterMs?: number,
+ *     }
+ * >}
  */
 export async function deliverInvitationEmailOutboxJob(
   job,

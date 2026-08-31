@@ -28,6 +28,14 @@ const PUBLIC_SNAPSHOT_COPY = {
     destination: "Destino",
     sharedTrip: "Viagem compartilhada",
   },
+  fr: {
+    destination: "Destination",
+    sharedTrip: "Voyage partagé",
+  },
+  de: {
+    destination: "Reiseziel",
+    sharedTrip: "Geteilte Reise",
+  },
 };
 
 function publicSnapshotCopy(locale) {

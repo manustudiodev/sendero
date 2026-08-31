@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BrandMark } from "../components.jsx";
+import { hrefForLocale, LanguageSelector, useUiLocale } from "../i18n/LanguageSelector.jsx";
 
 export const authenticatedPageStyles = `
 :root {
@@ -24,6 +25,7 @@ a { color: inherit; }
 :focus-visible { outline: 3px solid rgba(0, 102, 94, .32); outline-offset: 3px; }
 .web-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 22px 0 52px; }
 .web-topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 42px; }
+.web-topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .web-brand { display: inline-flex; align-items: center; gap: 10px; color: inherit; font-size: 17px; font-weight: 700; text-decoration: none; }
 .web-brand .brand-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: var(--web-grass); color: #003834; }
 .web-account { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
@@ -33,6 +35,7 @@ a { color: inherit; }
 .web-account-action:hover:not(:disabled) { background: var(--web-soft); }
 .web-account-action:disabled { cursor: wait; opacity: .58; }
 .web-account-error { margin: 0; color: var(--web-danger); font-size: 14px; text-align: right; }
+.web-language-selector select { min-height: 36px; border: 1px solid var(--web-line); border-radius: 9px; padding: 6px 27px 6px 9px; background: var(--web-surface); color: var(--web-forest); cursor: pointer; font-size: 14px; font-weight: 680; }
 .web-heading { max-width: 720px; margin-bottom: 28px; }
 .web-eyebrow { margin: 0 0 8px; color: var(--web-forest); font-size: 14px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .web-heading h1, .web-state-card h1 { margin: 0; font-size: clamp(30px, 6vw, 52px); letter-spacing: -.05em; line-height: 1.02; }
@@ -61,12 +64,51 @@ a { color: inherit; }
   .web-shell { width: min(100% - 22px, 1120px); padding-top: 14px; }
   .web-topbar { margin-bottom: 30px; }
   .web-account { align-items: flex-end; flex-direction: column; gap: 2px; }
+  .web-topbar-actions { align-items: flex-end; gap: 4px; }
   .web-user { max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .web-account-actions { gap: 0; }
   .web-account-action { min-height: 32px; padding: 5px 7px; }
   .web-state-card { border-radius: 18px; }
 }
 `;
+
+const FRAME_COPY = {
+  en: {
+    home: "Sendero, home",
+    changeAccount: "Switch account",
+    logout: "Sign out",
+    logoutError: "We couldn't sign you out. Try again.",
+    errorEyebrow: "We couldn't continue",
+  },
+  es: {
+    home: "Sendero, inicio",
+    changeAccount: "Cambiar cuenta",
+    logout: "Cerrar sesión",
+    logoutError: "No pudimos cerrar la sesión. Intenta nuevamente.",
+    errorEyebrow: "No pudimos continuar",
+  },
+  pt: {
+    home: "Sendero, início",
+    changeAccount: "Trocar conta",
+    logout: "Sair",
+    logoutError: "Não foi possível encerrar a sessão. Tente novamente.",
+    errorEyebrow: "Não foi possível continuar",
+  },
+  fr: {
+    home: "Sendero, accueil",
+    changeAccount: "Changer de compte",
+    logout: "Se déconnecter",
+    logoutError: "Impossible de vous déconnecter. Réessayez.",
+    errorEyebrow: "Impossible de continuer",
+  },
+  de: {
+    home: "Sendero, Startseite",
+    changeAccount: "Konto wechseln",
+    logout: "Abmelden",
+    logoutError: "Die Abmeldung ist fehlgeschlagen. Versuche es erneut.",
+    errorEyebrow: "Fortfahren nicht möglich",
+  },
+};
 
 function currentReturnTo() {
   const pathname = globalThis.location?.pathname || "/app";
@@ -91,7 +133,7 @@ export async function endSenderoSession(csrfToken, { changeAccount = false, retu
   globalThis.location.assign(destination);
 }
 
-function WebAccount({ csrfToken, user }) {
+function WebAccount({ copy, csrfToken, user }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -103,7 +145,7 @@ function WebAccount({ csrfToken, user }) {
       await endSenderoSession(csrfToken, { changeAccount });
     } catch {
       setBusy(false);
-      setError("No pudimos cerrar la sesión. Intenta nuevamente.");
+      setError(copy.logoutError);
     }
   }
 
@@ -111,8 +153,8 @@ function WebAccount({ csrfToken, user }) {
     <div className="web-account">
       <span className="web-user">{user.name || user.email}</span>
       <div className="web-account-actions">
-        <button className="web-account-action" disabled={busy} onClick={() => finishSession(true)} type="button">Cambiar cuenta</button>
-        <button className="web-account-action" disabled={busy} onClick={() => finishSession(false)} type="button">Cerrar sesión</button>
+        <button className="web-account-action" disabled={busy} onClick={() => finishSession(true)} type="button">{copy.changeAccount}</button>
+        <button className="web-account-action" disabled={busy} onClick={() => finishSession(false)} type="button">{copy.logout}</button>
       </div>
       {error ? <p className="web-account-error" role="alert">{error}</p> : null}
     </div>
@@ -130,16 +172,21 @@ export function WebButton({ children, className = "", tone = "secondary", ...pro
 }
 
 export function WebPageFrame({ children, csrfToken = "", user, className = "" }) {
+  const { language, locale, selectLocale } = useUiLocale();
+  const copy = FRAME_COPY[language] || FRAME_COPY.es;
   return (
     <>
       <style>{authenticatedPageStyles}</style>
       <main className={`web-shell ${className}`.trim()}>
         <header className="web-topbar">
-          <a aria-label="Sendero, inicio" className="web-brand" href="/">
+          <a aria-label={copy.home} className="web-brand" href={hrefForLocale("/", locale)}>
             <BrandMark />
             <span>Sendero</span>
           </a>
-          {user && csrfToken ? <WebAccount csrfToken={csrfToken} user={user} /> : null}
+          <div className="web-topbar-actions">
+            <LanguageSelector className="web-language-selector" locale={locale} onChange={selectLocale} />
+            {user && csrfToken ? <WebAccount copy={copy} csrfToken={csrfToken} user={user} /> : null}
+          </div>
         </header>
         {children}
       </main>
@@ -148,6 +195,8 @@ export function WebPageFrame({ children, csrfToken = "", user, className = "" })
 }
 
 export function WebState({ action, detail, kind = "status", session, title }) {
+  const { language } = useUiLocale();
+  const copy = FRAME_COPY[language] || FRAME_COPY.es;
   return (
     <WebPageFrame csrfToken={session?.csrfToken} user={session?.user}>
       <div className="web-state-layout">
@@ -158,7 +207,7 @@ export function WebState({ action, detail, kind = "status", session, title }) {
           role={kind === "error" ? "alert" : "status"}
         >
           {kind === "loading" ? <span aria-hidden="true" className="web-loading-dot" /> : null}
-          <p className="web-eyebrow">{kind === "error" ? "No pudimos continuar" : "Sendero"}</p>
+          <p className="web-eyebrow">{kind === "error" ? copy.errorEyebrow : "Sendero"}</p>
           <h1>{title}</h1>
           {detail ? <p>{detail}</p> : null}
           {action ? <div className="web-actions">{action}</div> : null}

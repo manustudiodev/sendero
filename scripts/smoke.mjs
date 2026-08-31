@@ -35,9 +35,12 @@ try {
     );
   }
 
-  await expectHtml("/", "Sendero · Planifica conversando");
-  await expectHtml("/privacy", "Privacidad · Sendero");
-  await expectHtml("/terms", "Términos · Sendero");
+  await expectRedirect("/", "/es");
+  await expectRedirect("/privacy", "/es/privacy");
+  await expectRedirect("/terms", "/es/terms");
+  await expectHtml("/es", "Sendero · Planifica conversando");
+  await expectHtml("/es/privacy", "Privacidad · Sendero");
+  await expectHtml("/es/terms", "Términos · Sendero");
   await expectHtml(
     "/share",
     "Viaje compartido · Sendero",
@@ -92,6 +95,15 @@ async function expectHtml(path, ...expectedTexts) {
   for (const expectedText of expectedTexts) {
     assert(html.includes(expectedText), `${path} did not contain expected content: ${expectedText}.`);
   }
+}
+
+async function expectRedirect(path, expectedLocation) {
+  const response = await fetch(`${baseUrl}${path}`, { redirect: "manual" });
+  assert(response.status === 307, `${path} returned ${response.status}, expected 307.`);
+  assert(
+    response.headers.get("location") === expectedLocation,
+    `${path} redirected to ${response.headers.get("location") || "nothing"}, expected ${expectedLocation}.`,
+  );
 }
 
 async function expectJson(path, status) {

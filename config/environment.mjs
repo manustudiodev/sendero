@@ -75,6 +75,13 @@ export const environmentVariables = Object.freeze([
     requiredIn: [],
   },
   {
+    name: "SENDERO_WEBMCP_PLANNING_ENABLED",
+    kind: "config",
+    allowedValues: ["true", "false"],
+    description: "Feature flag for authenticated page-level WebMCP itinerary generation.",
+    requiredIn: [],
+  },
+  {
     name: "SENDERO_SHARE_SECRET",
     kind: "secret",
     minBytes: 32,

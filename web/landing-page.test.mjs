@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import test from "node:test";
+import { landingCopy } from "./src/landing/copy.js";
 import { landingShowcaseItinerary } from "./src/landing/showcase-itinerary.js";
 
 const projectRoot = resolve(import.meta.dirname, "..");
@@ -69,9 +70,13 @@ test("build exports the landing and legal documents with public metadata", async
   assert.match(pages.landingPageHtml, /application\/ld\+json/);
   assert.match(pages.landingPageHtml, /Tu viaje empieza con una frase\./);
   assert.match(pages.landingPageHtml, /Saltar al contenido/);
-  assert.match(pages.landingPageHtml, /href:"\/app"/);
-  assert.match(pages.landingPageHtml, /children:"Mis viajes"/);
+  assert.match(pages.landingPageHtml, /sendero_locale/);
+  assert.match(pages.landingPageHtml, /Mis viajes/);
   assert.match(pages.landingPageHtml, /Abrir en ChatGPT/);
+  assert.match(pages.landingPageHtml, /Your trip starts with one sentence\./);
+  assert.match(pages.landingPageHtml, /Sua viagem come.{0,8}a com uma frase\./);
+  assert.match(pages.landingPageHtml, /Votre voyage commence par une phrase\./);
+  assert.match(pages.landingPageHtml, /Deine Reise beginnt mit einem Satz\./);
   assert.match(pages.landingPageHtml, /Haz scroll para ver c.{0,8}mo Sendero crea, organiza y comparte tu viaje\./);
   assert.match(pages.landingPageHtml, /Describe tu viaje/);
   assert.match(pages.landingPageHtml, /Iniciar recorrido de ejemplo/);
@@ -134,6 +139,7 @@ test("public site and landing-only styles include responsive, motion, and dark c
 });
 
 test("landing keeps one chronological chat, one passive composer, a seven-scene story, and reversible scrubbed interactions", async () => {
+  const spanishCopy = landingCopy("es");
   const [landingSource, landingStyles, motionSource] = await Promise.all([
     readFile(resolve(projectRoot, "web/src/landing/LandingApp.jsx"), "utf8"),
     readFile(resolve(projectRoot, "web/src/landing/landing.css"), "utf8"),
@@ -142,14 +148,14 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
 
   assert.doesNotMatch(landingSource, /className="site-nav"/);
   assert.doesNotMatch(landingSource, /landing-hero-links|landing-composer-meta|landing-signals/);
-  assert.match(landingSource, /<label className="visually-hidden" htmlFor="sendero-demo-prompt">Describe tu viaje<\/label>/);
+  assert.match(landingSource, /<label className="visually-hidden" htmlFor="sendero-demo-prompt">\{copy\.composerLabel\}<\/label>/);
   assert.equal([...landingSource.matchAll(/<textarea\b/g)].length, 1, "the landing must render a single real textarea");
   assert.equal([...landingSource.matchAll(/<form className="landing-composer"/g)].length, 1, "the landing must render a single real composer form");
   assert.equal([...landingSource.matchAll(/<HeroComposer\b/g)].length, 1, "the hero composer must mount only once");
   assert.match(landingSource, /<textarea[\s\S]*?aria-readonly="true"[\s\S]*?data-composer-text[\s\S]*?readOnly[\s\S]*?rows="1"[\s\S]*?tabIndex="-1"/);
   assert.doesNotMatch(landingSource, /<textarea[\s\S]{0,500}?onChange=/);
-  assert.match(landingSource, /data-full-value=\{HERO_PROMPT\}/);
-  assert.match(landingSource, /aria-label="Iniciar recorrido de ejemplo" data-composer-send/);
+  assert.match(landingSource, /data-full-value=\{copy\.heroPrompt\}/);
+  assert.match(landingSource, /aria-label=\{copy\.composerAction\} data-composer-send/);
   assert.match(landingSource, /d="M12 18V6m0 0-5 5m5-5 5 5"/);
   assert.match(landingSource, /data-composer-source/);
   assert.match(landingSource, /data-composer-carrier/);
@@ -158,7 +164,7 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   assert.equal([...landingSource.matchAll(/\bdata-composer-text\b/g)].length, 1, "the real textarea must be the only animated composer text surface");
   assert.equal([...landingSource.matchAll(/\bdata-composer-target\b/g)].length, 1, "the conversation must expose one empty geometric dock");
   assert.doesNotMatch(landingSource, /landing-composer-ghost|data-docked-composer(?:-text)?/);
-  assert.match(landingSource, /<UserTurn messageId="initial-request" visible=\{showsInitialUser\}>\{HERO_PROMPT\}<\/UserTurn>/);
+  assert.match(landingSource, /<UserTurn messageId="initial-request" visible=\{showsInitialUser\}>\{copy\.heroPrompt\}<\/UserTurn>/);
   assert.match(landingSource, /data-create-conversation/);
   assert.match(landingSource, /data-demo-phase=\{beat\}/);
   assert.match(landingSource, /data-demo-interaction=/);
@@ -169,11 +175,11 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   assert.match(landingSource, /data-stage-surface="conversation"/);
   assert.match(landingSource, /data-share-stack/);
   assert.equal([...landingSource.matchAll(/\bdata-share-panel\b/g)].length, 1, "share panels must be rendered by one persistent mapped stack");
-  assert.match(landingSource, /<ShareReceipt key="publish" \/>/);
-  assert.match(landingSource, /<ProductViewer activeView="list" key="explore" \/>/);
-  assert.match(landingSource, /<ProductViewer activeView="routes" key="privacy" privacy \/>/);
-  assert.match(landingSource, /<AccessStage key="access" \/>/);
-  assert.match(landingSource, /<CollaboratorStage key="collaborate" \/>/);
+  assert.match(landingSource, /<ShareReceipt copy=\{copy\} key="publish" \/>/);
+  assert.match(landingSource, /<ProductViewer activeView="list" copy=\{copy\} itinerary=\{publicItinerary\} key="explore" locale=\{locale\} \/>/);
+  assert.match(landingSource, /<ProductViewer activeView="routes" copy=\{copy\} itinerary=\{publicItinerary\} key="privacy" locale=\{locale\} privacy \/>/);
+  assert.match(landingSource, /<AccessStage copy=\{copy\} key="access" \/>/);
+  assert.match(landingSource, /<CollaboratorStage copy=\{copy\} itinerary=\{itinerary\} key="collaborate" locale=\{locale\} \/>/);
   assert.doesNotMatch(landingSource, /let content;[\s\S]*?if \(scene ===/);
   assert.doesNotMatch(landingSource, /shareViewForScene|setShareView/);
   assert.equal([...landingSource.matchAll(/\bdata-conversation-scroll\b/g)].length, 1, "the conversation must expose one scrollport");
@@ -195,31 +201,29 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
     [...chronologicalMessageOrder].sort((left, right) => left - right),
     "the original itinerary, query, adjustment, and adjusted itinerary must remain in conversational order",
   );
-  assert.match(landingSource, /messageId="itinerary-v1"[\s\S]*?<ProductViewer[\s\S]*?itinerary=\{landingShowcaseItinerary\}/);
-  assert.match(landingSource, /messageId="itinerary-v2"[\s\S]*?<ProductViewer[\s\S]*?itinerary=\{adjustedShowcaseItinerary\}/);
+  assert.match(landingSource, /messageId="itinerary-v1"[\s\S]*?<ProductViewer[\s\S]*?itinerary=\{itinerary\}/);
+  assert.match(landingSource, /messageId="itinerary-v2"[\s\S]*?<ProductViewer[\s\S]*?itinerary=\{adjustedItinerary\}/);
   assert.doesNotMatch(landingSource, /landing-conversation-(?:history|product)|has-viewer/);
   assert.match(landingSource, /showHeading=\{false\}/);
-  assert.match(landingSource, /<h2 className="visually-hidden" id=\{`\$\{id\}-title`\}>C.{0,8}mo funciona Sendero<\/h2>/);
+  assert.match(landingSource, /<h2 className="visually-hidden" id=\{`\$\{id\}-title`\}>\{copy\.howTitle\}<\/h2>/);
 
-  const shareStepBlock = landingSource.match(/const shareSteps = \[([\s\S]*?)\n\];/);
-  assert.ok(shareStepBlock, "share steps must remain declared as a single story sequence");
-  assert.equal([...shareStepBlock[1].matchAll(/\{ eyebrow:/g)].length, 5, "sharing must have five scenes");
-  assert.doesNotMatch(shareStepBlock[1], /M.{0,8}vil/);
+  assert.equal(spanishCopy.shareSteps.length, 5, "sharing must have five scenes");
+  assert.doesNotMatch(JSON.stringify(spanishCopy.shareSteps), /M.{0,8}vil/);
   assert.doesNotMatch(landingSource, /landing-stage-(?:stack|layer)|landing-window-bar|landing-browser(?:-bar|-dots|-address|-phone)?/);
   assert.doesNotMatch(landingSource, /\bframe=\{/);
-  const createStepBlock = landingSource.match(/const createSteps = \[([\s\S]*?)\n\];/);
-  assert.ok(createStepBlock, "creation steps must remain a single story sequence");
-  assert.equal([...createStepBlock[1].matchAll(/\{ dwell:/g)].length, 7, "creation must have seven scenes with explicit dwell time");
-  assert.match(createStepBlock[1], /01 .{0,8} El contexto/);
-  assert.match(createStepBlock[1], /02 .{0,8} La preparaci.{0,8}n/);
-  assert.match(createStepBlock[1], /03 .{0,8} El itinerario/);
-  assert.match(createStepBlock[1], /04 .{0,8} Rutas/);
-  assert.match(createStepBlock[1], /05 .{0,8} Reservas/);
-  assert.match(createStepBlock[1], /06 .{0,8} Consultas/);
-  assert.match(createStepBlock[1], /07 .{0,8} .{0,8}Quieres cambiar algo/);
-  assert.doesNotMatch(createStepBlock[1], /03 .{0,8} Lista|04 .{0,8} Calendario|08 .{0,8} Clima/);
+  assert.equal(spanishCopy.createSteps.length, 7, "creation must have seven scenes with explicit dwell time");
+  assert.ok(spanishCopy.createSteps.every((step) => step.dwell), "each creation scene must declare dwell time");
+  const createStepBlock = JSON.stringify(spanishCopy.createSteps);
+  assert.match(createStepBlock, /01 .{0,8} El contexto/);
+  assert.match(createStepBlock, /02 .{0,8} La preparaci.{0,8}n/);
+  assert.match(createStepBlock, /03 .{0,8} El itinerario/);
+  assert.match(createStepBlock, /04 .{0,8} Rutas/);
+  assert.match(createStepBlock, /05 .{0,8} Reservas/);
+  assert.match(createStepBlock, /06 .{0,8} Consultas/);
+  assert.match(createStepBlock, /07 .{0,8} .{0,8}Quieres cambiar algo/);
+  assert.doesNotMatch(createStepBlock, /03 .{0,8} Lista|04 .{0,8} Calendario|08 .{0,8} Clima/);
   const creationOrder = ["El contexto", "La preparación", "El itinerario", "Rutas", "Reservas", "Consultas", "¿Quieres cambiar algo?"]
-    .map((label) => createStepBlock[1].indexOf(label));
+    .map((label) => createStepBlock.indexOf(label));
   assert.ok(creationOrder.every((position) => position >= 0), "every creation chapter must be present");
   assert.deepEqual(creationOrder, [...creationOrder].sort((left, right) => left - right), "creation chapters must preserve the intended narrative order");
   const beatOrderBlock = landingSource.match(/const beatOrder = \[([\s\S]*?)\n\];/);
@@ -258,7 +262,7 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   assert.match(landingStyles, /\.landing-product \.day-route-content\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.35fr\) minmax\(150px, \.65fr\)/);
   assert.match(landingStyles, /\.landing-product \.day-context-item\s*\{/);
   assert.doesNotMatch(landingStyles, /\.landing-product \.day-context\s*\{[^}]*display:\s*none/);
-  assert.match(landingStyles, /@media \(max-width: 820px\)[\s\S]*?\.landing-header \.site-header-actions > \.site-text-link\s*\{\s*display:\s*inline-flex/);
+  assert.doesNotMatch(landingStyles, /@media \(max-width: 820px\)[\s\S]*?\.landing-header \.site-header-actions > \.site-text-link\s*\{\s*display:\s*inline-flex/);
   assert.match(landingStyles, /@media \(prefers-color-scheme: dark\)[\s\S]*?\.landing-composer button\s*\{\s*background:\s*#000;\s*color:\s*#fff/);
   assert.match(landingStyles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.landing-page\[data-motion="reduced"\] \.landing-composer-dock\s*\{[^}]*min-height:\s*0/);
   assert.match(landingStyles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.landing-page\[data-motion="reduced"\] \.landing-composer-shell,[\s\S]*?animation:\s*none;\s*transition:\s*none/);

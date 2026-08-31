@@ -143,9 +143,10 @@ export async function provisionCurrentUser(ctx: MutationCtx) {
       updatedAt: now,
     });
   } else if (
-    user.email !== profile.email ||
-    user.emailVerified !== profile.emailVerified ||
-    user.name !== profile.name
+    user &&
+    (user.email !== profile.email ||
+      user.emailVerified !== profile.emailVerified ||
+      user.name !== profile.name)
   ) {
     await ctx.db.patch(userId, {
       email: profile.email,

@@ -380,6 +380,34 @@ export default defineSchema({
     .index("by_actor_and_operation", ["actorId", "operationId"])
     .index("by_trip", ["tripId"]),
 
+  itineraryDrafts: defineTable({
+    actorId: v.id("users"),
+    status: v.union(
+      v.literal("valid"),
+      v.literal("saved"),
+      v.literal("discarded"),
+      v.literal("expired"),
+    ),
+    brief: v.optional(v.any()),
+    briefHash: v.string(),
+    snapshot: v.optional(v.any()),
+    itineraryHash: v.string(),
+    protocolVersion: v.string(),
+    protocolHash: v.string(),
+    warnings: v.array(v.string()),
+    stageOperationId: v.string(),
+    stageRequestFingerprint: v.string(),
+    saveOperationId: v.optional(v.string()),
+    savedTripId: v.optional(v.id("trips")),
+    savedWebId: v.optional(v.string()),
+    savedVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_actor_and_stage_operation", ["actorId", "stageOperationId"])
+    .index("by_status_and_expiry", ["status", "expiresAt"]),
+
   reservationOperations: defineTable({
     tripId: v.id("trips"),
     actorId: v.id("users"),

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrandMark, Button } from "../components.jsx";
-import { formatDate, localeLanguage, resolveContentLocale, setDocumentLocale } from "../i18n/index.js";
+import { formatDate, localeLanguage, setDocumentLocale } from "../i18n/index.js";
+import { LanguageSelector, useUiLocale } from "../i18n/LanguageSelector.jsx";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
 import { normalizePublicShareToken, publicShareFromPayload } from "./public-share.js";
 import { createSharedTripFacade } from "./shared-trip-companion.js";
@@ -86,6 +87,56 @@ const COPY = {
     previewConfidence: "Baseado no horário publicado e na sua estimativa de deslocamento; não calcula trânsito ao vivo.",
     clearPreview: "Limpar visualização temporária",
   },
+  fr: {
+    eyebrow: "Voyage partagé",
+    unavailableTitle: "Ce lien n’est plus disponible",
+    unavailableDetail: "Il a peut-être expiré, été remplacé ou révoqué par la personne qui l’a partagé.",
+    offlineTitle: "Connexion impossible",
+    offlineDetail: "Vérifiez votre connexion et réessayez. Le voyage reste protégé.",
+    retry: "Réessayer",
+    loadingTitle: "Préparation de l’itinéraire…",
+    loadingDetail: "Nous chargeons la version qui a été partagée avec vous.",
+    documentTitle: "Voyage partagé",
+    readOnly: "Lecture seule",
+    aiCompanion: "Assistant IA disponible",
+    sharedOn: (value) => `Partagé le ${value}.`,
+    sharedFallback: "Itinéraire partagé avec Sendero.",
+    expiresOn: (value) => ` Disponible jusqu’au ${value}.`,
+    readOnlyFooter: "Cette vue ne permet pas de modifier le voyage.",
+    previewEyebrow: "Votre vue temporaire",
+    previewTitle: ({ time }) => `Prêt à rejoindre le groupe à partir de ${time}`,
+    previewOrigin: ({ origin }) => `Point de départ : ${origin}.`,
+    previewMissed: ({ count }) => `${count} ${count === 1 ? "élément précédent est atténué" : "éléments précédents sont atténués"} dans l’itinéraire.`,
+    previewMeet: ({ title }) => `Premier point de rendez-vous publié : ${title}.`,
+    previewNoMeet: "Il n’y a pas de point de rendez-vous publié plus tard dans cette journée.",
+    previewConfidence: "Basé sur l’horaire publié et votre propre estimation du trajet ; le trafic en direct n’est pas calculé.",
+    clearPreview: "Effacer la vue temporaire",
+  },
+  de: {
+    eyebrow: "Geteilte Reise",
+    unavailableTitle: "Dieser Link ist nicht mehr verfügbar",
+    unavailableDetail: "Er ist möglicherweise abgelaufen, ersetzt oder von der teilenden Person widerrufen worden.",
+    offlineTitle: "Verbindung nicht möglich",
+    offlineDetail: "Prüfe deine Verbindung und versuche es erneut. Die Reise bleibt geschützt.",
+    retry: "Erneut versuchen",
+    loadingTitle: "Reiseplan wird vorbereitet…",
+    loadingDetail: "Wir laden die Version, die mit dir geteilt wurde.",
+    documentTitle: "Geteilte Reise",
+    readOnly: "Nur ansehen",
+    aiCompanion: "KI-Begleitung verfügbar",
+    sharedOn: (value) => `Geteilt am ${value}.`,
+    sharedFallback: "Mit Sendero geteilter Reiseplan.",
+    expiresOn: (value) => ` Verfügbar bis ${value}.`,
+    readOnlyFooter: "In dieser Ansicht kann die Reise nicht geändert werden.",
+    previewEyebrow: "Deine temporäre Ansicht",
+    previewTitle: ({ time }) => `Bereit, ab ${time} dazuzukommen`,
+    previewOrigin: ({ origin }) => `Ausgangspunkt: ${origin}.`,
+    previewMissed: ({ count }) => `${count} frühere ${count === 1 ? "Element ist" : "Elemente sind"} im Reiseplan abgeblendet.`,
+    previewMeet: ({ title }) => `Frühester veröffentlichter Treffpunkt: ${title}.`,
+    previewNoMeet: "Für diesen Tag gibt es keinen späteren veröffentlichten Treffpunkt.",
+    previewConfidence: "Basierend auf dem veröffentlichten Zeitplan und deiner eigenen Wegeinschätzung; Live-Verkehr wird nicht berechnet.",
+    clearPreview: "Temporäre Ansicht löschen",
+  },
 };
 
 function copyFor(locale) {
@@ -120,12 +171,21 @@ function readableTimestamp(value, locale) {
   return formatDate(locale, value, { day: "numeric", month: "long", year: "numeric" });
 }
 
-function ShareState({ kind, locale, onRetry }) {
+function ShareBrand({ locale, onLocaleChange }) {
+  return (
+    <div className="public-brand-row">
+      <div className="public-brand"><BrandMark /><strong>Sendero</strong></div>
+      <LanguageSelector className="public-language-selector" locale={locale} onChange={onLocaleChange} />
+    </div>
+  );
+}
+
+function ShareState({ kind, locale, onLocaleChange, onRetry }) {
   const unavailable = kind === "unavailable";
   const copy = copyFor(locale);
   return (
     <main className="public-share-shell public-share-state">
-      <div className="public-brand"><BrandMark /><strong>Sendero</strong></div>
+      <ShareBrand locale={locale} onLocaleChange={onLocaleChange} />
       <section aria-live="polite" className="public-state-card" role={unavailable ? "alert" : "status"}>
         <p className="eyebrow">{copy.eyebrow}</p>
         <h1>{unavailable ? copy.unavailableTitle : copy.offlineTitle}</h1>
@@ -138,11 +198,11 @@ function ShareState({ kind, locale, onRetry }) {
   );
 }
 
-function LoadingShare({ locale }) {
+function LoadingShare({ locale, onLocaleChange }) {
   const copy = copyFor(locale);
   return (
     <main aria-busy="true" className="public-share-shell public-share-state">
-      <div className="public-brand"><BrandMark /><strong>Sendero</strong></div>
+      <ShareBrand locale={locale} onLocaleChange={onLocaleChange} />
       <section aria-live="polite" className="public-state-card" role="status">
         <span aria-hidden="true" className="loading-dot" />
         <p className="eyebrow">{copy.eyebrow}</p>
@@ -154,13 +214,13 @@ function LoadingShare({ locale }) {
 }
 
 export function PublicShareApp() {
+  const { locale, selectLocale } = useUiLocale();
   const [requestKey, setRequestKey] = useState(0);
   const [result, setResult] = useState({ state: "loading" });
   const [activeView, setActiveView] = useState("list");
   const [companionState, setCompanionState] = useState(null);
   const [webMcpAvailable, setWebMcpAvailable] = useState(false);
   const [token, setToken] = useState(() => shareToken());
-  const locale = resolveContentLocale(result.state === "ready" ? result.share.itinerary.locale : undefined);
   const copy = copyFor(locale);
   const companion = useMemo(() => result.state === "ready"
     ? createSharedTripFacade(result.share, {
@@ -248,8 +308,8 @@ export function PublicShareApp() {
     return () => controller.abort();
   }, [companion]);
 
-  if (result.state === "loading") return <LoadingShare locale={locale} />;
-  if (result.state !== "ready") return <ShareState kind={result.state} locale={locale} onRetry={() => setRequestKey((value) => value + 1)} />;
+  if (result.state === "loading") return <LoadingShare locale={locale} onLocaleChange={selectLocale} />;
+  if (result.state !== "ready") return <ShareState kind={result.state} locale={locale} onLocaleChange={selectLocale} onRetry={() => setRequestKey((value) => value + 1)} />;
 
   const { share } = result;
   const freshness = readableTimestamp(share.updatedAt || share.publishedAt, locale);
@@ -258,9 +318,12 @@ export function PublicShareApp() {
     <main className="public-share-shell">
       <div className="public-share-topbar">
         <div className="public-brand"><BrandMark /><strong>Sendero</strong></div>
-        <div className="public-share-badges">
+        <div className="public-share-actions">
+          <LanguageSelector className="public-language-selector" locale={locale} onChange={selectLocale} />
+          <div className="public-share-badges">
           {webMcpAvailable ? <span className="ai-companion-badge">{copy.aiCompanion}</span> : null}
           <span className="read-only-badge">{copy.readOnly}</span>
+          </div>
         </div>
       </div>
       {companionState?.guestPreview ? (
@@ -280,6 +343,7 @@ export function PublicShareApp() {
         selectedCalendarDate={companionState?.selectedDate}
         selectedListDate={companionState?.selectedDate}
         selectedRouteDate={companionState?.selectedDate}
+        uiLocale={locale}
         variant="public"
       />
       <footer className="public-share-footer">

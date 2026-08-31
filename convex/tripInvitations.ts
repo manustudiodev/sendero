@@ -724,31 +724,33 @@ export const invite = mutation({
       const invitation = replay.invitationId
         ? await ctx.db.get(replay.invitationId)
         : null;
-      if (
-        invitation &&
-        (invitation.tripId !== args.tripId ||
+      let delivery = null;
+      if (invitation) {
+        const tokenHash = invitation.tokenHash;
+        const invitationSentAt = invitation.sentAt;
+        if (
+          invitation.tripId !== args.tripId ||
           invitation.status !== "pending" ||
           invitation.expiresAt <= Date.now() ||
-          !invitation.tokenHash ||
-          invitation.tokenHash !== args.tokenHash ||
-          invitation.sentAt === undefined ||
-          invitation.sentAt !== replay.sentAt)
-      ) {
-        throw new Error("Invitation changed after this invite operation");
+          !tokenHash ||
+          tokenHash !== args.tokenHash ||
+          invitationSentAt === undefined ||
+          invitationSentAt !== replay.sentAt
+        ) {
+          throw new Error("Invitation changed after this invite operation");
+        }
+        delivery = await enqueueInvitationEmail(ctx, {
+          tripId: args.tripId,
+          invitationId: invitation._id,
+          actorId: actor._id,
+          operationId: args.operationId,
+          purpose: "invite",
+          recipientEmail: invitation.invitedEmail,
+          role: invitation.role,
+          tokenHash,
+          invitationSentAt,
+        });
       }
-      const delivery = invitation
-        ? await enqueueInvitationEmail(ctx, {
-            tripId: args.tripId,
-            invitationId: invitation._id,
-            actorId: actor._id,
-            operationId: args.operationId,
-            purpose: "invite",
-            recipientEmail: invitation.invitedEmail,
-            role: invitation.role,
-            tokenHash: invitation.tokenHash,
-            invitationSentAt: invitation.sentAt,
-          })
-        : null;
       return {
         ...replay,
         ...(delivery ? { delivery: { outboxId: delivery._id, status: delivery.status } } : {}),
@@ -1105,18 +1107,21 @@ export const changeRole = mutation({
     if (changed) {
       const now = Date.now();
       await ctx.db.patch(collaborator._id, { role: args.role, updatedAt: now });
-      const invitations = await ctx.db
-        .query("tripInvitations")
-        .withIndex("by_trip_and_email", (q) =>
-          q.eq("tripId", args.tripId).eq("invitedEmail", collaborator.invitedEmail),
-        )
-        .collect();
-      for (const invitation of invitations) {
-        if (
-          invitation.status === "accepted" &&
-          (!collaborator.userId || invitation.acceptedBy === collaborator.userId)
-        ) {
-          await ctx.db.patch(invitation._id, { role: args.role, updatedAt: now });
+      if (collaborator.invitedEmail) {
+        const invitedEmail = collaborator.invitedEmail;
+        const invitations = await ctx.db
+          .query("tripInvitations")
+          .withIndex("by_trip_and_email", (q) =>
+            q.eq("tripId", args.tripId).eq("invitedEmail", invitedEmail),
+          )
+          .collect();
+        for (const invitation of invitations) {
+          if (
+            invitation.status === "accepted" &&
+            (!collaborator.userId || invitation.acceptedBy === collaborator.userId)
+          ) {
+            await ctx.db.patch(invitation._id, { role: args.role, updatedAt: now });
+          }
         }
       }
       await audit(ctx, {
@@ -1204,22 +1209,25 @@ export const removeCollaborator = mutation({
           updatedAt: now,
         });
       }
-      const invitations = await ctx.db
-        .query("tripInvitations")
-        .withIndex("by_trip_and_email", (q) =>
-          q.eq("tripId", args.tripId).eq("invitedEmail", collaborator.invitedEmail),
-        )
-        .collect();
-      for (const invitation of invitations) {
-        if (
-          invitation.status === "accepted" &&
-          (!collaborator.userId || invitation.acceptedBy === collaborator.userId)
-        ) {
-          await ctx.db.patch(invitation._id, {
-            status: "revoked",
-            revokedAt: now,
-            updatedAt: now,
-          });
+      if (collaborator.invitedEmail) {
+        const invitedEmail = collaborator.invitedEmail;
+        const invitations = await ctx.db
+          .query("tripInvitations")
+          .withIndex("by_trip_and_email", (q) =>
+            q.eq("tripId", args.tripId).eq("invitedEmail", invitedEmail),
+          )
+          .collect();
+        for (const invitation of invitations) {
+          if (
+            invitation.status === "accepted" &&
+            (!collaborator.userId || invitation.acceptedBy === collaborator.userId)
+          ) {
+            await ctx.db.patch(invitation._id, {
+              status: "revoked",
+              revokedAt: now,
+              updatedAt: now,
+            });
+          }
         }
       }
       await audit(ctx, {

@@ -187,11 +187,13 @@ test("omits an invalid timezone instead of publishing misleading local-time cont
   assert.equal(published.timezone, undefined);
 });
 
-test("uses English public redaction labels by default and preserves explicit Spanish or Portuguese", () => {
+test("uses English public redaction labels by default and preserves supported trip locales", () => {
   const cases = [
     { locale: undefined, expectedLocale: "en", title: "Shared trip", destination: "Destination" },
     { locale: "es-AR", expectedLocale: "es-AR", title: "Viaje compartido", destination: "Destino" },
     { locale: "pt-BR", expectedLocale: "pt-BR", title: "Viagem compartilhada", destination: "Destino" },
+    { locale: "fr-FR", expectedLocale: "fr-FR", title: "Voyage partagé", destination: "Destination" },
+    { locale: "de-DE", expectedLocale: "de-DE", title: "Geteilte Reise", destination: "Reiseziel" },
   ];
 
   for (const item of cases) {

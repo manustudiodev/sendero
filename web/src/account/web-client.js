@@ -18,10 +18,11 @@ function roleValue(value) {
 }
 
 export class WebApiError extends Error {
-  constructor({ code = "temporarily_unavailable", message, retryable = false, status = 0 } = {}) {
+  constructor({ code = "temporarily_unavailable", details, message, retryable = false, status = 0 } = {}) {
     super(message || "No pudimos completar la solicitud.");
     this.name = "WebApiError";
     this.code = code;
+    this.details = details && typeof details === "object" ? details : undefined;
     this.retryable = Boolean(retryable);
     this.status = status;
   }
@@ -60,6 +61,7 @@ export async function requestJson(path, {
     : payload;
   throw new WebApiError({
     code: stringValue(failure?.code) || (response.status === 401 ? "unauthenticated" : "temporarily_unavailable"),
+    details: failure?.details,
     message: stringValue(failure?.message),
     retryable: failure?.retryable ?? response.status >= 500,
     status: response.status,
@@ -268,6 +270,8 @@ export function readableTripDates(startDate, endDate, locale = "en") {
     en: "Dates to be confirmed",
     es: "Fechas por confirmar",
     pt: "Datas a confirmar",
+    fr: "Dates à confirmer",
+    de: "Daten noch zu bestätigen",
   }[localeLanguage(resolvedLocale)];
   if (!startDate || !endDate) return pending;
   try {

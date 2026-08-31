@@ -7,7 +7,8 @@ import {
   normalizeSession,
   requestJson,
 } from "../account/web-client.js";
-import { localeLanguage, resolveContentLocale, setDocumentLocale } from "../i18n/index.js";
+import { localeLanguage, setDocumentLocale } from "../i18n/index.js";
+import { hrefForLocale, useUiLocale } from "../i18n/LanguageSelector.jsx";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
 import { reservationEntryKey } from "../itinerary/presentation-utils.js";
 import { AccessPanel } from "./AccessPanel.jsx";
@@ -82,6 +83,7 @@ const restrictedStyles = `
 
 const COPY = {
   en: {
+    documentTitle: "Private itinerary",
     roles: { editor: "Collaborator", owner: "Owner", viewer: "Viewer" },
     conflict: "The itinerary changed somewhere else. We loaded the latest version; review the status before trying again.",
     reservationError: "We couldn't update this booking. Try again.",
@@ -101,7 +103,8 @@ const COPY = {
     continue: "Continue this trip in ChatGPT ↗",
   },
   es: {
-    roles: { editor: "Colaborador", owner: "Propietario", viewer: "Viewer" },
+    documentTitle: "Itinerario privado",
+    roles: { editor: "Colaborador", owner: "Propietario", viewer: "Lector" },
     conflict: "El itinerario cambió en otro lugar. Ya cargamos la versión más reciente; revisa el estado antes de intentar otra vez.",
     reservationError: "No pudimos actualizar esta reserva. Intenta nuevamente.",
     loading: "Abriendo el itinerario…",
@@ -120,6 +123,7 @@ const COPY = {
     continue: "Continuar este viaje en ChatGPT ↗",
   },
   pt: {
+    documentTitle: "Roteiro privado",
     roles: { editor: "Colaborador", owner: "Proprietário", viewer: "Visualizador" },
     conflict: "O roteiro mudou em outro lugar. Carregamos a versão mais recente; revise o status antes de tentar novamente.",
     reservationError: "Não foi possível atualizar esta reserva. Tente novamente.",
@@ -137,6 +141,14 @@ const COPY = {
     errorTitle: "Não foi possível abrir o roteiro",
     restricted: "Acesso restrito",
     continue: "Continuar esta viagem no ChatGPT ↗",
+  },
+  fr: {
+    documentTitle: "Itinéraire privé", roles: { editor: "Collaborateur", owner: "Propriétaire", viewer: "Lecteur" },
+    conflict: "L’itinéraire a été modifié ailleurs. Nous avons chargé la dernière version ; vérifiez le statut avant de réessayer.", reservationError: "Impossible de mettre cette réservation à jour. Réessayez.", loading: "Ouverture de l’itinéraire…", signIn: "Se connecter", signedOutDetail: "Cet itinéraire est réservé aux personnes invitées.", signedOutTitle: "Connectez-vous pour le consulter", forbiddenDetail: "Demandez au propriétaire d’inviter l’adresse e-mail utilisée pour votre compte Sendero.", forbiddenTitle: "Vous n’avez pas accès à ce voyage", back: "Retour à mes voyages", notFoundDetail: "Il a peut-être été supprimé ou le lien est incorrect.", notFoundTitle: "Impossible de trouver ce voyage", retry: "Réessayer", errorDetail: "Vos données sont toujours enregistrées ; réessayez.", errorTitle: "Impossible d’ouvrir l’itinéraire", restricted: "Accès restreint", continue: "Poursuivre ce voyage dans ChatGPT ↗",
+  },
+  de: {
+    documentTitle: "Privater Reiseplan", roles: { editor: "Mitwirkender", owner: "Eigentümer", viewer: "Leser" },
+    conflict: "Der Reiseplan wurde an anderer Stelle geändert. Wir haben die neueste Version geladen; prüfe den Status, bevor du es erneut versuchst.", reservationError: "Diese Buchung konnte nicht aktualisiert werden. Versuche es erneut.", loading: "Reiseplan wird geöffnet…", signIn: "Anmelden", signedOutDetail: "Dieser Reiseplan ist nur für eingeladene Personen verfügbar.", signedOutTitle: "Zum Ansehen anmelden", forbiddenDetail: "Bitte den Eigentümer, die E-Mail-Adresse deines Sendero-Kontos einzuladen.", forbiddenTitle: "Du hast keinen Zugriff auf diese Reise", back: "Zurück zu meinen Reisen", notFoundDetail: "Die Reise wurde möglicherweise gelöscht oder der Link ist falsch.", notFoundTitle: "Diese Reise konnte nicht gefunden werden", retry: "Erneut versuchen", errorDetail: "Deine Daten sind weiterhin gespeichert; versuche es erneut.", errorTitle: "Der Reiseplan konnte nicht geöffnet werden", restricted: "Eingeschränkter Zugriff", continue: "Diese Reise in ChatGPT fortsetzen ↗",
   },
 };
 
@@ -168,6 +180,7 @@ function configuredChatgptUrl() {
 }
 
 export function RestrictedTripApp({ initialWebId = "" }) {
+  const { locale } = useUiLocale();
   const webId = initialWebId || restrictedWebId();
   const [state, setState] = useState({ kind: "loading" });
   const latestStateRef = useRef(state);
@@ -179,7 +192,6 @@ export function RestrictedTripApp({ initialWebId = "" }) {
   const [updateError, setUpdateError] = useState("");
   const reservationQueue = useRef(Promise.resolve());
   const reservationOperations = useRef(createStableOperationRegistry());
-  const locale = resolveContentLocale(state.kind === "ready" ? state.trip.itinerary.locale : undefined);
   const copy = copyFor(locale);
 
   const commitState = useCallback((next) => {
@@ -207,7 +219,12 @@ export function RestrictedTripApp({ initialWebId = "" }) {
   }, [commitState, webId]);
 
   useEffect(() => { loadTrip(); }, [loadTrip]);
-  useEffect(() => { setDocumentLocale(locale); }, [locale]);
+  useEffect(() => {
+    setDocumentLocale(locale);
+    document.title = state.kind === "ready"
+      ? `${state.trip.itinerary.title} · Sendero`
+      : `${copy.documentTitle} · Sendero`;
+  }, [copy.documentTitle, locale, state]);
 
   function openReservation(target) {
     setSelectedReservationKey(target ? reservationEntryKey(target.dayDate, target.activityId) : "");
@@ -257,9 +274,9 @@ export function RestrictedTripApp({ initialWebId = "" }) {
   }
 
   if (state.kind === "loading") return <WebState kind="loading" title={copy.loading} />;
-  if (state.kind === "signed_out") return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, `/app/trips/${encodeURIComponent(webId)}`)}>{copy.signIn}</a>} detail={copy.signedOutDetail} title={copy.signedOutTitle} />;
+  if (state.kind === "signed_out") return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, hrefForLocale(`/app/trips/${encodeURIComponent(webId)}`, locale))}>{copy.signIn}</a>} detail={copy.signedOutDetail} title={copy.signedOutTitle} />;
   if (state.kind === "forbidden") return <WebState detail={copy.forbiddenDetail} title={copy.forbiddenTitle} />;
-  if (state.kind === "not_found") return <WebState action={<a className="web-button" href="/app">{copy.back}</a>} detail={copy.notFoundDetail} kind="error" title={copy.notFoundTitle} />;
+  if (state.kind === "not_found") return <WebState action={<a className="web-button" href={hrefForLocale("/app", locale)}>{copy.back}</a>} detail={copy.notFoundDetail} kind="error" title={copy.notFoundTitle} />;
   if (state.kind === "error") return <WebState action={<WebButton onClick={() => loadTrip()}>{copy.retry}</WebButton>} detail={copy.errorDetail} kind="error" title={copy.errorTitle} />;
 
   const { session, trip } = state;
@@ -291,6 +308,7 @@ export function RestrictedTripApp({ initialWebId = "" }) {
           selectedCalendarMonth={selectedCalendarMonth}
           selectedReservationKey={selectedReservationKey}
           selectedRouteDate={selectedRouteDate}
+          uiLocale={locale}
           variant="restricted"
         />
       </div>

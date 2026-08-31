@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import {
   bootstrapCurrentUser,
   ensureCurrentUser,
@@ -9,17 +9,13 @@ import {
   type ReadContext,
 } from "./tripAccess";
 import { canonicalLocale, DEFAULT_LOCALE } from "../shared/locale.mjs";
-
-function normalizeSnapshotLocale(snapshot: unknown, fallback = DEFAULT_LOCALE) {
-  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-    throw new Error("Invalid itinerary snapshot");
-  }
-  const itinerary = snapshot as Record<string, unknown>;
-  return {
-    ...itinerary,
-    locale: canonicalLocale(itinerary.locale, fallback),
-  };
-}
+import {
+  allocateWebId,
+  itineraryMetadata,
+  normalizeSnapshotLocale,
+  requestFingerprint,
+  requireOperationId,
+} from "./tripWrites";
 
 function normalizeSnapshotToCurrentLocale(snapshot: unknown, locale: string) {
   return {
@@ -28,9 +24,12 @@ function normalizeSnapshotToCurrentLocale(snapshot: unknown, locale: string) {
   };
 }
 
-function normalizeTripLocale(trip: Record<string, unknown>) {
+function normalizeTripLocale(trip: Record<string, any>): Record<string, any> & {
+  locale: string;
+  snapshot: Record<string, any> & { locale: string };
+} {
   const snapshot = normalizeSnapshotLocale(trip.snapshot);
-  const locale = canonicalLocale(trip.locale, snapshot.locale as string);
+  const locale = canonicalLocale(trip.locale, snapshot.locale as string) as string;
   return {
     ...trip,
     locale,
@@ -41,45 +40,6 @@ function normalizeTripLocale(trip: Record<string, unknown>) {
   };
 }
 
-function itineraryMetadata(snapshot: unknown) {
-  const itinerary = normalizeSnapshotLocale(snapshot);
-  for (const field of ["title", "destination", "startDate", "endDate"] as const) {
-    if (typeof itinerary[field] !== "string" || itinerary[field].length === 0) {
-      throw new Error(`Invalid itinerary ${field}`);
-    }
-  }
-  return {
-    locale: itinerary.locale as string,
-    title: itinerary.title as string,
-    destination: itinerary.destination as string,
-    startDate: itinerary.startDate as string,
-    endDate: itinerary.endDate as string,
-  };
-}
-
-function requireOperationId(operationId: string, label: string) {
-  if (
-    operationId.length < 8 ||
-    operationId.length > 128 ||
-    !/^[A-Za-z0-9._:-]+$/.test(operationId)
-  ) {
-    throw new Error(`Invalid ${label} operation ID`);
-  }
-}
-
-function requestFingerprint(value: unknown) {
-  const serialized = JSON.stringify(value);
-  let high = 0x9e3779b9;
-  let low = 0x85ebca6b;
-  for (let index = 0; index < serialized.length; index += 1) {
-    const code = serialized.charCodeAt(index);
-    high = Math.imul(high ^ code, 0x5bd1e995);
-    low = Math.imul(low ^ code, 0x27d4eb2d);
-  }
-  high = Math.imul(high ^ (high >>> 16), 0x85ebca6b) ^ Math.imul(low ^ (low >>> 13), 0xc2b2ae35);
-  low = Math.imul(low ^ (low >>> 16), 0x85ebca6b) ^ Math.imul(high ^ (high >>> 13), 0xc2b2ae35);
-  return `${serialized.length}:${(high >>> 0).toString(16).padStart(8, "0")}${(low >>> 0).toString(16).padStart(8, "0")}`;
-}
 
 function normalizeSearchText(value: string) {
   return value
@@ -109,18 +69,6 @@ function tripSummary(trip: Record<string, unknown>) {
 function assertWebId(value: string) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(value)) throw new Error("Invalid trip web ID");
   return value;
-}
-
-async function allocateWebId(ctx: MutationCtx) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const webId = crypto.randomUUID().replace(/-/g, "");
-    const existing = await ctx.db
-      .query("trips")
-      .withIndex("by_web_id", (q) => q.eq("webId", webId))
-      .unique();
-    if (!existing) return webId;
-  }
-  throw new Error("Unable to allocate a unique trip web ID");
 }
 
 async function revisionSummaries(ctx: ReadContext, tripId: Id<"trips">) {

@@ -1,10 +1,12 @@
 import en from "./catalogs/en.js";
 import es from "./catalogs/es.js";
 import pt from "./catalogs/pt.js";
+import fr from "./catalogs/fr.js";
+import de from "./catalogs/de.js";
 
 export const DEFAULT_LOCALE = "en";
 
-const catalogs = { en, es, pt };
+const catalogs = { en, es, pt, fr, de };
 const localePattern = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 
 function canonicalLocale(value) {

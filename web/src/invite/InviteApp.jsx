@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { endSenderoSession, WebButton, WebPageFrame, WebState } from "../account/PageFrame.jsx";
 import { loginUrl, normalizeSession, operationId, requestJson } from "../account/web-client.js";
-import { localeLanguage, resolveContentLocale, setDocumentLocale } from "../i18n/index.js";
+import { localeLanguage, setDocumentLocale } from "../i18n/index.js";
+import { hrefForLocale, useUiLocale } from "../i18n/LanguageSelector.jsx";
 import {
   invitationWebId,
   formatInvitationExpiry,
@@ -27,6 +28,7 @@ const inviteStyles = `
 
 const COPY = {
   en: {
+    documentTitle: "Invitation",
     roles: { editor: "Collaborator", viewer: "Viewer" },
     loading: "Preparing the invitation…",
     errorDetail: "The link may have expired or may no longer be available.",
@@ -61,12 +63,22 @@ const COPY = {
     decline: "Decline",
   },
   es: {
-    roles: { editor: "Colaborador", viewer: "Viewer" },
+    documentTitle: "Invitación",
+    roles: { editor: "Colaborador", viewer: "Lector" },
     loading: "Preparando la invitación…", errorDetail: "El enlace puede haber vencido o ya no estar disponible.", errorTitle: "No pudimos abrir la invitación", signIn: "Iniciar sesión", signedOutDetail: "La invitación quedará guardada mientras inicias sesión.", invitedTo: (title) => `Te invitaron a ${title}`, verified: "Ya verifiqué mi correo", verifyDetail: (email) => `Verifica ${email || "el correo de tu cuenta"} y vuelve a identificarte para continuar. La invitación quedará guardada durante este paso.`, verifyTitle: "Verifica tu correo para continuar", otherAccount: "Usar otra cuenta", switchError: "No pudimos cambiar de cuenta. Intenta nuevamente.", mismatchDetail: (email) => `${email ? `Ahora estás usando ${email}. ` : ""}Abre la invitación con la cuenta de correo que la recibió; no perderás el enlace al cambiar de cuenta.`, mismatchTitle: "Esta invitación es para otra cuenta", unavailableDetail: "Pide a la persona propietaria que te envíe una invitación nueva.", unavailableTitle: "La invitación ya no está disponible", eyebrow: "Invitación de Sendero", inviterDetail: (name) => name ? `${name} quiere compartir este viaje contigo.` : "Te invitaron a compartir este viaje.", destination: "Destino", pending: "Por confirmar", access: "Acceso", invitedBy: "Invitado por", owner: "Propietario del viaje", validUntil: "Válida hasta", accepted: "Invitación aceptada", declined: "Invitación rechazada", acceptedDetail: "Este viaje ya está en tu cuenta.", declinedDetail: "No tendrás acceso a este viaje.", open: "Abrir itinerario", actionError: "No pudimos guardar tu respuesta. Intenta nuevamente.", accept: "Aceptar invitación", decline: "Rechazar",
   },
   pt: {
+    documentTitle: "Convite",
     roles: { editor: "Colaborador", viewer: "Visualizador" },
     loading: "Preparando o convite…", errorDetail: "O link pode ter expirado ou não estar mais disponível.", errorTitle: "Não foi possível abrir o convite", signIn: "Entrar", signedOutDetail: "O convite continuará disponível enquanto você entra.", invitedTo: (title) => `Você foi convidado para ${title}`, verified: "Já verifiquei meu e-mail", verifyDetail: (email) => `Verifique ${email || "o e-mail da sua conta"} e entre novamente para continuar. O convite continuará disponível durante esta etapa.`, verifyTitle: "Verifique seu e-mail para continuar", otherAccount: "Usar outra conta", switchError: "Não foi possível trocar de conta. Tente novamente.", mismatchDetail: (email) => `${email ? `Você está usando ${email}. ` : ""}Abra o convite com a conta de e-mail que o recebeu; você não perderá o link ao trocar de conta.`, mismatchTitle: "Este convite é para outra conta", unavailableDetail: "Peça ao proprietário para enviar um novo convite.", unavailableTitle: "O convite não está mais disponível", eyebrow: "Convite do Sendero", inviterDetail: (name) => name ? `${name} quer compartilhar esta viagem com você.` : "Você foi convidado para compartilhar esta viagem.", destination: "Destino", pending: "A confirmar", access: "Acesso", invitedBy: "Convidado por", owner: "Proprietário da viagem", validUntil: "Válido até", accepted: "Convite aceito", declined: "Convite recusado", acceptedDetail: "Esta viagem agora está na sua conta.", declinedDetail: "Você não terá acesso a esta viagem.", open: "Abrir roteiro", actionError: "Não foi possível salvar sua resposta. Tente novamente.", accept: "Aceitar convite", decline: "Recusar",
+  },
+  fr: {
+    documentTitle: "Invitation", roles: { editor: "Collaborateur", viewer: "Lecteur" },
+    loading: "Préparation de l’invitation…", errorDetail: "Le lien a peut-être expiré ou n’est peut-être plus disponible.", errorTitle: "Impossible d’ouvrir l’invitation", signIn: "Se connecter", signedOutDetail: "L’invitation restera disponible pendant votre connexion.", invitedTo: (title) => `Vous avez été invité à rejoindre ${title}`, verified: "J’ai vérifié mon adresse e-mail", verifyDetail: (email) => `Vérifiez ${email || "l’adresse e-mail de votre compte"} et reconnectez-vous pour continuer. L’invitation restera disponible pendant cette étape.`, verifyTitle: "Vérifiez votre adresse e-mail pour continuer", otherAccount: "Utiliser un autre compte", switchError: "Impossible de changer de compte. Réessayez.", mismatchDetail: (email) => `${email ? `Vous utilisez actuellement ${email}. ` : ""}Ouvrez l’invitation avec le compte e-mail qui l’a reçue ; vous ne perdrez pas le lien en changeant de compte.`, mismatchTitle: "Cette invitation est destinée à un autre compte", unavailableDetail: "Demandez au propriétaire de vous envoyer une nouvelle invitation.", unavailableTitle: "L’invitation n’est plus disponible", eyebrow: "Invitation Sendero", inviterDetail: (name) => name ? `${name} souhaite partager ce voyage avec vous.` : "Vous avez été invité à partager ce voyage.", destination: "Destination", pending: "À confirmer", access: "Accès", invitedBy: "Invité par", owner: "Propriétaire du voyage", validUntil: "Valable jusqu’au", accepted: "Invitation acceptée", declined: "Invitation refusée", acceptedDetail: "Ce voyage se trouve maintenant dans votre compte.", declinedDetail: "Vous n’aurez pas accès à ce voyage.", open: "Ouvrir l’itinéraire", actionError: "Impossible d’enregistrer votre réponse. Réessayez.", accept: "Accepter l’invitation", decline: "Refuser",
+  },
+  de: {
+    documentTitle: "Einladung", roles: { editor: "Mitwirkender", viewer: "Leser" },
+    loading: "Einladung wird vorbereitet…", errorDetail: "Der Link ist möglicherweise abgelaufen oder nicht mehr verfügbar.", errorTitle: "Die Einladung konnte nicht geöffnet werden", signIn: "Anmelden", signedOutDetail: "Die Einladung bleibt verfügbar, während du dich anmeldest.", invitedTo: (title) => `Du wurdest zu ${title} eingeladen`, verified: "Ich habe meine E-Mail-Adresse bestätigt", verifyDetail: (email) => `Bestätige ${email || "die E-Mail-Adresse deines Kontos"} und melde dich erneut an, um fortzufahren. Die Einladung bleibt währenddessen verfügbar.`, verifyTitle: "Bestätige deine E-Mail-Adresse, um fortzufahren", otherAccount: "Anderes Konto verwenden", switchError: "Das Konto konnte nicht gewechselt werden. Versuche es erneut.", mismatchDetail: (email) => `${email ? `Du verwendest derzeit ${email}. ` : ""}Öffne die Einladung mit dem E-Mail-Konto, das sie erhalten hat; beim Kontowechsel geht der Link nicht verloren.`, mismatchTitle: "Diese Einladung ist für ein anderes Konto", unavailableDetail: "Bitte den Eigentümer um eine neue Einladung.", unavailableTitle: "Die Einladung ist nicht mehr verfügbar", eyebrow: "Sendero-Einladung", inviterDetail: (name) => name ? `${name} möchte diese Reise mit dir teilen.` : "Du wurdest eingeladen, diese Reise zu teilen.", destination: "Reiseziel", pending: "Noch zu bestätigen", access: "Zugriff", invitedBy: "Eingeladen von", owner: "Reiseeigentümer", validUntil: "Gültig bis", accepted: "Einladung angenommen", declined: "Einladung abgelehnt", acceptedDetail: "Diese Reise befindet sich jetzt in deinem Konto.", declinedDetail: "Du erhältst keinen Zugriff auf diese Reise.", open: "Reiseplan öffnen", actionError: "Deine Antwort konnte nicht gespeichert werden. Versuche es erneut.", accept: "Einladung annehmen", decline: "Ablehnen",
   },
 };
 
@@ -79,12 +91,15 @@ function invitationReturnTo(webId) {
 }
 
 export function InviteApp() {
+  const { locale } = useUiLocale();
   const [state, setState] = useState({ kind: "loading" });
   const actionStarted = useRef(false);
-  const locale = resolveContentLocale(state.inspection?.invitation?.locale);
   const copy = copyFor(locale);
 
-  useEffect(() => { setDocumentLocale(locale); }, [locale]);
+  useEffect(() => {
+    setDocumentLocale(locale);
+    document.title = `${copy.documentTitle} · Sendero`;
+  }, [copy.documentTitle, locale]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,11 +166,11 @@ export function InviteApp() {
   if (state.kind === "error") return <WebState detail={copy.errorDetail} kind="error" title={copy.errorTitle} />;
   if (state.kind === "signed_out") {
     const invitation = state.inspection.invitation;
-    return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, invitationReturnTo(invitation.webId))}>{copy.signIn}</a>} detail={copy.signedOutDetail} title={copy.invitedTo(invitation.title)} />;
+    return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, hrefForLocale(invitationReturnTo(invitation.webId), locale))}>{copy.signIn}</a>} detail={copy.signedOutDetail} title={copy.invitedTo(invitation.title)} />;
   }
   if (state.kind === "email_unverified") {
     const invitation = state.inspection.invitation;
-    return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, invitationReturnTo(invitation.webId), { reauthenticate: true })}>{copy.verified}</a>} detail={copy.verifyDetail(state.session.user?.email)} session={state.session} title={copy.verifyTitle} />;
+    return <WebState action={<a className="web-button web-button-primary" href={loginUrl(state.session, hrefForLocale(invitationReturnTo(invitation.webId), locale), { reauthenticate: true })}>{copy.verified}</a>} detail={copy.verifyDetail(state.session.user?.email)} session={state.session} title={copy.verifyTitle} />;
   }
   if (state.kind === "email_mismatch") {
     const currentEmail = state.session.user?.email;
@@ -184,7 +199,7 @@ export function InviteApp() {
             <div>
               <h2>{receipt.decision === "accepted" ? copy.accepted : copy.declined}</h2>
               <p>{receipt.decision === "accepted" ? copy.acceptedDetail : copy.declinedDetail}</p>
-              {receipt.decision === "accepted" && receipt.webId ? <div className="web-actions"><a className="web-button web-button-primary" href={`/app/trips/${encodeURIComponent(receipt.webId)}`}>{copy.open}</a></div> : null}
+              {receipt.decision === "accepted" && receipt.webId ? <div className="web-actions"><a className="web-button web-button-primary" href={hrefForLocale(`/app/trips/${encodeURIComponent(receipt.webId)}`, locale)}>{copy.open}</a></div> : null}
             </div>
           </div>
         ) : (

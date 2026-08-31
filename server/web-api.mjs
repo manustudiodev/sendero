@@ -13,6 +13,17 @@ import {
   recoverPublicShareUrl,
 } from "./public-sharing.mjs";
 import { canonicalLocale, DEFAULT_LOCALE, localeLanguage } from "../shared/locale.mjs";
+import {
+  draftSummary,
+  ItineraryPlanningError,
+  MAX_ITINERARY_BODY_BYTES,
+  planningProtocol,
+  planningProtocolIdentity,
+  planningProtocolRequestSchema,
+  saveDraftRequestSchema,
+  stageItineraryRequestSchema,
+  validatedDraft,
+} from "./itinerary-planning.mjs";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,6 +35,7 @@ const operationIdSchema = z.string().regex(OPERATION_ID_PATTERN);
 const memberRoleSchema = z.enum(["viewer", "editor"]);
 const emailSchema = z.string().trim().email().max(254).transform((value) => value.toLowerCase());
 const reservationStatusSchema = z.enum(["pending", "confirmed", "cancelled"]);
+const itineraryDraftIdSchema = z.string().min(16).max(128).regex(/^[A-Za-z0-9_-]+$/);
 
 const reservationSchema = z.object({
   activityId: z.string().min(1).max(160),
@@ -125,6 +137,8 @@ function invitationDetails(inspection, invitedEmail = "") {
     en: "Shared trip",
     es: "Viaje compartido",
     pt: "Viagem compartilhada",
+    fr: "Voyage partagé",
+    de: "Geteilte Reise",
   }[localeLanguage(locale)] || "Shared trip";
   return {
     destination: inspection.trip?.destination || "",
@@ -143,6 +157,16 @@ function errorResponse(context, code, status, message, retryable = status >= 500
 }
 
 function mappedFailure(context, error, logger) {
+  if (error instanceof ItineraryPlanningError) {
+    return context.json({
+      error: {
+        code: error.code,
+        message: error.message,
+        retryable: false,
+        ...(error.details ? { details: error.details } : {}),
+      },
+    }, error.status);
+  }
   const message = typeof error?.message === "string" ? error.message : "";
   if (/Unauthenticated|Sign in|authentication/i.test(message)) {
     return errorResponse(context, "authentication_required", 401, "Sign in to continue.");
@@ -169,14 +193,14 @@ function mappedFailure(context, error, logger) {
   );
 }
 
-async function readJson(context, schema) {
+async function readJson(context, schema, { maxBytes = MAX_BODY_BYTES } = {}) {
   if (!context.req.header("Content-Type")?.toLowerCase().startsWith("application/json")) {
     throw new Error("A valid JSON body is required");
   }
   const declaredLength = Number(context.req.header("Content-Length") || 0);
-  if (declaredLength > MAX_BODY_BYTES) throw new Error("Invalid request body");
+  if (declaredLength > maxBytes) throw new Error("Invalid request body");
   const raw = await context.req.text();
-  if (raw.length > MAX_BODY_BYTES) throw new Error("Invalid request body");
+  if (raw.length > maxBytes) throw new Error("Invalid request body");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -199,6 +223,7 @@ export function registerWebApiRoutes(app, {
   invitePepper,
   logger = console,
   now = () => Date.now(),
+  planningEnabled = false,
   persistenceFactory,
   publicShareSecret,
   publicWebUrl,
@@ -241,6 +266,92 @@ export function registerWebApiRoutes(app, {
   async function tripByWebId(storage, context) {
     return storage.getByWebId(requireWebId(context));
   }
+
+  function requirePlanningEnabled(context) {
+    return planningEnabled
+      ? undefined
+      : errorResponse(
+          context,
+          "planning_unavailable",
+          404,
+          "Itinerary generation is not available on this Sendero environment.",
+          false,
+        );
+  }
+
+  app.get("/api/itinerary-planning/capabilities", (context) => authenticated(
+    context,
+    async () => context.json({
+      data: {
+        enabled: planningEnabled,
+        ...(planningEnabled ? planningProtocolIdentity() : {}),
+      },
+    }),
+  ));
+
+  app.post("/api/itinerary-planning/protocol", (context) => authenticated(
+    context,
+    async () => {
+      const unavailable = requirePlanningEnabled(context);
+      if (unavailable) return unavailable;
+      const { brief } = await readJson(context, planningProtocolRequestSchema);
+      return context.json({ data: planningProtocol(brief) });
+    },
+  ));
+
+  app.post("/api/itinerary-drafts", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const unavailable = requirePlanningEnabled(context);
+      if (unavailable) return unavailable;
+      const input = await readJson(
+        context,
+        stageItineraryRequestSchema,
+        { maxBytes: MAX_ITINERARY_BODY_BYTES },
+      );
+      const prepared = validatedDraft(input);
+      const draft = await storage.stageDraft(prepared);
+      return context.json({ data: draftSummary(draft) }, 201);
+    },
+    { mutate: true },
+  ));
+
+  app.get("/api/itinerary-drafts/:draftId", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const unavailable = requirePlanningEnabled(context);
+      if (unavailable) return unavailable;
+      const draft = await storage.getDraft(itineraryDraftIdSchema.parse(context.req.param("draftId")));
+      if (!draft) return errorResponse(context, "not_found", 404, "We could not find that itinerary draft.");
+      return context.json({ data: draftSummary(draft) });
+    },
+  ));
+
+  app.post("/api/itinerary-drafts/:draftId/save", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const unavailable = requirePlanningEnabled(context);
+      if (unavailable) return unavailable;
+      const draftId = itineraryDraftIdSchema.parse(context.req.param("draftId"));
+      const { operationId } = await readJson(context, saveDraftRequestSchema);
+      const result = await storage.saveDraft({ draftId, operationId });
+      return context.json({ data: result });
+    },
+    { mutate: true },
+  ));
+
+  app.delete("/api/itinerary-drafts/:draftId", (context) => authenticated(
+    context,
+    async ({ storage }) => {
+      const unavailable = requirePlanningEnabled(context);
+      if (unavailable) return unavailable;
+      const result = await storage.discardDraft(
+        itineraryDraftIdSchema.parse(context.req.param("draftId")),
+      );
+      return context.json({ data: result });
+    },
+    { mutate: true },
+  ));
 
   app.get("/api/trips", (context) => authenticated(context, async ({ storage }) => {
     const trips = await storage.list();

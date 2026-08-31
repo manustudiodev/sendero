@@ -17,6 +17,7 @@ test("reports whether Convex storage is configured", async () => {
     webAuthentication: "not_configured",
     publicSharing: "not_configured",
     mapsEmbed: "not_configured",
+    webMcpPlanning: "disabled",
   });
 
   const unconfigured = createApp({ convexUrl: "" });
@@ -32,6 +33,9 @@ test("reports whether Convex storage is configured", async () => {
 
   const mapsConfigured = createApp({ mapsEmbedApiKey: "test-key" });
   assert.equal((await (await mapsConfigured.request("/health")).json()).mapsEmbed, "configured");
+
+  const planningConfigured = createApp({ planningEnabled: true });
+  assert.equal((await (await planningConfigured.request("/health")).json()).webMcpPlanning, "enabled");
 });
 
 test("identifies the development web and OAuth surfaces", async () => {
@@ -73,18 +77,42 @@ test("publishes OAuth protected-resource metadata for ChatGPT and MCP clients", 
   }
 });
 
-test("serves the public landing and legal pages from the same Vercel/Hono app", async () => {
+test("negotiates localized public routes and serves canonical landing and legal pages", async () => {
   const app = createApp({ publicWebUrl: "https://sendero.example" });
+
+  const frenchRedirect = await app.request("/", {
+    headers: { "Accept-Language": "fr-FR;q=0.9, pt-BR;q=0.8, en;q=0.7" },
+  });
+  assert.equal(frenchRedirect.status, 307);
+  assert.equal(frenchRedirect.headers.get("location"), "/fr");
+  assert.match(frenchRedirect.headers.get("cache-control"), /no-store/);
+  assert.match(frenchRedirect.headers.get("vary"), /Accept-Language/);
+  assert.match(frenchRedirect.headers.get("vary"), /Cookie/);
+
+  const rememberedRedirect = await app.request("/privacy", {
+    headers: { Cookie: "sendero_locale=en" },
+  });
+  assert.equal(rememberedRedirect.status, 307);
+  assert.equal(rememberedRedirect.headers.get("location"), "/en/privacy");
+
   const pages = [
-    ["/", /Planifica conversando/i],
-    ["/privacy", /Privacidad/i],
-    ["/terms", /Términos/i],
+    ["/es", "es", /<title>Sendero · Planifica conversando<\/title>/, "https://sendero.example/es"],
+    ["/en/privacy", "en", /<title>Privacy · Sendero<\/title>/, "https://sendero.example/en/privacy"],
+    ["/pt/terms", "pt", /<title>Termos · Sendero<\/title>/, "https://sendero.example/pt/terms"],
+    ["/fr", "fr", /<title>Sendero · Planifiez en conversant<\/title>/, "https://sendero.example/fr"],
+    ["/de/privacy", "de", /<title>Datenschutz · Sendero<\/title>/, "https://sendero.example/de/privacy"],
   ];
-  for (const [path, content] of pages) {
+  for (const [path, locale, content, canonical] of pages) {
     const response = await app.request(path);
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type"), /text\/html/);
-    assert.match(await response.text(), content);
+    const html = await response.text();
+    assert.match(html, new RegExp(`<html class="site-document" lang="${locale}">`));
+    assert.match(html, content);
+    assert.match(html, new RegExp(`rel="canonical" href="${canonical.replaceAll(".", "\\.")}"`));
+    for (const alternate of ["es", "en", "pt", "fr", "de", "x-default"]) {
+      assert.match(html, new RegExp(`hreflang="${alternate}"`));
+    }
     assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
     assert.equal(response.headers.get("x-robots-tag"), null);
   }
@@ -102,6 +130,7 @@ test("serves authenticated web shells with private caching, no indexing, and sam
   const app = createApp({ mapsEmbedApiKey: 'restricted-test-key-<not-real>&"' });
   const pages = [
     ["/app", /<title>Tus viajes · Sendero<\/title>/],
+    ["/app/new", /<title>Crear un viaje · Sendero<\/title>/],
     ["/invite", /<title>Invitación · Sendero<\/title>/],
     ["/invite/trip_web_1234567890", /<title>Invitación · Sendero<\/title>/],
     ["/app/trips/trip_web_1234567890", /<title>Itinerario privado · Sendero<\/title>/],
@@ -118,7 +147,7 @@ test("serves authenticated web shells with private caching, no indexing, and sam
     assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
     assert.match(response.headers.get("content-security-policy"), /connect-src 'self'/);
     assert.match(response.headers.get("content-security-policy"), /form-action 'self'/);
-    if (!path.startsWith("/app/trips/")) {
+    if (!path.startsWith("/app/trips/") && path !== "/app/new") {
       assert.doesNotMatch(response.headers.get("content-security-policy"), /frame-src/);
     }
     assert.equal(response.headers.get("access-control-allow-origin"), null);
@@ -129,6 +158,10 @@ test("serves authenticated web shells with private caching, no indexing, and sam
   assert.match(html, /<meta name="sendero-google-maps-embed-key"/);
   assert.match(html, /restricted-test-key-&lt;not-real&gt;&amp;&quot;/);
   assert.match(restricted.headers.get("content-security-policy"), /frame-src https:\/\/www\.google\.com/);
+
+  const portuguese = await app.request("/app?lang=pt");
+  assert.match(await portuguese.text(), /<html class="web-document" lang="pt">[\s\S]*<title>Suas viagens · Sendero<\/title>/);
+  assert.match(portuguese.headers.get("set-cookie") || "", /sendero_locale=pt/);
 });
 
 test("rejects malformed and invalid bearer tokens with an OAuth challenge", async () => {
@@ -202,6 +235,10 @@ test("serves the public read-only shell without authentication or cross-origin a
   assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow, noarchive");
   assert.equal(response.headers.get("access-control-allow-origin"), null);
   assert.equal(response.headers.get("www-authenticate"), null);
+
+  const english = await app.request("/share?lang=en");
+  assert.match(await english.text(), /<title>Shared trip · Sendero<\/title>/);
+  assert.match(english.headers.get("set-cookie") || "", /sendero_locale=en/);
 });
 
 test("resolves an active public snapshot without Auth0 and returns no private envelope", async () => {

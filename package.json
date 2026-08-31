@@ -9,9 +9,10 @@
   },
   "scripts": {
     "build": "npm run build:ui",
-    "build:ui": "node web/build.mjs",
+    "build:planning-protocol": "node scripts/build-planning-protocol.mjs",
+    "build:ui": "npm run build:planning-protocol && node web/build.mjs",
     "build:vercel": "node scripts/vercel-build.mjs",
-    "check": "npm run check:env:example && npm test && npm run smoke:local && npm run check:generated && npm run check:diff",
+    "check": "npm run typecheck:convex && npm run check:env:example && npm test && npm run smoke:local && npm run check:generated && npm run check:diff",
     "check:diff": "git diff --check",
     "check:env": "node scripts/check-env.mjs --profile local --env-file .env.local",
     "check:env:example": "node scripts/check-env.mjs --example",
@@ -23,7 +24,8 @@
     "smoke:remote": "node scripts/smoke.mjs --remote",
     "test": "npm run build:ui && node --test server/*.test.mjs web/*.test.mjs",
     "convex:dev": "convex dev",
-    "convex:check": "convex dev --once"
+    "convex:check": "convex dev --once",
+    "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
@@ -35,8 +37,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "esbuild": "^0.28.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
   }
 }

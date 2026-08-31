@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sanitizePublicSnapshot } from "../../../shared/public-snapshot.mjs";
 import { BrandMark } from "../components.jsx";
+import { hrefForLocale, LanguageSelector, useUiLocale } from "../i18n/LanguageSelector.jsx";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
+import { landingCopy } from "./copy.js";
 import { landingShowcaseItinerary } from "./showcase-itinerary.js";
 import { useLandingStory } from "./useLandingStory.js";
-
-const HERO_PROMPT = "Quiero organizar dos semanas en Buenos Aires, sin auto, combinando clásicos con lugares que frecuentan los locales.";
-const MODIFICATION_PROMPT = "Haz que el sábado empiece más tranquilo en Recoleta y mueve el MALBA para después del almuerzo.";
-const QUERY_PROMPT = "¿Qué clima suele hacer durante esas dos semanas y qué me conviene llevar?";
-const landingPublicItinerary = sanitizePublicSnapshot(landingShowcaseItinerary);
 
 const adjustedShowcaseItinerary = Object.freeze({
   ...landingShowcaseItinerary,
@@ -63,42 +60,24 @@ function reached(beat, target) {
   return beatOrder.indexOf(beat) >= beatOrder.indexOf(target);
 }
 
-const createSteps = [
-  { dwell: "long", eyebrow: "01 · El contexto", title: "Sendero entiende antes de proponer.", body: "Extrae lo que ya dijiste y pregunta en conjunto únicamente por la información crítica que falte." },
-  { dwell: "long", eyebrow: "02 · La preparación", title: "Investiga y ordena un viaje posible.", body: "Agrupa barrios y considera horarios, traslados, clima, reservas y alternativas antes de presentar el resultado." },
-  { dwell: "xlong", eyebrow: "03 · El itinerario", title: "Un mismo viaje, distintas formas de entenderlo.", body: "Explora la lista, el calendario y las rutas. Cada día reúne recorrido, descripción, clima y una alternativa cuando hace falta." },
-  { dwell: "medium", eyebrow: "04 · Rutas", title: "La logística también forma parte del plan.", body: "Sendero ordena las paradas y deja cada recorrido listo para entenderlo o abrirlo en tu app de mapas." },
-  { dwell: "long", eyebrow: "05 · Reservas", title: "Lo pendiente también forma parte del viaje.", body: "Entradas, reservas y fechas límite permanecen conectadas con cada actividad, sin completar ninguna compra por ti." },
-  { dwell: "long", eyebrow: "06 · Consultas", title: "¿Tienes dudas sobre tu itinerario?", body: "Pregúntale a Sendero sobre el clima, qué llevar o cualquier detalle del viaje. La respuesta conserva todo el contexto." },
-  { dwell: "long", eyebrow: "07 · ¿Quieres cambiar algo?", title: "El itinerario cambia conversando.", body: "Pide un ajuste con lenguaje natural y Sendero reorganiza lo necesario sin perder el resto del viaje." },
-];
-
-const shareSteps = [
-  { eyebrow: "01 · Publicar", title: "Una instrucción basta para publicar.", body: "Cuando lo pides explícitamente, Sendero crea o actualiza la copia pública. También puedes pedir una vista previa antes de decidir." },
-  { eyebrow: "02 · Explorar", title: "El viaje se entiende al abrir el enlace.", body: "Quien lo recibe puede recorrer la misma lista, el calendario y las rutas sin tener que abrir ChatGPT." },
-  { eyebrow: "03 · Privacidad", title: "Compartir no significa publicar todo.", body: "La copia pública omite alojamiento exacto, notas privadas, colaboradores, historial y enlaces privados de reservas." },
-  { eyebrow: "04 · Colaborar", title: "Cada persona recibe el acceso que necesita.", body: "Puedes invitar a alguien para mirar o colaborar, y conservar como propietario el control de personas y enlaces." },
-  { eyebrow: "05 · Editar", title: "Un colaborador puede avanzar sin perder el contexto.", body: "Desde la web actualiza estados concretos; los cambios amplios del viaje continúan conversando con Sendero." },
-];
-
 function chatGptUrl() {
   return document.querySelector('meta[name="sendero-chatgpt-url"]')?.content || "https://chatgpt.com/";
 }
 
-function chatGptCtaCopy(cta) {
+function chatGptCtaCopy(cta, copy) {
   try {
     const target = new URL(cta);
     const isSenderoTarget = target.pathname !== "/" || target.search || target.hash;
     if (isSenderoTarget) {
       return {
-        header: "Abrir en ChatGPT",
-        footer: "Usar Sendero en ChatGPT",
+        header: copy.ctaHeader,
+        footer: copy.ctaFooterSendero,
       };
     }
   } catch {
     // Invalid configuration falls back to truthful, generic ChatGPT copy.
   }
-  return { header: "Abrir en ChatGPT", footer: "Abrir ChatGPT" };
+  return { header: copy.ctaHeader, footer: copy.ctaFooterGeneric };
 }
 
 function ArrowIcon() {
@@ -113,47 +92,48 @@ function SendIcon() {
   );
 }
 
-function SiteHeader({ cta, ctaCopy }) {
+function SiteHeader({ copy, cta, ctaCopy, locale, onLocaleChange }) {
   return (
     <header className="site-header landing-header">
-      <a aria-label="Sendero, inicio" className="site-brand" href="/">
+      <a aria-label={copy.home} className="site-brand" href={hrefForLocale("/", locale)}>
         <BrandMark />
         <span>Sendero</span>
       </a>
       <div className="site-header-actions">
-        <a className="site-text-link" href="/app">Mis viajes</a>
+        <LanguageSelector className="site-language-selector" locale={locale} onChange={onLocaleChange} />
+        <a className="site-text-link" href={hrefForLocale("/app", locale)}>{copy.myTrips}</a>
         <a aria-label={ctaCopy.header} className="site-button site-button-small" href={cta} rel="noreferrer noopener" target="_blank">
-          <span className="landing-cta-prefix">Abrir en </span><span>ChatGPT</span> <ArrowIcon />
+          <span className="landing-cta-prefix">{copy.ctaPrefix}</span><span>ChatGPT</span> <ArrowIcon />
         </a>
       </div>
     </header>
   );
 }
 
-function HeroComposer({ docked, onSubmit }) {
+function HeroComposer({ copy, docked, onSubmit }) {
   return (
     <div className={`landing-composer-shell ${docked ? "is-docked" : ""}`} data-composer-morph>
       <form className="landing-composer" onSubmit={onSubmit}>
-        <label className="visually-hidden" htmlFor="sendero-demo-prompt">Describe tu viaje</label>
+        <label className="visually-hidden" htmlFor="sendero-demo-prompt">{copy.composerLabel}</label>
         <textarea
           aria-readonly="true"
           data-composer-text
-          data-full-value={HERO_PROMPT}
+          data-full-value={copy.heroPrompt}
           data-typewriter-state="waiting"
           defaultValue=""
           id="sendero-demo-prompt"
-          placeholder={docked ? "Escribe un mensaje…" : undefined}
+          placeholder={docked ? copy.composerPlaceholder : undefined}
           readOnly
           rows="1"
           tabIndex="-1"
         />
-        <button aria-disabled={docked ? "true" : undefined} aria-label="Iniciar recorrido de ejemplo" data-composer-send disabled={docked} tabIndex={docked ? -1 : 0} type="submit"><SendIcon /></button>
+        <button aria-disabled={docked ? "true" : undefined} aria-label={copy.composerAction} data-composer-send disabled={docked} tabIndex={docked ? -1 : 0} type="submit"><SendIcon /></button>
       </form>
     </div>
   );
 }
 
-function Hero({ composerDocked, onDemoSubmit }) {
+function Hero({ copy, composerDocked, onDemoSubmit }) {
   return (
     <section aria-labelledby="landing-title" className="landing-hero">
       <div aria-hidden="true" className="landing-hero-route">
@@ -164,16 +144,16 @@ function Hero({ composerDocked, onDemoSubmit }) {
         </svg>
       </div>
       <div className="landing-hero-copy">
-        <h1 id="landing-title">Tu viaje empieza con una frase.</h1>
-        <p>Sendero convierte lo que cuentas en un itinerario claro, conectado y listo para recorrer, ajustar o compartir.</p>
+        <h1 id="landing-title">{copy.heroTitle}</h1>
+        <p>{copy.heroBody}</p>
       </div>
       <div className="landing-hero-demo" data-composer-source>
         <div className="landing-composer-carrier" data-composer-carrier>
-          <HeroComposer docked={composerDocked} onSubmit={onDemoSubmit} />
+          <HeroComposer copy={copy} docked={composerDocked} onSubmit={onDemoSubmit} />
         </div>
       </div>
-      <a aria-label="Ver cómo funciona Sendero" className="landing-scroll-cue" data-composer-cue href="#crear">
-        <span>Haz scroll para ver cómo Sendero crea, organiza y comparte tu viaje.</span><span aria-hidden="true">↓</span>
+      <a aria-label={copy.scrollAria} className="landing-scroll-cue" data-composer-cue href="#crear">
+        <span>{copy.scroll}</span><span aria-hidden="true">↓</span>
       </a>
     </section>
   );
@@ -188,7 +168,7 @@ function SurfaceHeader({ badge, children, label }) {
   );
 }
 
-function ProductViewer({ activeView, itinerary, privacy = false, selectedListDate, selectedListDetailView, surface = "public" }) {
+function ProductViewer({ activeView, copy, itinerary, locale, privacy = false, selectedListDate, selectedListDetailView, surface = "public" }) {
   const isChat = surface === "chat";
   const viewportRef = useRef(null);
 
@@ -204,22 +184,23 @@ function ProductViewer({ activeView, itinerary, privacy = false, selectedListDat
   }, [activeView, itinerary, selectedListDate]);
 
   return (
-    <div aria-label={isChat ? "Itinerario dentro de la conversación" : "Itinerario compartido"} className={`landing-product-surface landing-product-surface-${surface}`}>
-      <p className="visually-hidden">Vista de solo lectura del itinerario de ejemplo en {activeView === "reservations" ? "reservas" : activeView}.</p>
+    <div aria-label={isChat ? copy.itineraryInChat : copy.sharedItinerary} className={`landing-product-surface landing-product-surface-${surface}`}>
+      <p className="visually-hidden">{copy.passiveView}.</p>
       <div aria-hidden="true" className="landing-product-viewport" data-showcase-passive inert="" ref={viewportRef}>
         <div className={isChat ? "landing-product landing-product-chat" : "landing-product-public"}>
           <ItineraryViewer
             activeView={activeView}
             headingLevel={3}
-            itinerary={itinerary || (isChat ? landingShowcaseItinerary : landingPublicItinerary)}
+            itinerary={itinerary}
             selectedListDate={selectedListDate}
             selectedListDetailView={selectedListDetailView}
             selectedRouteDate="2026-08-13"
+            uiLocale={locale}
             variant={isChat ? "chat" : "public"}
           />
         </div>
       </div>
-      {privacy ? <div className="landing-privacy-note"><span aria-hidden="true">✓</span><p><strong>Copia pública sanitizada</strong><small>Sin alojamiento exacto, notas privadas ni historial.</small></p></div> : null}
+      {privacy ? <div className="landing-privacy-note"><span aria-hidden="true">✓</span><p><strong>{copy.publicCopy}</strong><small>{copy.publicCopyDetail}</small></p></div> : null}
     </div>
   );
 }
@@ -263,7 +244,7 @@ function conversationFocusForBeat(beat) {
   return null;
 }
 
-function CreateConversation({ activeView, beat, scene }) {
+function CreateConversation({ activeView, beat, copy, itinerary, adjustedItinerary, locale, scene }) {
   const scrollportRef = useRef(null);
   const showsInitialUser = reached(beat, "initialSent");
   const showsInitialThinking = beat === "initialThinking";
@@ -314,58 +295,62 @@ function CreateConversation({ activeView, beat, scene }) {
     <div className={`landing-conversation ${showsPlanning ? "has-planning" : ""} ${showsViewer ? "has-itinerary" : ""}`} data-create-conversation data-demo-interaction="" data-demo-phase={beat} data-interaction-state="" data-scene={scene}>
       <SurfaceHeader label="Sendero en ChatGPT" />
       <div className="landing-conversation-scroll" data-conversation-scroll data-showcase-passive inert="" ref={scrollportRef}>
-        <div aria-label="Conversación de ejemplo con Sendero" className="landing-conversation-thread" data-conversation-thread role="log">
-          <UserTurn messageId="initial-request" visible={showsInitialUser}>{HERO_PROMPT}</UserTurn>
+        <div aria-label={copy.conversationAria} className="landing-conversation-thread" data-conversation-thread role="log">
+          <UserTurn messageId="initial-request" visible={showsInitialUser}>{copy.heroPrompt}</UserTurn>
           <div aria-hidden={showsInitialThinking ? undefined : "true"} className={`landing-turn ${showsInitialThinking ? "is-visible" : ""}`} data-message-id="initial-thinking">
-            {showsInitialThinking ? <ThinkingIndicator label="Sendero está interpretando el pedido" /> : null}
+            {showsInitialThinking ? <ThinkingIndicator label={copy.interpreting} /> : null}
           </div>
           <AgentTurn messageId="initial-clarification" visible={showsInitialClarification}>
-            <p>Perfecto. Para armarlo bien, ¿en qué fechas viajan y cuántas personas son?</p>
-            <div aria-label="Contexto comprendido" className="landing-context-chips"><span>Buenos Aires</span><span>Sin auto</span><span>Clásicos + vida local</span></div>
+            <p>{copy.clarification}</p>
+            <div aria-label={copy.context} className="landing-context-chips"><span>Buenos Aires</span><span>{copy.noCar}</span><span>{copy.localLife}</span></div>
           </AgentTurn>
-          <UserTurn messageId="trip-details" visible={showsPlanning}>Del 13 al 26 de agosto, para dos adultos.</UserTurn>
+          <UserTurn messageId="trip-details" visible={showsPlanning}>{copy.tripDetails}</UserTurn>
           <AgentTurn className="landing-generation-turn" messageId="itinerary-generation" visible={showsPlanning}>
-            <p>Genial. Voy a investigar y ordenar una propuesta posible antes de mostrártela.</p>
+            <p>{copy.researchReply}</p>
             <div className="landing-planning-card is-visible" role={showsPlanning ? "status" : undefined}>
-              <div className="landing-planning-head"><span>Generando el itinerario</span><strong>14 días</strong></div>
-              <div className={`landing-planning-line ${reached(beat, "planningResearch") ? "is-complete" : ""}`}><span />Barrios, clima y horarios</div>
-              <div className={`landing-planning-line ${reached(beat, "planningSchedule") ? "is-complete" : ""}`}><span />Ritmo, reservas y alternativas</div>
-              <div className={`landing-planning-line ${reached(beat, "planningRoutes") ? "is-complete" : ""}`}><span />Traslados y rutas por día</div>
+              <div className="landing-planning-head"><span>{copy.generating}</span><strong>{copy.days14}</strong></div>
+              <div className={`landing-planning-line ${reached(beat, "planningResearch") ? "is-complete" : ""}`}><span />{copy.researchLine}</div>
+              <div className={`landing-planning-line ${reached(beat, "planningSchedule") ? "is-complete" : ""}`}><span />{copy.scheduleLine}</div>
+              <div className={`landing-planning-line ${reached(beat, "planningRoutes") ? "is-complete" : ""}`}><span />{copy.routesLine}</div>
             </div>
           </AgentTurn>
           <AgentTurn className="landing-itinerary-turn" messageId="itinerary-v1" visible={showsViewer}>
-            <p>Listo. Organicé el viaje por zonas para reducir traslados y dejé alternativas donde el clima o una reserva pueden cambiar el día.</p>
+            <p>{copy.itineraryReply}</p>
             <ProductViewer
               activeView={activeView}
-              itinerary={landingShowcaseItinerary}
+              copy={copy}
+              itinerary={itinerary}
+              locale={locale}
               selectedListDate="2026-08-13"
               selectedListDetailView={beat === "viewsListDescription" ? "description" : "route"}
               surface="chat"
             />
           </AgentTurn>
 
-          <UserTurn messageId="weather-request" visible={showsQueryUser}>{QUERY_PROMPT}</UserTurn>
+          <UserTurn messageId="weather-request" visible={showsQueryUser}>{copy.queryPrompt}</UserTurn>
           <div aria-hidden={showsQueryThinking ? undefined : "true"} className={`landing-turn ${showsQueryThinking ? "is-visible" : ""}`} data-message-id="weather-thinking">
-            {showsQueryThinking ? <ThinkingIndicator label="Sendero está revisando el clima del viaje" /> : null}
+            {showsQueryThinking ? <ThinkingIndicator label={copy.weatherThinking} /> : null}
           </div>
           <AgentTurn className="landing-result-turn" messageId="weather-result" visible={showsQueryResult}>
-            <p>Agosto suele ser fresco en Buenos Aires. Conviene vestirse en capas y dejar una alternativa cubierta para los días húmedos.</p>
-            <div className="landing-weather-result" data-demo-result="weather"><span><strong>15–18 °C</strong><small>tardes habituales</small></span><span><strong>6–9 °C</strong><small>mañanas y noches</small></span><span><strong>Capas + paraguas</strong><small>equipaje recomendado</small></span></div>
+            <p>{copy.weatherReply}</p>
+            <div className="landing-weather-result" data-demo-result="weather"><span><strong>15–18 °C</strong><small>{copy.afternoons}</small></span><span><strong>6–9 °C</strong><small>{copy.mornings}</small></span><span><strong>{copy.packing}</strong><small>{copy.packingDetail}</small></span></div>
           </AgentTurn>
 
-          <UserTurn messageId="adjust-request" visible={showsChangeUser}>{MODIFICATION_PROMPT}</UserTurn>
+          <UserTurn messageId="adjust-request" visible={showsChangeUser}>{copy.modificationPrompt}</UserTurn>
           <div aria-hidden={showsChangeThinking ? undefined : "true"} className={`landing-turn ${showsChangeThinking ? "is-visible" : ""}`} data-message-id="adjust-thinking">
-            {showsChangeThinking ? <ThinkingIndicator label="Sendero está reorganizando el itinerario" /> : null}
+            {showsChangeThinking ? <ThinkingIndicator label={copy.changeThinking} /> : null}
           </div>
           <AgentTurn className="landing-result-turn" messageId="adjust-result" visible={showsChangeResult}>
-            <p>Listo. Dejé la mañana más libre y moví el MALBA a las 15:30 sin cambiar el resto del viaje.</p>
+            <p>{copy.changeReply}</p>
             <div className="landing-demo-result" data-demo-result="modification"><span>✓</span><strong>Recoleta 11:00 · MALBA 15:30</strong></div>
           </AgentTurn>
           <AgentTurn className="landing-itinerary-turn landing-itinerary-turn-adjusted" messageId="itinerary-v2" visible={showsChangeResult}>
-            <p>Esta es la nueva versión del sábado. El resto del itinerario permanece igual.</p>
+            <p>{copy.changedVersion}</p>
             <ProductViewer
               activeView="list"
-              itinerary={adjustedShowcaseItinerary}
+              copy={copy}
+              itinerary={adjustedItinerary}
+              locale={locale}
               selectedListDate="2026-08-15"
               selectedListDetailView="route"
               surface="chat"
@@ -378,55 +363,56 @@ function CreateConversation({ activeView, beat, scene }) {
   );
 }
 
-function CreateStage({ activeView, beat, scene }) {
+function CreateStage({ activeView, adjustedItinerary, beat, copy, itinerary, locale, scene }) {
   return (
-    <div aria-label="Demostración continua de creación y exploración de un itinerario" className="landing-stage" data-create-stage data-stage-surface="conversation">
-      <div aria-live="polite" className="visually-hidden">Escena {scene + 1} de {createSteps.length}: {createSteps[scene]?.title}</div>
-      <CreateConversation activeView={activeView} beat={beat} scene={scene} />
-      <p className="landing-stage-caption"><span>{String(scene + 1).padStart(2, "0")}</span>Una conversación · componentes reales</p>
+    <div aria-label={copy.createStageAria} className="landing-stage" data-create-stage data-stage-surface="conversation">
+      <div aria-live="polite" className="visually-hidden">{copy.scene({ current: scene + 1, total: copy.createSteps.length, title: copy.createSteps[scene]?.title })}</div>
+      <CreateConversation activeView={activeView} adjustedItinerary={adjustedItinerary} beat={beat} copy={copy} itinerary={itinerary} locale={locale} scene={scene} />
+      <p className="landing-stage-caption"><span>{String(scene + 1).padStart(2, "0")}</span>{copy.createCaption}</p>
     </div>
   );
 }
 
-function ShareReceipt() {
+function ShareReceipt({ copy }) {
   return (
     <div className="landing-share-receipt">
       <div className="landing-share-receipt-body">
         <span aria-hidden="true" className="landing-share-check">✓</span>
-        <p className="site-kicker">ENLACE CREADO</p>
-        <h3>Tu viaje está listo para compartir.</h3>
-        <p>Cualquier persona con el enlace podrá ver únicamente la versión pública de solo lectura.</p>
-        <div className="landing-link-field"><span>sendero.app/share/••••••••</span><strong>Copiar</strong></div>
-        <small>El enlace se puede actualizar, reemplazar o revocar.</small>
+        <p className="site-kicker">{copy.shareReceiptKicker}</p>
+        <h3>{copy.shareReceiptTitle}</h3>
+        <p>{copy.shareReceiptBody}</p>
+        <div className="landing-link-field"><span>sendero.app/share/••••••••</span><strong>{copy.copyLink}</strong></div>
+        <small>{copy.shareReceiptDetail}</small>
       </div>
     </div>
   );
 }
 
-function AccessStage() {
+function AccessStage({ copy }) {
   return (
     <div className="landing-access-stage">
       <div className="landing-access-body">
-        <header><div><p className="site-kicker">VIAJE RESTRINGIDO</p><h3>Comparte con distintos permisos.</h3></div><span className="landing-access-invite">Invitar por correo</span></header>
-        <div className="landing-access-row"><span className="landing-avatar is-owner">MP</span><p><strong>Manuel</strong><small>Controla personas, publicación y viaje</small></p><span>Propietario</span></div>
-        <div className="landing-access-row"><span className="landing-avatar">AL</span><p><strong>Ana L.</strong><small>Puede ajustar el viaje y gestionar reservas</small></p><span>Colaborador</span></div>
-        <div className="landing-access-row"><span className="landing-avatar">JR</span><p><strong>Julián R.</strong><small>Puede consultar el itinerario privado</small></p><span>Viewer</span></div>
+        <header><div><p className="site-kicker">{copy.restrictedKicker}</p><h3>{copy.accessTitle}</h3></div><span className="landing-access-invite">{copy.inviteEmail}</span></header>
+        <div className="landing-access-row"><span className="landing-avatar is-owner">MP</span><p><strong>Manuel</strong><small>{copy.ownerDetail}</small></p><span>{copy.owner}</span></div>
+        <div className="landing-access-row"><span className="landing-avatar">AL</span><p><strong>Ana L.</strong><small>{copy.collaboratorDetail}</small></p><span>{copy.collaborator}</span></div>
+        <div className="landing-access-row"><span className="landing-avatar">JR</span><p><strong>Julián R.</strong><small>{copy.viewerDetail}</small></p><span>{copy.viewer}</span></div>
       </div>
     </div>
   );
 }
 
-function CollaboratorStage() {
+function CollaboratorStage({ copy, itinerary, locale }) {
   return (
     <div className="landing-collaborator-stage">
-      <span aria-label="Ejemplo de cambio ya aplicado" className="landing-collaborator-status" role="status">Actualizado</span>
-      <p className="visually-hidden">Ejemplo de solo lectura de una reserva actualizada por un colaborador.</p>
+      <span aria-label={copy.updatedAria} className="landing-collaborator-status" role="status">{copy.updated}</span>
+      <p className="visually-hidden">{copy.collaboratorPassive}</p>
       <div aria-hidden="true" className="landing-product-viewport" data-showcase-passive inert="">
         <div className="landing-product">
           <ItineraryViewer
             activeView="reservations"
             headingLevel={3}
-            itinerary={landingShowcaseItinerary}
+            itinerary={itinerary}
+            uiLocale={locale}
             variant="chat"
           />
         </div>
@@ -435,19 +421,19 @@ function CollaboratorStage() {
   );
 }
 
-function ShareStage({ scene }) {
-  const captions = ["Publicación del enlace", "Itinerario público", "Copia pública sanitizada", "Acceso privado por rol", "Edición acotada en la web"];
-  const badges = ["Enlace creado", "Solo lectura", "Privacidad", "Accesos", "Colaborador"];
+function ShareStage({ copy, itinerary, locale, publicItinerary, scene }) {
+  const captions = copy.shareCaptions;
+  const badges = copy.shareBadges;
   const panels = [
-    <ShareReceipt key="publish" />,
-    <ProductViewer activeView="list" key="explore" />,
-    <ProductViewer activeView="routes" key="privacy" privacy />,
-    <AccessStage key="access" />,
-    <CollaboratorStage key="collaborate" />,
+    <ShareReceipt copy={copy} key="publish" />,
+    <ProductViewer activeView="list" copy={copy} itinerary={publicItinerary} key="explore" locale={locale} />,
+    <ProductViewer activeView="routes" copy={copy} itinerary={publicItinerary} key="privacy" locale={locale} privacy />,
+    <AccessStage copy={copy} key="access" />,
+    <CollaboratorStage copy={copy} itinerary={itinerary} key="collaborate" locale={locale} />,
   ];
   return (
-    <div aria-label="Demostración de publicación y colaboración" className="landing-stage landing-stage-share" data-stage-surface="share">
-      <div aria-live="polite" className="visually-hidden">Escena {scene + 1} de {shareSteps.length}: {shareSteps[scene]?.title}</div>
+    <div aria-label={copy.shareStageAria} className="landing-stage landing-stage-share" data-stage-surface="share">
+      <div aria-live="polite" className="visually-hidden">{copy.scene({ current: scene + 1, total: copy.shareSteps.length, title: copy.shareSteps[scene]?.title })}</div>
       <div className="landing-share-surface" data-share-surface data-scene={scene}>
         <SurfaceHeader label="Sendero">
           <span aria-hidden="true" className="landing-share-badge-stack">
@@ -481,16 +467,16 @@ function StoryStep({ active, chapter, index, step }) {
   );
 }
 
-function StorySection({ activeScene, children, description, id, showHeading = true, steps, title }) {
+function StorySection({ activeScene, children, copy, description, id, showHeading = true, steps, title }) {
   return (
     <section aria-labelledby={`${id}-title`} className={`landing-story-section ${showHeading ? "" : "landing-story-section-direct"}`} id={id}>
       {showHeading ? (
         <header className="landing-story-heading" data-story-reveal>
-          <p className="site-kicker">COMPARTIR Y COLABORAR</p>
+          <p className="site-kicker">{copy.shareKicker}</p>
           <h2 id={`${id}-title`}>{title}</h2>
           <p>{description}</p>
         </header>
-      ) : <h2 className="visually-hidden" id={`${id}-title`}>Cómo funciona Sendero</h2>}
+      ) : <h2 className="visually-hidden" id={`${id}-title`}>{copy.howTitle}</h2>}
       <div className="landing-story-grid">
         <div className="landing-story-sticky">{children}</div>
         <div className="landing-story-steps">
@@ -501,46 +487,41 @@ function StorySection({ activeScene, children, description, id, showHeading = tr
   );
 }
 
-function PrivacySection() {
+function PrivacySection({ copy }) {
   return (
     <section aria-labelledby="privacidad-title" className="landing-privacy" id="privacidad" data-story-reveal>
-      <div><p className="site-kicker">PRIVADO POR DISEÑO</p><h2 id="privacidad-title">Tu viaje privado no se convierte en público por accidente.</h2></div>
+      <div><p className="site-kicker">{copy.privacyKicker}</p><h2 id="privacidad-title">{copy.privacyTitle}</h2></div>
       <div className="landing-privacy-grid">
-        <article><span>01</span><h3>Tú decides cómo publicar.</h3><p>Una solicitud explícita publica directamente; si quieres revisar antes, puedes pedir una vista previa exacta.</p></article>
-        <article><span>02</span><h3>La copia tiene límites claros.</h3><p>Una lista permitida decide qué campos pueden salir del viaje privado.</p></article>
-        <article><span>03</span><h3>El acceso se puede retirar.</h3><p>Actualiza el contenido, cambia el enlace o revócalo cuando lo necesites.</p></article>
+        {copy.privacyItems.map(([title, body], index) => <article key={title}><span>{String(index + 1).padStart(2, "0")}</span><h3>{title}</h3><p>{body}</p></article>)}
       </div>
     </section>
   );
 }
 
-function FrequentlyAskedQuestions() {
+function FrequentlyAskedQuestions({ copy }) {
   return (
     <section aria-labelledby="preguntas-title" className="landing-faq" id="preguntas">
-      <header data-story-reveal><p className="site-kicker">PREGUNTAS FRECUENTES</p><h2 id="preguntas-title">Lo esencial, sin letra pequeña.</h2></header>
+      <header data-story-reveal><p className="site-kicker">{copy.faqKicker}</p><h2 id="preguntas-title">{copy.faqTitle}</h2></header>
       <div className="landing-faq-list">
-        <details><summary>¿Tengo que aprender comandos?</summary><p>No. Puedes explicar el viaje con lenguaje natural. Los atajos de ChatGPT son opcionales.</p></details>
-        <details><summary>¿La otra persona necesita ChatGPT?</summary><p>No para un enlace público. Puede abrir la versión de solo lectura directamente en el navegador.</p></details>
-        <details><summary>¿Sendero hace reservas por mí?</summary><p>No. Centraliza enlaces y estados dentro de Sendero, pero cualquier compra o cancelación real se confirma con el proveedor.</p></details>
-        <details><summary>¿Se puede editar todo desde la web?</summary><p>No. La planificación y los cambios amplios siguen siendo conversacionales; la web se centra en consultar, colaborar y gestionar accesos o estados concretos.</p></details>
+        {copy.faq.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}
       </div>
     </section>
   );
 }
 
-function SiteFooter({ cta, ctaCopy }) {
+function SiteFooter({ copy, cta, ctaCopy, locale }) {
   return (
     <>
       <section aria-labelledby="final-cta-title" className="site-final-cta landing-final-cta" data-story-reveal>
-        <p className="site-kicker">EL PRÓXIMO VIAJE</p>
-        <h2 id="final-cta-title">Una frase basta para empezar.</h2>
-        <p>Cuéntale a Sendero a dónde quieres ir. El resto se construye conversando.</p>
+        <p className="site-kicker">{copy.finalKicker}</p>
+        <h2 id="final-cta-title">{copy.finalTitle}</h2>
+        <p>{copy.finalBody}</p>
         <a className="site-button site-button-primary" href={cta} rel="noreferrer noopener" target="_blank">{ctaCopy.footer} <ArrowIcon /></a>
       </section>
       <footer className="site-footer landing-footer">
-        <a aria-label="Sendero, inicio" className="site-brand" href="/"><BrandMark /><span>Sendero</span></a>
-        <p>Planifica conversando.</p>
-        <nav aria-label="Enlaces del pie de página"><a href="/app">Mis viajes</a><a href="/privacy">Privacidad</a><a href="/terms">Términos</a></nav>
+        <a aria-label={copy.home} className="site-brand" href={hrefForLocale("/", locale)}><BrandMark /><span>Sendero</span></a>
+        <p>{copy.tagline}</p>
+        <nav aria-label={copy.footerNav}><a href={hrefForLocale("/app", locale)}>{copy.myTrips}</a><a href={hrefForLocale("/privacy", locale)}>{copy.privacy}</a><a href={hrefForLocale("/terms", locale)}>{copy.terms}</a></nav>
       </footer>
     </>
   );
@@ -554,13 +535,18 @@ function createViewForBeat(beat) {
 }
 
 export function LandingApp() {
+  const { locale, selectLocale } = useUiLocale();
+  const copy = landingCopy(locale);
   const rootRef = useRef(null);
   const [createScene, setCreateScene] = useState(0);
   const [createBeat, setCreateBeat] = useState("hidden");
   const [shareScene, setShareScene] = useState(0);
   const [composerDocked, setComposerDocked] = useState(false);
   const cta = chatGptUrl();
-  const ctaCopy = chatGptCtaCopy(cta);
+  const ctaCopy = chatGptCtaCopy(cta, copy);
+  const itinerary = useMemo(() => ({ ...landingShowcaseItinerary, locale }), [locale]);
+  const adjustedItinerary = useMemo(() => ({ ...adjustedShowcaseItinerary, locale }), [locale]);
+  const publicItinerary = useMemo(() => sanitizePublicSnapshot(itinerary), [itinerary]);
 
   const activateCreateScene = useCallback((scene) => {
     setCreateScene(scene);
@@ -571,24 +557,25 @@ export function LandingApp() {
   }, []);
 
   useLandingStory(rootRef, {
-    heroPrompt: HERO_PROMPT,
-    modificationPrompt: MODIFICATION_PROMPT,
+    heroPrompt: copy.heroPrompt,
+    modificationPrompt: copy.modificationPrompt,
     onComposerDockChange: setComposerDocked,
     onCreateBeatChange: setCreateBeat,
     onCreateScene: activateCreateScene,
     onShareScene: activateShareScene,
-    queryPrompt: QUERY_PROMPT,
+    queryPrompt: copy.queryPrompt,
   });
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => window.__senderoIntroReady?.());
     return () => window.cancelAnimationFrame(frame);
   }, []);
+  useEffect(() => { document.title = copy.documentTitle; }, [copy.documentTitle]);
 
   function startDemo(event) {
     event.preventDefault();
     const textarea = event.currentTarget.querySelector("textarea");
-    if (textarea) textarea.value = HERO_PROMPT;
+    if (textarea) textarea.value = copy.heroPrompt;
     textarea?.blur();
     if (composerDocked) return;
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
@@ -597,19 +584,19 @@ export function LandingApp() {
 
   return (
     <div className="landing-page" ref={rootRef}>
-      <a className="site-skip-link" href="#contenido">Saltar al contenido</a>
-      <SiteHeader cta={cta} ctaCopy={ctaCopy} />
+      <a className="site-skip-link" href="#contenido">{copy.skip}</a>
+      <SiteHeader copy={copy} cta={cta} ctaCopy={ctaCopy} locale={locale} onLocaleChange={selectLocale} />
       <main id="contenido">
-        <Hero composerDocked={composerDocked} onDemoSubmit={startDemo} />
-        <StorySection activeScene={createScene} id="crear" showHeading={false} steps={createSteps}>
-          <CreateStage activeView={createViewForBeat(createBeat)} beat={createBeat} scene={createScene} />
+        <Hero copy={copy} composerDocked={composerDocked} onDemoSubmit={startDemo} />
+        <StorySection activeScene={createScene} copy={copy} id="crear" showHeading={false} steps={copy.createSteps}>
+          <CreateStage activeView={createViewForBeat(createBeat)} adjustedItinerary={adjustedItinerary} beat={createBeat} copy={copy} itinerary={itinerary} locale={locale} scene={createScene} />
         </StorySection>
-        <StorySection activeScene={shareScene} description="El itinerario sale del chat sin convertirse en una segunda app difícil de aprender." id="compartir" steps={shareSteps} title="El mismo viaje, ahora para los demás.">
-          <ShareStage scene={shareScene} />
+        <StorySection activeScene={shareScene} copy={copy} description={copy.shareDescription} id="compartir" steps={copy.shareSteps} title={copy.shareTitle}>
+          <ShareStage copy={copy} itinerary={itinerary} locale={locale} publicItinerary={publicItinerary} scene={shareScene} />
         </StorySection>
-        <PrivacySection />
-        <FrequentlyAskedQuestions />
-        <SiteFooter cta={cta} ctaCopy={ctaCopy} />
+        <PrivacySection copy={copy} />
+        <FrequentlyAskedQuestions copy={copy} />
+        <SiteFooter copy={copy} cta={cta} ctaCopy={ctaCopy} locale={locale} />
       </main>
     </div>
   );

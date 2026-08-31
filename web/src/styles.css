@@ -538,9 +538,14 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .public-share-shell { width: min(1120px, 100%); min-height: 100vh; margin: 0 auto; padding: 28px 36px 48px; }
 .public-share-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 46px; border-bottom: 1px solid var(--line); }
 .public-brand { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+.public-brand-row, .public-share-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.public-share-actions { justify-content: flex-end; }
+.language-selector { display: inline-flex; min-width: 0; }
+.language-selector select { max-width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 7px 27px 7px 9px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; }
+.public-language-selector select { min-height: 34px; }
 .public-share-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
-.ai-companion-badge { border: 1px solid var(--sendero-teal-400); border-radius: 999px; padding: 6px 10px; background: var(--sendero-teal-100); color: var(--sendero-teal-950); font-size: 14px; }
-.read-only-badge { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--public-muted); font-size: 14px; }
+.ai-companion-badge { border: 1px solid var(--sendero-teal-400); border-radius: 999px; padding: 6px 10px; background: var(--sendero-teal-100); color: var(--sendero-teal-950); font-size: 14px; white-space: nowrap; }
+.read-only-badge { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--public-muted); font-size: 14px; white-space: nowrap; }
 .guest-preview { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 24px; border: 1px solid var(--sendero-teal-400); border-radius: 16px; padding: 18px 20px; background: var(--sendero-teal-100); }
 .guest-preview h2 { margin: 2px 0 0; font-size: 20px; }
 .guest-preview p:not(.eyebrow) { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
@@ -649,7 +654,8 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
   .date-range-day { min-height: 36px; border-radius: 8px; }
   .public-share-shell { padding: 18px 16px 32px; }
   .public-share-topbar { align-items: flex-start; }
-  .public-share-badges { max-width: 58%; }
+  .public-share-actions { align-items: flex-end; flex-direction: column; }
+  .public-share-badges { max-width: none; }
   .guest-preview { align-items: stretch; flex-direction: column; gap: 14px; }
   .guest-preview .button { width: 100%; }
   .itinerary-viewer-public .app-header { padding: 40px 0 22px; }
@@ -718,6 +724,7 @@ html.site-document h3 { margin: 0; font-size: 20px; letter-spacing: -.025em; lin
 .site-nav a, .site-footer a { color: var(--site-muted); text-decoration: none; }
 .site-nav a:hover, .site-footer a:hover { color: var(--site-ink); }
 .site-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+.site-language-selector select { min-height: 38px; border-color: var(--site-line); background: var(--site-surface); color: var(--site-forest); }
 .site-button { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 9px; border: 1px solid var(--site-line); border-radius: 12px; padding: 11px 17px; background: var(--site-surface-strong); color: var(--site-ink); font-weight: 650; text-decoration: none; transition: transform var(--motion-fast) var(--ease-out), background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
 .site-button:hover { border-color: var(--site-forest); transform: translateY(-2px); }
 .site-button-small { min-height: 40px; padding: 8px 13px; font-size: 14px; }
@@ -915,8 +922,8 @@ html.site-document h3 { margin: 0; font-size: 20px; letter-spacing: -.025em; lin
 @media (max-width: 480px) {
   html.site-document h1 { font-size: clamp(48px, 15vw, 70px); }
   html.site-document h2 { font-size: clamp(34px, 11vw, 52px); }
-  .site-header .site-button-small { font-size: 0; }
-  .site-header .site-button-small::before { font-size: 14px; content: "Abrir ChatGPT"; }
+  .site-header .site-button-small { font-size: 14px; }
+  .landing-cta-prefix { display: none; }
   .site-user-message { padding: 15px; font-size: 14px; }
   .site-trip-receipt { align-items: flex-start; padding: 16px; }
   .site-trip-receipt strong { font-size: 17px; }

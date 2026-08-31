@@ -15,24 +15,29 @@ import {
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_ITINERARY_V11_UI_URI,
+  LEGACY_ITINERARY_V12_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_V4_UI_URI,
+  LEGACY_PUBLIC_SHARE_V5_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_V5_UI_URI,
+  LEGACY_TRIP_INTAKE_V6_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
   LEGACY_TRIP_LIST_V4_UI_URI,
+  LEGACY_TRIP_LIST_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V7_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -70,24 +75,29 @@ export {
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_ITINERARY_V11_UI_URI,
+  LEGACY_ITINERARY_V12_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_V4_UI_URI,
+  LEGACY_PUBLIC_SHARE_V5_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_V5_UI_URI,
+  LEGACY_TRIP_INTAKE_V6_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
   LEGACY_TRIP_LIST_V4_UI_URI,
+  LEGACY_TRIP_LIST_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V7_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -370,7 +380,7 @@ export const publicItinerarySchema = z.object({
     .optional(),
 });
 
-const tripBriefSchema = z.object({
+export const tripBriefSchema = z.object({
   locale: localeSchema
     .describe(
       "BCP 47 locale inferred from the user's predominant language. Always provide it without asking the user; for example es, es-AR, en, en-GB, or pt-BR.",
@@ -449,6 +459,20 @@ const tripCriticalFieldLabels = {
     endDate: "a data de retorno",
     "travellers.adults": "a quantidade de adultos",
     "transport.modes": "como vocês querem se locomover",
+  },
+  fr: {
+    destination: "la destination",
+    startDate: "la date d’arrivée",
+    endDate: "la date de retour",
+    "travellers.adults": "le nombre d’adultes",
+    "transport.modes": "le mode de déplacement souhaité",
+  },
+  de: {
+    destination: "das Reiseziel",
+    startDate: "das Anreisedatum",
+    endDate: "das Rückreisedatum",
+    "travellers.adults": "die Anzahl der Erwachsenen",
+    "transport.modes": "die gewünschten Verkehrsmittel",
   },
 };
 
@@ -1112,7 +1136,7 @@ export function validateItinerary(
   return { valid: errors.length === 0, errors, warnings: [...new Set(warnings)] };
 }
 
-function prepareTripBrief(brief) {
+export function prepareTripBrief(brief) {
   const missing = [];
   const criticalFields = [];
   const warnings = [];
@@ -1397,6 +1421,9 @@ export function createTripPlannerServer({
   server.registerResource("itinerary-ui-v11", LEGACY_ITINERARY_V11_UI_URI, {}, async () =>
     itineraryResource(widgetOrigin, LEGACY_ITINERARY_V11_UI_URI, { mapsEmbedApiKey }),
   );
+  server.registerResource("itinerary-ui-v12", LEGACY_ITINERARY_V12_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V12_UI_URI, { mapsEmbedApiKey }),
+  );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),
   );
@@ -1412,6 +1439,9 @@ export function createTripPlannerServer({
   server.registerResource("trip-intake-ui-v5", LEGACY_TRIP_INTAKE_V5_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_V5_UI_URI),
   );
+  server.registerResource("trip-intake-ui-v6", LEGACY_TRIP_INTAKE_V6_UI_URI, {}, async () =>
+    tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_V6_UI_URI),
+  );
   server.registerResource("trip-list-ui", TRIP_LIST_UI_URI, {}, async () =>
     tripListResource(widgetOrigin),
   );
@@ -1426,6 +1456,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("trip-list-ui-v4", LEGACY_TRIP_LIST_V4_UI_URI, {}, async () =>
     tripListResource(widgetOrigin, LEGACY_TRIP_LIST_V4_UI_URI),
+  );
+  server.registerResource("trip-list-ui-v5", LEGACY_TRIP_LIST_V5_UI_URI, {}, async () =>
+    tripListResource(widgetOrigin, LEGACY_TRIP_LIST_V5_UI_URI),
   );
   server.registerResource("trip-requirements-ui", TRIP_REQUIREMENTS_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin),
@@ -1448,6 +1481,9 @@ export function createTripPlannerServer({
   server.registerResource("trip-requirements-ui-v6", LEGACY_TRIP_REQUIREMENTS_V6_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V6_UI_URI),
   );
+  server.registerResource("trip-requirements-ui-v7", LEGACY_TRIP_REQUIREMENTS_V7_UI_URI, {}, async () =>
+    tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V7_UI_URI),
+  );
   server.registerResource("public-share-ui", PUBLIC_SHARE_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin),
   );
@@ -1462,6 +1498,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("public-share-ui-v4", LEGACY_PUBLIC_SHARE_V4_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_V4_UI_URI),
+  );
+  server.registerResource("public-share-ui-v5", LEGACY_PUBLIC_SHARE_V5_UI_URI, {}, async () =>
+    publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_V5_UI_URI),
   );
 
   server.registerTool(

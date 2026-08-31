@@ -141,6 +141,16 @@ const pages = [
     },
   },
   {
+    exportName: "generateTripPageHtml",
+    entry: "src/generate/index.jsx",
+    documentClass: "web-document",
+    metadata: {
+      description: "Prepara, valida y guarda un itinerario generado con ChatGPT y Sendero.",
+      robots: "noindex,nofollow,noarchive",
+      title: "Crear un viaje · Sendero",
+    },
+  },
+  {
     exportName: "invitePageHtml",
     entry: "src/invite/index.jsx",
     documentClass: "web-document",

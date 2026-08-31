@@ -7,6 +7,11 @@ description: Create, research, validate, and visualize a new local-first travel 
 
 Create practical plans that balance essential sights with neighborhood life, independent culture, alternative venues, and realistic travel time.
 
+Before starting, read [planning-core.md](references/planning-core.md) completely.
+It is the authoritative platform-neutral planning protocol shared by the Sendero
+plugin and the authenticated WebMCP page. The workflow below defines the plugin's
+tool and component choreography; when guidance overlaps, follow the shared protocol.
+
 ## Workflow
 
 ### 1. Capture the trip brief

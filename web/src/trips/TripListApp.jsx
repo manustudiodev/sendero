@@ -103,6 +103,24 @@ const COPY = {
     version: "Versão",
     savedTrip: "Viagem salva",
   },
+  fr: {
+    purpose: {
+      open: { eyebrow: "Vos voyages", title: "Lequel souhaitez-vous ouvrir ?", action: "Ouvrir", selected: "Voyage sélectionné" },
+      adjust: { eyebrow: "Modifier le voyage", title: "Lequel souhaitez-vous réorganiser ?", action: "Modifier", selected: "Voyage à modifier" },
+      refresh: { eyebrow: "Actualiser le voyage", title: "Lequel souhaitez-vous actualiser ?", action: "Actualiser", selected: "Voyage à actualiser" },
+    },
+    roles: { owner: "Propriétaire", editor: "Collaborateur", viewer: "Lecture seule" },
+    pending: "La poursuite est toujours en attente. Vous pouvez réessayer.", opening: "Ouverture du voyage…", continuing: "Poursuite dans la conversation…", chooseTrip: "Choisissez le voyage que vous souhaitez ouvrir.", missingTrip: "Impossible de trouver ce voyage. Il a peut-être été supprimé ou vous n’y avez peut-être plus accès.", opened: "Voyage ouvert.", selected: "Sélection envoyée.", openFailed: "Impossible d’ouvrir ce voyage. Votre sélection est toujours là ; réessayez.", continueFailed: "Impossible de poursuivre pour le moment. Votre sélection est toujours là ; réessayez.", searching: "Recherche de vos voyages…", listFailed: "Impossible de charger vos voyages. Réessayez.", creating: "Ouverture d’un nouveau voyage…", createPrompt: "Je souhaite créer un nouveau voyage. Aide-moi à compléter l’essentiel et poursuis à partir de là.", createFailed: "Impossible de démarrer le voyage pour le moment. Réessayez.", retry: "Réessayer", back: "Retour à mes voyages", notFoundTitle: "Impossible de trouver ce voyage", viewTrips: "Voir mes voyages", emptyTitle: "Vous n’avez encore aucun voyage enregistré", emptyDetail: "Créez-en un et Sendero le gardera prêt pour que vous puissiez le poursuivre plus tard.", create: "Créer un voyage", chooseCard: "Choisissez une carte et nous poursuivrons à partir de là.", version: "Version", savedTrip: "Voyage enregistré",
+  },
+  de: {
+    purpose: {
+      open: { eyebrow: "Deine Reisen", title: "Welche möchtest du öffnen?", action: "Öffnen", selected: "Ausgewählte Reise" },
+      adjust: { eyebrow: "Reise anpassen", title: "Welche möchtest du neu organisieren?", action: "Anpassen", selected: "Anzupassende Reise" },
+      refresh: { eyebrow: "Reise aktualisieren", title: "Welche möchtest du aktualisieren?", action: "Aktualisieren", selected: "Zu aktualisierende Reise" },
+    },
+    roles: { owner: "Eigentümer", editor: "Mitwirkender", viewer: "Nur ansehen" },
+    pending: "Die Fortsetzung steht noch aus. Du kannst es erneut versuchen.", opening: "Reise wird geöffnet…", continuing: "Die Unterhaltung wird fortgesetzt…", chooseTrip: "Wähle die Reise aus, die du öffnen möchtest.", missingTrip: "Diese Reise wurde nicht gefunden. Sie wurde möglicherweise gelöscht oder du hast keinen Zugriff mehr.", opened: "Reise geöffnet.", selected: "Auswahl gesendet.", openFailed: "Diese Reise konnte nicht geöffnet werden. Deine Auswahl bleibt erhalten; versuche es erneut.", continueFailed: "Wir konnten noch nicht fortfahren. Deine Auswahl bleibt erhalten; versuche es erneut.", searching: "Deine Reisen werden gesucht…", listFailed: "Deine Reisen konnten nicht geladen werden. Versuche es erneut.", creating: "Neue Reise wird geöffnet…", createPrompt: "Ich möchte eine neue Reise erstellen. Hilf mir, das Wichtigste zu vervollständigen, und fahre dann fort.", createFailed: "Die Reise konnte noch nicht gestartet werden. Versuche es erneut.", retry: "Erneut versuchen", back: "Zurück zu meinen Reisen", notFoundTitle: "Diese Reise wurde nicht gefunden", viewTrips: "Meine Reisen anzeigen", emptyTitle: "Du hast noch keine gespeicherten Reisen", emptyDetail: "Erstelle eine und Sendero hält sie bereit, damit du später weitermachen kannst.", create: "Reise erstellen", chooseCard: "Wähle eine Karte aus, dann machen wir dort weiter.", version: "Version", savedTrip: "Gespeicherte Reise",
+  },
 };
 
 function copyFor(locale) {

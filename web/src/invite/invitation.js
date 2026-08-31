@@ -26,7 +26,7 @@ export function invitationWebId(locationLike = globalThis.location) {
 
 export function formatInvitationExpiry(expiresAt, locale = "en") {
   const resolvedLocale = resolveContentLocale(locale);
-  const unavailable = { en: "Date unavailable", es: "Sin fecha disponible", pt: "Data indisponível" }[localeLanguage(resolvedLocale)];
+  const unavailable = { en: "Date unavailable", es: "Sin fecha disponible", pt: "Data indisponível", fr: "Date indisponible", de: "Datum nicht verfügbar" }[localeLanguage(resolvedLocale)];
   if (!valueString(expiresAt)) return unavailable;
   const date = new Date(expiresAt);
   if (Number.isNaN(date.getTime())) return unavailable;
@@ -39,7 +39,7 @@ export function normalizeInvitationInspection(payload) {
   const state = supportedStates.has(value.state) ? value.state : "unavailable";
   const invitation = value.invitation && typeof value.invitation === "object" ? value.invitation : {};
   const locale = resolveContentLocale(invitation.locale || value.locale);
-  const fallbackTitle = { en: "Shared trip", es: "Viaje compartido", pt: "Viagem compartilhada" }[localeLanguage(locale)];
+  const fallbackTitle = { en: "Shared trip", es: "Viaje compartido", pt: "Viagem compartilhada", fr: "Voyage partagé", de: "Geteilte Reise" }[localeLanguage(locale)];
   return {
     state,
     invitation: {

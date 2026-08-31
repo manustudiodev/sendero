@@ -32,6 +32,10 @@ const removeTripMember = makeFunctionReference("tripInvitations:removeCollaborat
 const revokeTripInvitation = makeFunctionReference("tripInvitations:revokeInvitation");
 const acceptTripInvitation = makeFunctionReference("tripInvitations:accept");
 const declineTripInvitation = makeFunctionReference("tripInvitations:decline");
+const stageItineraryDraft = makeFunctionReference("itineraryDrafts:stage");
+const getItineraryDraft = makeFunctionReference("itineraryDrafts:get");
+const saveItineraryDraft = makeFunctionReference("itineraryDrafts:save");
+const discardItineraryDraft = makeFunctionReference("itineraryDrafts:discard");
 
 function requireValue(value, message) {
   if (!value) throw new Error(message);
@@ -186,6 +190,40 @@ export function createConvexPersistence({ convexUrl, authToken } = {}) {
       return result?.itinerary
         ? { ...result, itinerary: itineraryWithLocale(result.itinerary) }
         : result;
+    },
+
+    async stageDraft({
+      brief,
+      briefHash,
+      itinerary,
+      itineraryHash,
+      operationId,
+      protocolHash,
+      protocolVersion,
+      warnings,
+    }) {
+      return client().mutation(stageItineraryDraft, {
+        brief,
+        briefHash,
+        itinerary: itineraryWithLocale(itinerary),
+        itineraryHash,
+        operationId,
+        protocolHash,
+        protocolVersion,
+        warnings,
+      });
+    },
+
+    async getDraft(draftId) {
+      return client().query(getItineraryDraft, { draftId });
+    },
+
+    async saveDraft({ draftId, operationId }) {
+      return client().mutation(saveItineraryDraft, { draftId, operationId });
+    },
+
+    async discardDraft(draftId) {
+      return client().mutation(discardItineraryDraft, { draftId });
     },
 
     async updateReservation({

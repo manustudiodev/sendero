@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import {
@@ -10,11 +11,49 @@ import {
   hashInvitationToken,
 } from "../server/invitations.mjs";
 
+type ClaimedOutboxJob =
+  | {
+      needsGenerationBinding: true;
+      outboxId: Id<"invitationEmailOutbox">;
+      tripId: Id<"trips">;
+      invitationId: Id<"tripInvitations">;
+      operationId: string;
+      purpose: "invite" | "resend";
+      recipientEmail: string;
+      role: "editor" | "viewer";
+      invitationTokenHash?: string;
+      invitationSentAt?: number;
+    }
+  | {
+      needsGenerationBinding?: false;
+      outboxId: Id<"invitationEmailOutbox">;
+      tripId: Id<"trips">;
+      invitationId: Id<"tripInvitations">;
+      operationId: string;
+      idempotencyKey: string;
+      purpose: "invite" | "resend";
+      recipientEmail: string;
+      role: "editor" | "viewer";
+      tokenHash: string;
+      invitationSentAt: number;
+      attemptCount: number;
+      maxAttempts: number;
+      workerId: string;
+      webId: string;
+      tripTitle: string;
+      ownerName?: string;
+    };
+
+type LegacyBindingResult = {
+  status: "bound" | "failed" | "unavailable";
+};
+
 export const dispatch = internalAction({
   args: { outboxId: v.id("invitationEmailOutbox") },
-  handler: async (ctx, { outboxId }) => {
+  returns: v.any(),
+  handler: async (ctx, { outboxId }): Promise<unknown> => {
     const workerId = `email:${randomUUID()}`;
-    let job = await ctx.runMutation(
+    let job: ClaimedOutboxJob | null = await ctx.runMutation(
       (internal as any).invitationEmailOutbox.claim,
       { outboxId, workerId },
     );
@@ -44,7 +83,7 @@ export const dispatch = internalAction({
           },
         );
       }
-      const binding = await ctx.runMutation(
+      const binding: LegacyBindingResult = await ctx.runMutation(
         (internal as any).invitationEmailOutbox.bindLegacyGeneration,
         { outboxId, derivedTokenHash },
       );

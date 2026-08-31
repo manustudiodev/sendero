@@ -5,18 +5,25 @@ import { join, resolve } from "node:path";
 
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "sendero-generated-"));
 const temporaryOutput = join(temporaryDirectory, "widgets.mjs");
+const temporaryPlanningOutput = join(temporaryDirectory, "planning-protocol.mjs");
 
 try {
+  await run(process.execPath, ["scripts/build-planning-protocol.mjs"], {
+    ...process.env,
+    SENDERO_PLANNING_PROTOCOL_OUTPUT_PATH: temporaryPlanningOutput,
+  });
   await run(process.execPath, ["web/build.mjs"], {
     ...process.env,
     SENDERO_UI_OUTPUT_PATH: temporaryOutput,
   });
-  const [expected, actual] = await Promise.all([
+  const [expected, actual, expectedPlanning, actualPlanning] = await Promise.all([
     readFile(resolve("server/ui/generated/widgets.mjs"), "utf8"),
     readFile(temporaryOutput, "utf8"),
+    readFile(resolve("server/generated/planning-protocol.mjs"), "utf8"),
+    readFile(temporaryPlanningOutput, "utf8"),
   ]);
-  if (actual !== expected) {
-    console.error("Generated Sendero UI is stale. Run `npm run build:ui` and include the result.");
+  if (actual !== expected || actualPlanning !== expectedPlanning) {
+    console.error("Generated Sendero UI or planning protocol is stale. Run `npm run build:ui` and include the result.");
     process.exitCode = 1;
   } else {
     console.log("Generated Sendero UI matches the current sources.");

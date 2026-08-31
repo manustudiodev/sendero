@@ -54,6 +54,24 @@ const PRESENTATION = {
     rotated: { eyebrow: "Link substituído", title: "Agora você tem um novo link", detail: "O link anterior deixou de funcionar." },
     updated: { eyebrow: "Link atualizado", title: "A visualização pública está atualizada", detail: "O mesmo link agora mostra a versão que você acabou de publicar." },
   },
+  fr: {
+    active: { eyebrow: "Lien actif", title: "La vue publique est à jour", detail: "Toute personne disposant du lien peut consulter la version publique en lecture seule." },
+    expired: { eyebrow: "Lien expiré", title: "Ce lien a expiré", detail: "Il ne permet plus d’ouvrir le voyage." },
+    not_published: { eyebrow: "Partager le voyage", title: "Il n’y a pas encore de lien public", detail: "Le voyage reste privé." },
+    published: { eyebrow: "Lien créé", title: "Votre voyage est prêt à être partagé", detail: "Il n’affiche que la version publique en lecture seule." },
+    revoked: { eyebrow: "Lien révoqué", title: "Le voyage n’est plus public", detail: "Le lien précédent ne fonctionne plus." },
+    rotated: { eyebrow: "Lien remplacé", title: "Vous disposez maintenant d’un nouveau lien", detail: "Le lien précédent ne fonctionne plus." },
+    updated: { eyebrow: "Lien actualisé", title: "La vue publique est à jour", detail: "Le même lien affiche maintenant la version que vous venez de publier." },
+  },
+  de: {
+    active: { eyebrow: "Aktiver Link", title: "Die öffentliche Ansicht ist aktuell", detail: "Alle mit dem Link können die öffentliche schreibgeschützte Version ansehen." },
+    expired: { eyebrow: "Abgelaufener Link", title: "Dieser Link ist abgelaufen", detail: "Die Reise kann damit nicht mehr geöffnet werden." },
+    not_published: { eyebrow: "Reise teilen", title: "Es gibt noch keinen öffentlichen Link", detail: "Die Reise bleibt privat." },
+    published: { eyebrow: "Link erstellt", title: "Deine Reise kann geteilt werden", detail: "Er zeigt nur die öffentliche schreibgeschützte Version." },
+    revoked: { eyebrow: "Link widerrufen", title: "Die Reise ist nicht mehr öffentlich", detail: "Der vorherige Link funktioniert nicht mehr." },
+    rotated: { eyebrow: "Link ersetzt", title: "Du hast jetzt einen neuen Link", detail: "Der vorherige Link funktioniert nicht mehr." },
+    updated: { eyebrow: "Link aktualisiert", title: "Die öffentliche Ansicht ist aktuell", detail: "Derselbe Link zeigt jetzt die gerade veröffentlichte Version." },
+  },
 };
 
 export function publicSharePresentation(output, locale = "en") {
@@ -65,6 +83,8 @@ export function publicSharePresentation(output, locale = "en") {
       en: { eyebrow: "Link unavailable", title: "We couldn't show the link", detail: "The operation finished, but we did not receive a valid link. Try the request again from the conversation." },
       es: { eyebrow: "Enlace no disponible", title: "No pudimos mostrar el enlace", detail: "La operación terminó, pero no recibimos un enlace válido. Vuelve a intentar la solicitud desde la conversación." },
       pt: { eyebrow: "Link indisponível", title: "Não foi possível mostrar o link", detail: "A operação terminou, mas não recebemos um link válido. Tente a solicitação novamente na conversa." },
+      fr: { eyebrow: "Lien indisponible", title: "Impossible d’afficher le lien", detail: "L’opération est terminée, mais nous n’avons pas reçu de lien valide. Recommencez la demande dans la conversation." },
+      de: { eyebrow: "Link nicht verfügbar", title: "Der Link konnte nicht angezeigt werden", detail: "Der Vorgang ist abgeschlossen, aber wir haben keinen gültigen Link erhalten. Wiederhole die Anfrage in der Unterhaltung." },
     }[language];
     return {
       ...missing,
@@ -75,6 +95,8 @@ export function publicSharePresentation(output, locale = "en") {
       en: { eyebrow: "Active link", title: "There are unpublished changes", detail: `The link shows version ${output.publishedVersion}; your trip is now on version ${output.currentVersion}.` },
       es: { eyebrow: "Enlace activo", title: "Hay cambios sin publicar", detail: `El enlace muestra la versión ${output.publishedVersion}; tu viaje ya está en la ${output.currentVersion}.` },
       pt: { eyebrow: "Link ativo", title: "Há alterações não publicadas", detail: `O link mostra a versão ${output.publishedVersion}; sua viagem já está na versão ${output.currentVersion}.` },
+      fr: { eyebrow: "Lien actif", title: "Des modifications ne sont pas publiées", detail: `Le lien affiche la version ${output.publishedVersion} ; votre voyage est déjà en version ${output.currentVersion}.` },
+      de: { eyebrow: "Aktiver Link", title: "Es gibt unveröffentlichte Änderungen", detail: `Der Link zeigt Version ${output.publishedVersion}; deine Reise ist bereits auf Version ${output.currentVersion}.` },
     }[language];
     return {
       ...stale,

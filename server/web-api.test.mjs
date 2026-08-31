@@ -6,6 +6,7 @@ import {
   hashPublicShareToken,
 } from "./public-sharing.mjs";
 import { registerWebApiRoutes } from "./web-api.mjs";
+import { planningProtocolIdentity } from "./itinerary-planning.mjs";
 
 const WEB_ID = "trip_web_123456789012";
 const INVITE_PEPPER = "sendero-invitation-pepper-with-at-least-thirty-two-bytes";
@@ -38,6 +39,7 @@ function fixture({
   authenticated = true,
   emailVerified = true,
   inspectionTrip,
+  planningEnabled = false,
   storage = {},
   sendInvitationEmail,
 } = {}) {
@@ -191,6 +193,7 @@ function fixture({
     convexUrl: "https://example.convex.cloud",
     invitePepper: INVITE_PEPPER,
     now: () => Date.UTC(2026, 7, 27, 12),
+    planningEnabled,
     persistenceFactory: ({ authToken }) => authToken ? authenticatedStorage : publicStorage,
     publicShareSecret: SHARE_SECRET,
     publicWebUrl: "https://sendero.example",
@@ -218,6 +221,140 @@ function jsonRequest(path, body, { csrf = CSRF, method = "POST" } = {}) {
     body: JSON.stringify(body),
   });
 }
+
+const planningBrief = {
+  locale: "es",
+  destination: "Valencia, España",
+  startDate: "2027-04-10",
+  endDate: "2027-04-10",
+  travellers: { adults: 2 },
+  transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
+};
+
+const plannedItinerary = {
+  locale: "es",
+  title: "Valencia a pie",
+  destination: "Valencia, España",
+  startDate: "2027-04-10",
+  endDate: "2027-04-10",
+  transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
+  days: [{
+    date: "2027-04-10",
+    title: "Centro histórico",
+    area: "Ciutat Vella",
+    activities: [{
+      id: "paseo-centro",
+      startTime: "10:00",
+      endTime: "11:30",
+      title: "Paseo por el centro",
+      category: "free_time",
+    }],
+  }],
+};
+
+test("keeps itinerary planning disabled by default behind an authenticated capability", async () => {
+  const { app } = fixture();
+  const capabilities = await app.request("/api/itinerary-planning/capabilities");
+  assert.equal(capabilities.status, 200);
+  assert.deepEqual(await capabilities.json(), { data: { enabled: false } });
+  const response = await app.request(jsonRequest(
+    "/api/itinerary-planning/protocol",
+    { brief: planningBrief },
+    { csrf: undefined },
+  ));
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, "planning_unavailable");
+});
+
+test("returns the current protocol and stages only server-validated itineraries", async () => {
+  const DRAFT_ID = "draft_1234567890123456";
+  const { app, calls } = fixture({
+    planningEnabled: true,
+    storage: {
+      async stageDraft(input) {
+        calls.push(["stageDraft", input]);
+        return {
+          draftId: DRAFT_ID,
+          status: "valid",
+          expiresAt: Date.UTC(2027, 3, 11),
+          protocolVersion: input.protocolVersion,
+          warnings: input.warnings,
+          itinerary: input.itinerary,
+        };
+      },
+    },
+  });
+  const protocolResponse = await app.request(jsonRequest(
+    "/api/itinerary-planning/protocol",
+    { brief: planningBrief },
+    { csrf: undefined },
+  ));
+  assert.equal(protocolResponse.status, 200);
+  const protocol = (await protocolResponse.json()).data;
+  assert.equal(protocol.brief.ready, true);
+  assert.match(protocol.protocol.instructions, /active conversation is the reasoning/);
+
+  const identity = planningProtocolIdentity();
+  const stageResponse = await app.request(jsonRequest("/api/itinerary-drafts", {
+    brief: planningBrief,
+    itinerary: plannedItinerary,
+    operationId: "sendero-stage:web-test",
+    protocolHash: identity.hash,
+    protocolVersion: identity.version,
+  }));
+  assert.equal(stageResponse.status, 201);
+  const staged = (await stageResponse.json()).data;
+  assert.equal(staged.draftId, DRAFT_ID);
+  assert.equal(staged.status, "valid");
+  assert.equal(staged.summary.days, 1);
+  assert.equal(calls.filter(([name]) => name === "stageDraft").length, 1);
+});
+
+test("requires CSRF and explicit separate calls to save or discard a staged itinerary", async () => {
+  const DRAFT_ID = "draft_1234567890123456";
+  const { app, calls } = fixture({
+    planningEnabled: true,
+    storage: {
+      async saveDraft(input) {
+        calls.push(["saveDraft", input]);
+        return {
+          draftId: DRAFT_ID,
+          status: "saved",
+          replayed: false,
+          trip: { tripId: "trip_internal_2", webId: WEB_ID, version: 1, itinerary: plannedItinerary },
+        };
+      },
+      async discardDraft(draftId) {
+        calls.push(["discardDraft", draftId]);
+        return { draftId, status: "discarded" };
+      },
+    },
+  });
+
+  const rejected = await app.request(jsonRequest(
+    `/api/itinerary-drafts/${DRAFT_ID}/save`,
+    { operationId: "sendero-save:web-test" },
+    { csrf: "wrong" },
+  ));
+  assert.equal(rejected.status, 403);
+
+  const saved = await app.request(jsonRequest(
+    `/api/itinerary-drafts/${DRAFT_ID}/save`,
+    { operationId: "sendero-save:web-test" },
+  ));
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).data.trip.version, 1);
+
+  const discarded = await app.request(new Request(
+    `https://sendero.example/api/itinerary-drafts/${DRAFT_ID}`,
+    { method: "DELETE", headers: { Origin: "https://sendero.example", "X-CSRF-Token": CSRF } },
+  ));
+  assert.equal(discarded.status, 200);
+  assert.deepEqual(calls.filter(([name]) => ["saveDraft", "discardDraft"].includes(name)), [
+    ["saveDraft", { draftId: DRAFT_ID, operationId: "sendero-save:web-test" }],
+    ["discardDraft", DRAFT_ID],
+  ]);
+});
 
 test("lists only safe trip summaries for an authenticated account", async () => {
   const { app, calls } = fixture();
@@ -699,11 +836,13 @@ test("preserves an invitation through login and accepts it only after an explici
   assert.equal(calls.filter(([name]) => name === "acceptInvitation").length, 1);
 });
 
-test("uses English invitation fallback copy by default and preserves Spanish or Portuguese", async () => {
+test("uses English invitation fallback copy by default and preserves supported trip locales", async () => {
   const cases = [
     { locale: undefined, expectedLocale: "en", expectedTitle: "Shared trip" },
     { locale: "es-AR", expectedLocale: "es-AR", expectedTitle: "Viaje compartido" },
     { locale: "pt-BR", expectedLocale: "pt-BR", expectedTitle: "Viagem compartilhada" },
+    { locale: "fr-FR", expectedLocale: "fr-FR", expectedTitle: "Voyage partagé" },
+    { locale: "de-DE", expectedLocale: "de-DE", expectedTitle: "Geteilte Reise" },
   ];
 
   for (const item of cases) {

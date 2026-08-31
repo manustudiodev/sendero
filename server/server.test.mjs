@@ -17,24 +17,29 @@ import {
   LEGACY_ITINERARY_V9_UI_URI,
   LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_ITINERARY_V11_UI_URI,
+  LEGACY_ITINERARY_V12_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_V4_UI_URI,
+  LEGACY_PUBLIC_SHARE_V5_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_V5_UI_URI,
+  LEGACY_TRIP_INTAKE_V6_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
   LEGACY_TRIP_LIST_V4_UI_URI,
+  LEGACY_TRIP_LIST_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V4_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V7_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -73,11 +78,11 @@ test("pins a fresh URI for every current Sendero component bundle", () => {
       share: PUBLIC_SHARE_UI_URI,
     },
     {
-      itinerary: "ui://sendero/itinerary-v12.html",
-      intake: "ui://sendero/trip-intake-v6.html",
-      trips: "ui://sendero/trip-list-v5.html",
-      requirements: "ui://sendero/trip-requirements-v7.html",
-      share: "ui://sendero/public-share-control-v5.html",
+      itinerary: "ui://sendero/itinerary-v13.html",
+      intake: "ui://sendero/trip-intake-v7.html",
+      trips: "ui://sendero/trip-list-v6.html",
+      requirements: "ui://sendero/trip-requirements-v8.html",
+      share: "ui://sendero/public-share-control-v6.html",
     },
   );
 });
@@ -579,6 +584,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyItineraryV11Resource = await client.readResource({ uri: LEGACY_ITINERARY_V11_UI_URI });
   assertInlineWidgetResource(legacyItineraryV11Resource, LEGACY_ITINERARY_V11_UI_URI);
   assert.equal(legacyItineraryV11Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV12Resource = await client.readResource({ uri: LEGACY_ITINERARY_V12_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV12Resource, LEGACY_ITINERARY_V12_UI_URI);
+  assert.equal(legacyItineraryV12Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");
@@ -606,6 +614,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyIntakeV5Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V5_UI_URI });
   assertInlineWidgetResource(legacyIntakeV5Resource, LEGACY_TRIP_INTAKE_V5_UI_URI);
   assert.equal(legacyIntakeV5Resource.contents[0].text, intakeResource.contents[0].text);
+  const legacyIntakeV6Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V6_UI_URI });
+  assertInlineWidgetResource(legacyIntakeV6Resource, LEGACY_TRIP_INTAKE_V6_UI_URI);
+  assert.equal(legacyIntakeV6Resource.contents[0].text, intakeResource.contents[0].text);
 
   const tripListResource = await client.readResource({ uri: TRIP_LIST_UI_URI });
   assertInlineWidgetResource(tripListResource, TRIP_LIST_UI_URI);
@@ -625,6 +636,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyTripListV4Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V4_UI_URI });
   assertInlineWidgetResource(legacyTripListV4Resource, LEGACY_TRIP_LIST_V4_UI_URI);
   assert.equal(legacyTripListV4Resource.contents[0].text, tripListResource.contents[0].text);
+  const legacyTripListV5Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V5_UI_URI });
+  assertInlineWidgetResource(legacyTripListV5Resource, LEGACY_TRIP_LIST_V5_UI_URI);
+  assert.equal(legacyTripListV5Resource.contents[0].text, tripListResource.contents[0].text);
 
   const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
   assertInlineWidgetResource(requirementsResource, TRIP_REQUIREMENTS_UI_URI);
@@ -655,6 +669,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyRequirementsV6Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V6_UI_URI });
   assertInlineWidgetResource(legacyRequirementsV6Resource, LEGACY_TRIP_REQUIREMENTS_V6_UI_URI);
   assert.equal(legacyRequirementsV6Resource.contents[0].text, requirementsResource.contents[0].text);
+  const legacyRequirementsV7Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V7_UI_URI });
+  assertInlineWidgetResource(legacyRequirementsV7Resource, LEGACY_TRIP_REQUIREMENTS_V7_UI_URI);
+  assert.equal(legacyRequirementsV7Resource.contents[0].text, requirementsResource.contents[0].text);
 
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
   assertInlineWidgetResource(publicShareResource, PUBLIC_SHARE_UI_URI);
@@ -678,6 +695,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyPublicShareV4Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V4_UI_URI });
   assertInlineWidgetResource(legacyPublicShareV4Resource, LEGACY_PUBLIC_SHARE_V4_UI_URI);
   assert.equal(legacyPublicShareV4Resource.contents[0].text, publicShareResource.contents[0].text);
+  const legacyPublicShareV5Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V5_UI_URI });
+  assertInlineWidgetResource(legacyPublicShareV5Resource, LEGACY_PUBLIC_SHARE_V5_UI_URI);
+  assert.equal(legacyPublicShareV5Resource.contents[0].text, publicShareResource.contents[0].text);
 
   await client.close();
   await server.close();

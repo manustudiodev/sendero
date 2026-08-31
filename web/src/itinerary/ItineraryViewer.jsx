@@ -981,9 +981,10 @@ export function ItineraryViewer({
   selectedListDetailView,
   selectedReservationKey,
   selectedRouteDate,
+  uiLocale: uiLocaleOverride,
   variant = "chat",
 }) {
-  const locale = resolveContentLocale(itinerary?.locale);
+  const locale = resolveContentLocale(uiLocaleOverride || itinerary?.locale);
   const primaryViews = primaryViewsFor(locale);
   const viewerId = useId();
   const tabRefs = useRef([]);

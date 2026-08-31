@@ -569,7 +569,6 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
 
 @media (max-width: 820px) {
   .landing-header { width: calc(100% - 16px); padding-inline: 8px; }
-  .landing-header .site-header-actions > .site-text-link { display: inline-flex; }
   .landing-hero { width: min(100% - 32px, 1280px); min-height: calc(100svh - 70px); padding: 74px 0 60px; }
   .landing-hero-route { opacity: .2; }
   .landing-hero-route svg { width: 176%; margin-left: -38%; }

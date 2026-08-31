@@ -1,9 +1,18 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { setCookie } from "hono/cookie";
 import { senderoEnvironmentIdentity } from "../config/environment.mjs";
 import {
+  canonicalSupportedUiLocale,
+  resolveUiLocale,
+  SUPPORTED_UI_LANGUAGES,
+  UI_LOCALE_COOKIE,
+  uiLanguage,
+} from "../shared/ui-locale.mjs";
+import {
   accountPageHtml,
+  generateTripPageHtml,
   invitePageHtml,
   landingPageHtml,
   privacyPageHtml,
@@ -23,6 +32,7 @@ import { createTripPlannerServer, publicItinerarySchema } from "./server.mjs";
 import { withGoogleMapsEmbedKey } from "./ui/resources.mjs";
 import { createWebAuth, registerWebAuthRoutes } from "./web-auth.mjs";
 import { registerWebApiRoutes } from "./web-api.mjs";
+import { localizePageHtml } from "./site-localization.mjs";
 
 function authorizationToken(request) {
   const authorization = request.header("Authorization");
@@ -41,6 +51,26 @@ function defaultResourceServerUrl() {
 function defaultPublicWebUrl(resourceServerUrl) {
   if (process.env.PUBLIC_WEB_URL) return process.env.PUBLIC_WEB_URL;
   return new URL(resourceServerUrl).origin;
+}
+
+function requestUiLocale(context, explicitPathLocale = "") {
+  const url = new URL(context.req.url);
+  return resolveUiLocale({
+    acceptLanguage: context.req.header("Accept-Language") || "",
+    cookie: context.req.header("Cookie") || "",
+    pathname: explicitPathLocale ? `/${explicitPathLocale}` : url.pathname,
+    search: url.search,
+  });
+}
+
+function rememberUiLocale(context, locale) {
+  setCookie(context, UI_LOCALE_COOKIE, uiLanguage(locale), {
+    httpOnly: false,
+    maxAge: 31_536_000,
+    path: "/",
+    sameSite: "Lax",
+    secure: new URL(context.req.url).protocol === "https:",
+  });
 }
 
 const publicSecurityHeaders = Object.freeze({
@@ -132,6 +162,7 @@ export function createApp({
   logger = console,
   app = new Hono(),
   environment = process.env.SENDERO_ENVIRONMENT,
+  planningEnabled = process.env.SENDERO_WEBMCP_PLANNING_ENABLED === "true",
 } = {}) {
   const environmentIdentity = senderoEnvironmentIdentity(environment);
   const mcpCors = cors({
@@ -174,18 +205,37 @@ export function createApp({
     invitePepper,
     logger,
     persistenceFactory,
+    planningEnabled,
     publicShareSecret,
     publicWebUrl: resolvedPublicWebUrl,
     webAuth: resolvedWebAuth,
   });
 
-  const renderSitePage = (html) => (context) => {
+  const renderSitePage = (html, page, explicitPathLocale) => (context) => {
+    const locale = requestUiLocale(context, explicitPathLocale);
     setSiteSecurityHeaders(context);
-    return context.html(html);
+    return context.html(localizePageHtml(html, {
+      locale,
+      page,
+      publicWebUrl: resolvedPublicWebUrl,
+    }));
   };
-  app.get("/", renderSitePage(landingPageHtml));
-  app.get("/privacy", renderSitePage(privacyPageHtml));
-  app.get("/terms", renderSitePage(termsPageHtml));
+  const redirectToLocalizedSitePage = (page) => (context) => {
+    const locale = requestUiLocale(context);
+    const suffix = page === "landing" ? "" : `/${page}`;
+    setSiteSecurityHeaders(context);
+    context.header("Cache-Control", "private, no-store, max-age=0");
+    context.header("Vary", "Accept-Language, Cookie");
+    return context.redirect(`/${uiLanguage(locale)}${suffix}`, 307);
+  };
+  app.get("/", redirectToLocalizedSitePage("landing"));
+  app.get("/privacy", redirectToLocalizedSitePage("privacy"));
+  app.get("/terms", redirectToLocalizedSitePage("terms"));
+  for (const locale of SUPPORTED_UI_LANGUAGES) {
+    app.get(`/${locale}`, renderSitePage(landingPageHtml, "landing", locale));
+    app.get(`/${locale}/privacy`, renderSitePage(privacyPageHtml, "privacy", locale));
+    app.get(`/${locale}/terms`, renderSitePage(termsPageHtml, "terms", locale));
+  }
   app.get("/favicon.ico", (context) => {
     context.header("Cache-Control", "public, max-age=86400");
     context.header("Content-Type", "image/svg+xml");
@@ -193,16 +243,20 @@ export function createApp({
     return context.body(faviconSvg);
   });
 
-  const renderAuthenticatedPage = (html, { includeMaps = false } = {}) => (context) => {
+  const renderAuthenticatedPage = (html, { includeMaps = false, page = "account" } = {}) => (context) => {
+    const locale = requestUiLocale(context);
+    if (canonicalSupportedUiLocale(context.req.query("lang"))) rememberUiLocale(context, locale);
     setAuthenticatedPageSecurityHeaders(context, { includeMaps });
-    return context.html(includeMaps ? withGoogleMapsEmbedKey(html, mapsEmbedApiKey) : html);
+    const pageHtml = includeMaps ? withGoogleMapsEmbedKey(html, mapsEmbedApiKey) : html;
+    return context.html(localizePageHtml(pageHtml, { locale, page, publicWebUrl: resolvedPublicWebUrl }));
   };
-  app.get("/app", renderAuthenticatedPage(accountPageHtml));
-  app.get("/invite", renderAuthenticatedPage(invitePageHtml));
-  app.get("/invite/:webId", renderAuthenticatedPage(invitePageHtml));
+  app.get("/app", renderAuthenticatedPage(accountPageHtml, { page: "account" }));
+  app.get("/app/new", renderAuthenticatedPage(generateTripPageHtml, { includeMaps: true, page: "generate" }));
+  app.get("/invite", renderAuthenticatedPage(invitePageHtml, { page: "invite" }));
+  app.get("/invite/:webId", renderAuthenticatedPage(invitePageHtml, { page: "invite" }));
   app.get(
     "/app/trips/:webId",
-    renderAuthenticatedPage(restrictedTripPageHtml, { includeMaps: true }),
+    renderAuthenticatedPage(restrictedTripPageHtml, { includeMaps: true, page: "restricted" }),
   );
 
   app.get("/health", (context) =>
@@ -220,12 +274,18 @@ export function createApp({
       mapsEmbed: typeof mapsEmbedApiKey === "string" && mapsEmbedApiKey.trim()
         ? "configured"
         : "not_configured",
+      webMcpPlanning: planningEnabled ? "enabled" : "disabled",
     }),
   );
 
   app.get("/share", (context) => {
+    const locale = requestUiLocale(context);
+    if (canonicalSupportedUiLocale(context.req.query("lang"))) rememberUiLocale(context, locale);
     setPublicSecurityHeaders(context);
-    return context.html(withGoogleMapsEmbedKey(publicSharePageHtml, mapsEmbedApiKey));
+    return context.html(localizePageHtml(
+      withGoogleMapsEmbedKey(publicSharePageHtml, mapsEmbedApiKey),
+      { locale, page: "share", publicWebUrl: resolvedPublicWebUrl },
+    ));
   });
 
   app.post("/api/public-shares/resolve", async (context) => {
