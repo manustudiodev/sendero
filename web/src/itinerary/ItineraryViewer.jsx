@@ -296,18 +296,20 @@ function DayDetails({
   locale,
   onOpenExternal,
   onReservationOpen,
+  selectedDetailView,
   variant,
 }) {
-  const [detailView, setDetailView] = useState("route");
+  const [localDetailView, setLocalDetailView] = useState("route");
   const detailId = useId();
   const detailTabRefs = useRef([]);
   const detailViews = [
     { id: "route", label: t(locale, "viewer.route") },
     { id: "description", label: t(locale, "viewer.description") },
   ];
+  const detailView = detailViews.some((view) => view.id === selectedDetailView) ? selectedDetailView : localDetailView;
 
   function selectDetailView(view, focus = false) {
-    setDetailView(view.id);
+    if (!selectedDetailView) setLocalDetailView(view.id);
     if (focus) window.requestAnimationFrame(() => detailTabRefs.current[detailViews.indexOf(view)]?.focus());
   }
 
@@ -391,6 +393,7 @@ function DayCard({
   locale,
   onOpenExternal,
   onReservationOpen,
+  selectedDetailView,
   variant,
 }) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -425,6 +428,7 @@ function DayCard({
           locale={locale}
           onOpenExternal={onOpenExternal}
           onReservationOpen={onReservationOpen}
+          selectedDetailView={forceOpen ? selectedDetailView : undefined}
           variant={variant}
         />
       </DisclosurePanel>
@@ -441,6 +445,7 @@ function ListView({
   onOpenExternal,
   onReservationOpen,
   selectedDate,
+  selectedDetailView,
   variant,
 }) {
   return (
@@ -457,6 +462,7 @@ function ListView({
           locale={locale}
           onOpenExternal={onOpenExternal}
           onReservationOpen={onReservationOpen}
+          selectedDetailView={selectedDetailView}
           variant={variant}
         />
       ))}
@@ -464,12 +470,12 @@ function ListView({
   );
 }
 
-function CalendarWeek({ currentDate, locale, onOpenExternal, onReservationOpen, selectDate, variant, week }) {
+function CalendarWeek({ currentDate, idPrefix, locale, onOpenExternal, onReservationOpen, selectDate, variant, week }) {
   const expandedDay = week.find((cell) => cell.day?.date === currentDate)?.day;
   const lastExpandedDay = useRef(expandedDay || null);
   if (expandedDay) lastExpandedDay.current = expandedDay;
   const displayedDay = expandedDay || lastExpandedDay.current;
-  const panelId = displayedDay ? `calendar-${displayedDay.date}-panel` : undefined;
+  const panelId = displayedDay ? `${idPrefix}-calendar-${displayedDay.date}-panel` : undefined;
 
   return (
     <section className="calendar-row">
@@ -483,7 +489,7 @@ function CalendarWeek({ currentDate, locale, onOpenExternal, onReservationOpen, 
             return <div className="calendar-day is-inactive" key={cell.date}><time dateTime={cell.date}><strong>{cell.dayNumber}</strong></time></div>;
           }
           const open = currentDate === day.date;
-          const controlId = `calendar-${day.date}`;
+          const controlId = `${idPrefix}-calendar-${day.date}`;
           return (
             <button
               aria-controls={`${controlId}-panel`}
@@ -509,7 +515,7 @@ function CalendarWeek({ currentDate, locale, onOpenExternal, onReservationOpen, 
           <div className="calendar-day-detail">
             <DayDetails
               day={displayedDay}
-              labelledBy={`calendar-${displayedDay.date}`}
+              labelledBy={`${idPrefix}-calendar-${displayedDay.date}`}
               locale={locale}
               onOpenExternal={onOpenExternal}
               onReservationOpen={onReservationOpen}
@@ -523,6 +529,7 @@ function CalendarWeek({ currentDate, locale, onOpenExternal, onReservationOpen, 
 }
 
 function CalendarView({
+  idPrefix,
   itinerary,
   locale,
   onOpenExternal,
@@ -601,6 +608,7 @@ function CalendarView({
       {page.weeks.map((week) => (
         <CalendarWeek
           currentDate={currentDate}
+          idPrefix={idPrefix}
           key={week[0]?.date}
           locale={locale}
           onOpenExternal={onOpenExternal}
@@ -956,6 +964,7 @@ export function ItineraryViewer({
   activeView = "list",
   dimmedItemIds = [],
   focusedItemId = null,
+  headingLevel = 1,
   highlightedItemIds = [],
   itinerary,
   onCalendarDayChange,
@@ -969,6 +978,7 @@ export function ItineraryViewer({
   selectedCalendarDate,
   selectedCalendarMonth,
   selectedListDate,
+  selectedListDetailView,
   selectedReservationKey,
   selectedRouteDate,
   variant = "chat",
@@ -986,6 +996,7 @@ export function ItineraryViewer({
     ? `${viewerId}-reservations-button`
     : `${viewerId}-${currentView}-tab`;
   const contextualTitle = contextualItineraryTitle(itinerary.title, itinerary.destination, locale);
+  const HeadingTag = headingLevel === 2 ? "h2" : headingLevel === 3 ? "h3" : "h1";
   const meta = `${formatItineraryDate(itinerary.startDate, { day: "numeric", month: "long" }, locale)} — ${formatItineraryDate(itinerary.endDate, { day: "numeric", month: "long", year: "numeric" }, locale)} · ${itinerary.days.length} ${t(locale, itinerary.days.length === 1 ? "viewer.day" : "viewer.days")}`;
 
   useEffect(() => {
@@ -1013,7 +1024,7 @@ export function ItineraryViewer({
       <header className="app-header">
         <div className="header-copy">
           <p className="eyebrow">{itinerary.destination}</p>
-          <h1>{contextualTitle}</h1>
+          <HeadingTag className="itinerary-title">{contextualTitle}</HeadingTag>
           <p className="meta">{meta}</p>
         </div>
         <div className="view-navigation">
@@ -1063,6 +1074,7 @@ export function ItineraryViewer({
         >
           {currentView === "calendar" ? (
             <CalendarView
+              idPrefix={viewerId}
               itinerary={itinerary}
               locale={locale}
               onOpenExternal={onOpenExternal}
@@ -1094,6 +1106,7 @@ export function ItineraryViewer({
               onOpenExternal={onOpenExternal}
               onReservationOpen={onReservationOpen}
               selectedDate={selectedListDate}
+              selectedDetailView={selectedListDetailView}
               variant={variant}
             />
           )}

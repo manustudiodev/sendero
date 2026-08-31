@@ -40,3 +40,22 @@ test("the embedded route map clears its fallback timer after a successful load",
   assert.match(styles, /\.route-map-embed\s*\{[\s\S]*min-height:\s*260px/);
   assert.match(styles, /\.route-map-embed-ready iframe\s*\{\s*opacity:\s*1/);
 });
+
+test("multiple itinerary viewers namespace calendar controls and support embedded heading levels", async () => {
+  const itinerary = await readFile(itineraryUrl, "utf8");
+
+  assert.match(itinerary, /const controlId = `\$\{idPrefix\}-calendar-\$\{day\.date\}`/);
+  assert.match(itinerary, /idPrefix=\{viewerId\}/);
+  assert.match(itinerary, /headingLevel = 1/);
+  assert.match(itinerary, /<HeadingTag className="itinerary-title">/);
+});
+
+test("the selected list day can optionally expose a controlled detail view", async () => {
+  const itinerary = await readFile(itineraryUrl, "utf8");
+
+  assert.match(itinerary, /selectedListDetailView,[\s\S]*<ListView[\s\S]*selectedDetailView=\{selectedListDetailView\}/);
+  assert.match(itinerary, /selectedDetailView=\{forceOpen \? selectedDetailView : undefined\}/);
+  assert.match(itinerary, /const detailView = detailViews\.some\(\(view\) => view\.id === selectedDetailView\) \? selectedDetailView : localDetailView/);
+  assert.match(itinerary, /if \(!selectedDetailView\) setLocalDetailView\(view\.id\)/);
+  assert.match(itinerary, /hidden=\{detailView !== "route"\}[\s\S]*hidden=\{detailView !== "description"\}/);
+});

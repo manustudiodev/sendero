@@ -24,6 +24,52 @@ const widgets = [
 const publicWebUrl = normalizedBaseUrl(process.env.PUBLIC_WEB_URL);
 const chatGptUrl = normalizedHttpsUrl(process.env.SENDERO_CHATGPT_URL) || "https://chatgpt.com/";
 
+const landingIntroMarkup = `
+    <div aria-hidden="true" id="sendero-intro">
+      <div class="site-intro-inner">
+        <div class="site-intro-route">
+          <svg viewBox="0 0 760 280">
+            <path d="M-20 228C115 195 139 73 280 94c132 20 112 148 258 118 79-17 94-80 230-105" />
+            <circle cx="280" cy="94" r="7" />
+            <circle cx="538" cy="212" r="7" />
+          </svg>
+        </div>
+        <span class="site-intro-word">Sendero</span>
+      </div>
+    </div>`;
+
+const landingIntroBootstrap = `(() => {
+  const html = document.documentElement;
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  let seen = false;
+  try { seen = window.sessionStorage.getItem("sendero:intro:v1") === "1"; } catch {}
+  const show = !reduced && !seen && !window.location.hash;
+  const started = performance.now();
+  let completed = false;
+  html.dataset.intro = show ? "pending" : "skip";
+  window.__senderoIntroReady = () => {
+    if (completed) return;
+    completed = true;
+    const delay = show ? Math.max(0, 760 - (performance.now() - started)) : 0;
+    window.setTimeout(() => {
+      if (!show) {
+        html.dataset.intro = "done";
+        document.getElementById("sendero-intro")?.remove();
+        return;
+      }
+      html.dataset.intro = "leaving";
+      window.setTimeout(() => {
+        html.dataset.intro = "done";
+        document.getElementById("sendero-intro")?.remove();
+      }, 380);
+    }, delay);
+  };
+  window.setTimeout(() => window.__senderoIntroReady?.(), 1900);
+  if (show) {
+    try { window.sessionStorage.setItem("sendero:intro:v1", "1"); } catch {}
+  }
+})();`;
+
 const pages = [
   {
     exportName: "publicSharePageHtml",
@@ -38,6 +84,9 @@ const pages = [
     exportName: "landingPageHtml",
     entry: "src/landing/index.jsx",
     documentClass: "site-document",
+    beforeRootHtml: landingIntroMarkup,
+    extraStyles: ["src/landing/landing.css"],
+    headBootstrap: landingIntroBootstrap,
     metadata: {
       canonicalPath: "/",
       description: "Sendero convierte una conversación en un itinerario real, con contexto local, rutas, reservas y una vista lista para compartir.",
@@ -170,7 +219,7 @@ function safeInlineScript(source) {
   return source.replaceAll("</script", "<\\/script");
 }
 
-async function bundleDocument(entry, documentClass = "", metadata = null) {
+async function bundleDocument(entry, documentClass = "", metadata = null, extraStyles = [], beforeRootHtml = "", headBootstrap = "") {
   const result = await build({
     entryPoints: [resolve(webRoot, entry)],
     bundle: true,
@@ -183,6 +232,10 @@ async function bundleDocument(entry, documentClass = "", metadata = null) {
   });
   const javascript = result.outputFiles.find((file) => file.path.endsWith(".js")) || result.outputFiles[0];
   if (!javascript) throw new Error(`No JavaScript output generated for ${entry}`);
+  const documentStyles = [
+    styles,
+    ...await Promise.all(extraStyles.map((stylePath) => readFile(resolve(webRoot, stylePath), "utf8"))),
+  ].join("\n");
   const documentClassAttribute = documentClass ? ` class="${documentClass}"` : "";
   const environmentAttribute = isDevelopment
     ? ` data-sendero-environment="${environmentIdentity.environment}"`
@@ -199,10 +252,11 @@ async function bundleDocument(entry, documentClass = "", metadata = null) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />${environmentMeta}
     ${metadata ? pageHead(metadata) : ""}
-    <style>${styles}</style>
+    <style>${documentStyles}</style>
+    ${headBootstrap ? `<script>${safeInlineScript(headBootstrap)}</script>` : ""}
   </head>
   <body>
-    <div id="root"></div>${environmentBadge}
+    ${beforeRootHtml}<div id="root"></div>${environmentBadge}
     <script>${safeInlineScript(javascript.text)}</script>
   </body>
 </html>`;
@@ -210,7 +264,17 @@ async function bundleDocument(entry, documentClass = "", metadata = null) {
 
 const outputs = [];
 for (const app of [...widgets, ...pages]) {
-  outputs.push({ ...app, html: await bundleDocument(app.entry, app.documentClass, app.metadata) });
+  outputs.push({
+    ...app,
+    html: await bundleDocument(
+      app.entry,
+      app.documentClass,
+      app.metadata,
+      app.extraStyles,
+      app.beforeRootHtml,
+      app.headBootstrap,
+    ),
+  });
 }
 
 const generated = [

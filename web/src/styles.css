@@ -548,7 +548,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .guest-preview .button { flex: 0 0 auto; }
 .itinerary-viewer-public .app-header { padding: 58px 0 28px; }
 .itinerary-viewer-public .content { padding-top: 28px; }
-.itinerary-viewer-public h1 { max-width: 780px; font-size: clamp(36px, 6vw, 64px); }
+.itinerary-viewer-public .itinerary-title { max-width: 780px; font-size: clamp(36px, 6vw, 64px); }
 .itinerary-viewer-public .meta { margin-top: 13px; color: var(--public-muted); font-size: 14px; }
 .itinerary-viewer-public .day-button { min-height: 70px; padding: 18px; }
 .itinerary-viewer-public .day-heading strong { font-size: 16px; }
@@ -590,7 +590,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .share-exact-preview .app-header { align-items: flex-start; flex-direction: column; padding: 24px 0 18px; }
 .share-exact-preview .tabs { width: fit-content; }
 .share-exact-preview .tabs button { flex: 0 0 auto; }
-.share-exact-preview .itinerary-viewer-public h1 { font-size: clamp(27px, 6vw, 38px); }
+.share-exact-preview .itinerary-viewer-public .itinerary-title { font-size: clamp(27px, 6vw, 38px); }
 .share-exact-preview .itinerary-viewer-public .content { padding-top: 18px; }
 
 @keyframes sendero-pulse {
@@ -653,7 +653,7 @@ h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
   .guest-preview { align-items: stretch; flex-direction: column; gap: 14px; }
   .guest-preview .button { width: 100%; }
   .itinerary-viewer-public .app-header { padding: 40px 0 22px; }
-  .itinerary-viewer-public h1 { font-size: clamp(34px, 12vw, 48px); }
+  .itinerary-viewer-public .itinerary-title { font-size: clamp(34px, 12vw, 48px); }
   .itinerary-viewer-public .day-button { grid-template-columns: 62px minmax(0, 1fr) auto; padding: 15px 12px; }
   .itinerary-viewer-public .day-details { padding: 18px 12px; }
   .itinerary-viewer-public .activity { grid-template-columns: 60px minmax(0, 1fr); }
