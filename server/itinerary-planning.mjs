@@ -11,6 +11,10 @@ import {
   planningInstructions,
   planningProtocolVersion,
 } from "./generated/planning-protocol.mjs";
+import {
+  itineraryBudgetSummary,
+  normalizeBudgetPreference,
+} from "../shared/itinerary-budget.mjs";
 
 export const PLANNING_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_ITINERARY_BODY_BYTES = 512 * 1024;
@@ -117,6 +121,32 @@ function assertBriefMatchesItinerary(brief, itinerary) {
   if (brief.startDate && brief.startDate !== itinerary.startDate) mismatches.push("startDate");
   if (brief.endDate && brief.endDate !== itinerary.endDate) mismatches.push("endDate");
   if (brief.locale && brief.locale !== itinerary.locale) mismatches.push("locale");
+  if (sortedJson(brief.travellers) !== sortedJson(itinerary.travellers)) {
+    mismatches.push("travellers");
+  }
+  if (brief.arrivalTime && brief.arrivalTime !== itinerary.arrivalTime) mismatches.push("arrivalTime");
+  if (brief.departureTime && brief.departureTime !== itinerary.departureTime) mismatches.push("departureTime");
+  if (brief.dailySchedule && sortedJson(brief.dailySchedule) !== sortedJson(itinerary.dailySchedule)) {
+    mismatches.push("dailySchedule");
+  }
+  if (brief.mobility && sortedJson(brief.mobility) !== sortedJson(itinerary.mobility)) {
+    mismatches.push("mobility");
+  }
+  if (
+    brief.accessibilityNeeds?.length
+    && sortedJson([...brief.accessibilityNeeds].sort())
+      !== sortedJson([...(itinerary.accessibilityNeeds || [])].sort())
+  ) {
+    mismatches.push("accessibilityNeeds");
+  }
+  const briefBudget = normalizeBudgetPreference(brief.budget);
+  const itineraryBudget = itinerary.budget
+    ? normalizeBudgetPreference(itinerary.budget)
+    : undefined;
+  const budgetIsConstrained = Boolean(briefBudget.amount) || briefBudget.comfort !== "flexible";
+  if (budgetIsConstrained && sortedJson(briefBudget) !== sortedJson(itineraryBudget)) {
+    mismatches.push("budget");
+  }
   if (
     (itinerary.transport.wantsCar || itinerary.transport.modes.includes("car")) &&
     (!brief.transport?.modes?.includes("car") || !brief.transport?.hasLicense)
@@ -194,6 +224,7 @@ export function planningProtocolIdentity() {
 
 export function draftSummary(draft) {
   const itinerary = draft?.itinerary;
+  const budget = itineraryBudgetSummary(itinerary);
   return {
     draftId: String(draft?.draftId || ""),
     status: draft?.status,
@@ -208,6 +239,24 @@ export function draftSummary(draft) {
         startDate: itinerary.startDate,
         endDate: itinerary.endDate,
         days: itinerary.days.length,
+        ...(itinerary.travellers ? { travellers: itinerary.travellers } : {}),
+        ...(itinerary.arrivalTime ? { arrivalTime: itinerary.arrivalTime } : {}),
+        ...(itinerary.departureTime ? { departureTime: itinerary.departureTime } : {}),
+        ...(itinerary.dailySchedule ? { dailySchedule: itinerary.dailySchedule } : {}),
+        ...(itinerary.mobility ? { mobility: itinerary.mobility } : {}),
+        ...(itinerary.accessibilityNeeds?.length ? { accessibilityNeeds: itinerary.accessibilityNeeds } : {}),
+        ...(budget ? {
+          budget: {
+            currency: budget.currency,
+            estimatedMin: budget.estimatedMin,
+            estimatedMax: budget.estimatedMax,
+            limit: budget.limit,
+            status: budget.status,
+            complete: budget.complete,
+            unknownItems: budget.unknownItems,
+            missingCategories: budget.missingCategories,
+          },
+        } : {}),
       },
     } : {}),
     ...(draft?.trip ? { trip: draft.trip } : {}),

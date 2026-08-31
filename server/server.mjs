@@ -16,21 +16,25 @@ import {
   LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_ITINERARY_V11_UI_URI,
   LEGACY_ITINERARY_V12_UI_URI,
+  LEGACY_ITINERARY_V13_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_V4_UI_URI,
   LEGACY_PUBLIC_SHARE_V5_UI_URI,
+  LEGACY_PUBLIC_SHARE_V6_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_V5_UI_URI,
   LEGACY_TRIP_INTAKE_V6_UI_URI,
+  LEGACY_TRIP_INTAKE_V7_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
   LEGACY_TRIP_LIST_V4_UI_URI,
   LEGACY_TRIP_LIST_V5_UI_URI,
+  LEGACY_TRIP_LIST_V6_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
@@ -38,6 +42,7 @@ import {
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V7_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V8_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -62,6 +67,11 @@ import {
   hashInvitationToken,
 } from "./invitations.mjs";
 import { canonicalLocale, DEFAULT_LOCALE, localeLanguage } from "../shared/locale.mjs";
+import {
+  BUDGET_CATEGORIES,
+  itineraryBudgetSummary,
+  normalizeBudgetPreference,
+} from "../shared/itinerary-budget.mjs";
 
 export {
   ITINERARY_UI_URI,
@@ -76,21 +86,25 @@ export {
   LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_ITINERARY_V11_UI_URI,
   LEGACY_ITINERARY_V12_UI_URI,
+  LEGACY_ITINERARY_V13_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_V4_UI_URI,
   LEGACY_PUBLIC_SHARE_V5_UI_URI,
+  LEGACY_PUBLIC_SHARE_V6_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_V5_UI_URI,
   LEGACY_TRIP_INTAKE_V6_UI_URI,
+  LEGACY_TRIP_INTAKE_V7_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
   LEGACY_TRIP_LIST_V4_UI_URI,
   LEGACY_TRIP_LIST_V5_UI_URI,
+  LEGACY_TRIP_LIST_V6_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
@@ -98,6 +112,7 @@ export {
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V7_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V8_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -135,6 +150,186 @@ const transportMode = z.enum([
   "boat",
   "other",
 ]);
+
+const currencyCode = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{3}$/, "Use a three-letter ISO 4217 currency code such as USD or EUR");
+const budgetCategory = z.enum(BUDGET_CATEGORIES);
+const legacyBudgetComfort = z.enum(["low", "medium", "high", "flexible"]);
+const structuredBudgetSchema = z
+  .object({
+    amount: z.number().positive().describe("Target spending limit in the selected currency.").optional(),
+    currency: currencyCode.describe("Currency used for the budget and every itinerary cost estimate.").optional(),
+    scope: z
+      .enum(["total", "per_person", "per_day"])
+      .describe("Whether amount applies to the whole trip, each traveller, or each itinerary day.")
+      .optional(),
+    includes: z
+      .array(budgetCategory)
+      .min(1)
+      .describe("Expense categories counted against the limit. Lodging and long-distance transport must be explicit.")
+      .optional(),
+    flexibility: z
+      .enum(["strict", "target", "flexible"])
+      .describe("Whether the amount is a hard cap, a target, or a flexible reference.")
+      .optional(),
+    comfort: legacyBudgetComfort
+      .describe("Qualitative spending preference, retained when no monetary amount is known.")
+      .optional(),
+  })
+  .superRefine((budget, context) => {
+    if (budget.amount !== undefined && !budget.currency) {
+      context.addIssue({ code: "custom", path: ["currency"], message: "A monetary budget requires a currency." });
+    }
+  });
+const tripBudgetSchema = z
+  .union([legacyBudgetComfort, structuredBudgetSchema])
+  .describe("Qualitative or monetary trip budget. Monetary limits require explicit scope, currency, and inclusions.");
+
+function validateTravellerProfile(travellers, context) {
+  if (
+    travellers.adults !== undefined
+    && travellers.seniors !== undefined
+    && travellers.seniors > travellers.adults
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["seniors"],
+      message: "Senior travellers are included in the adult count and cannot exceed it.",
+    });
+  }
+  if (
+    travellers.children !== undefined
+    && travellers.childAges?.length > travellers.children
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["childAges"],
+      message: "Child ages cannot contain more entries than the child count.",
+    });
+  }
+  if (
+    travellers.seniors !== undefined
+    && travellers.seniorAges?.length > travellers.seniors
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["seniorAges"],
+      message: "Senior ages cannot contain more entries than the senior count.",
+    });
+  }
+}
+
+const itineraryTravellersSchema = z
+  .object({
+    adults: z.number().int().positive(),
+    children: z.number().int().nonnegative().default(0),
+    childAges: z.array(z.number().int().min(0).max(17)).max(20).optional(),
+    seniors: z.number().int().nonnegative().default(0),
+    seniorAges: z.array(z.number().int().min(18).max(120)).max(20).optional(),
+  })
+  .superRefine(validateTravellerProfile);
+
+const tripBriefTravellersSchema = z
+  .object({
+    adults: z.number().int().positive().describe("Number of adult travellers when stated.").optional(),
+    children: z.number().int().nonnegative().describe("Number of child travellers; omit or use zero when there are none.").optional(),
+    childAges: z.array(z.number().int().min(0).max(17)).max(20).describe("Known child ages; partial ages are allowed.").optional(),
+    seniors: z.number().int().nonnegative().describe("Adults aged 55 or older who may need age-aware pacing; included in adults.").optional(),
+    seniorAges: z.array(z.number().int().min(18).max(120)).max(20).describe("Known ages for travellers the user identifies as older adults; partial ages are allowed.").optional(),
+  })
+  .superRefine(validateTravellerProfile);
+
+const dailyScheduleSchema = z
+  .object({
+    earliestStartTime: isoTime.describe("Preferred earliest activity start in local time.").optional(),
+    latestEndTime: isoTime.describe("Preferred latest activity end in local time.").optional(),
+    mealTimes: z
+      .object({
+        breakfast: isoTime.optional(),
+        lunch: isoTime.optional(),
+        dinner: isoTime.optional(),
+      })
+      .optional(),
+  })
+  .superRefine((schedule, context) => {
+    if (
+      schedule.earliestStartTime
+      && schedule.latestEndTime
+      && schedule.earliestStartTime >= schedule.latestEndTime
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["latestEndTime"],
+        message: "The preferred day end must be after the preferred day start.",
+      });
+    }
+  });
+
+const mobilityProfileSchema = z.object({
+  walkingTolerance: z.enum(["low", "moderate", "high"]).optional(),
+  maxWalkingMinutes: z.number().int().min(5).max(240).describe("Maximum preferred duration for one walking leg.").optional(),
+  avoidStairs: z.boolean().optional(),
+  wheelchairAccess: z.boolean().optional(),
+  restFrequency: z.enum(["frequent", "regular", "minimal"]).optional(),
+});
+
+const activityAccessibilitySchema = z
+  .object({
+    status: z.enum(["verified", "reported", "unknown"]),
+    wheelchairAccessible: z.boolean().optional(),
+    stepFree: z.boolean().optional(),
+    seatingAvailable: z.boolean().optional(),
+    note: z.string().min(1).optional(),
+    sourceUrl: httpUrl.optional(),
+    checkedAt: checkedAt.optional(),
+  })
+  .superRefine((accessibility, context) => {
+    if (accessibility.status === "verified" && !accessibility.sourceUrl) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceUrl"],
+        message: "Verified accessibility information requires an HTTP(S) source URL.",
+      });
+    }
+  });
+
+const costEstimateSchema = z
+  .object({
+    category: budgetCategory,
+    status: z.enum(["free", "estimated", "verified", "unknown"]),
+    currency: currencyCode.optional(),
+    min: z.number().nonnegative().optional(),
+    max: z.number().nonnegative().optional(),
+    basis: z.enum(["party", "person"]).default("party"),
+    sourceUrl: httpUrl.optional(),
+    checkedAt: checkedAt.optional(),
+    note: z.string().min(1).optional(),
+  })
+  .superRefine((cost, context) => {
+    const priced = cost.status === "estimated" || cost.status === "verified";
+    if (priced && (!cost.currency || cost.min === undefined || cost.max === undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "Estimated or verified costs require currency, min, and max.",
+      });
+    }
+    if (cost.min !== undefined && cost.max !== undefined && cost.max < cost.min) {
+      context.addIssue({ code: "custom", path: ["max"], message: "Cost max must be greater than or equal to min." });
+    }
+    if (cost.status === "verified" && !cost.sourceUrl) {
+      context.addIssue({ code: "custom", path: ["sourceUrl"], message: "A verified cost requires an HTTP(S) source URL." });
+    }
+    if ((cost.status === "free" || cost.status === "unknown") && (cost.min !== undefined || cost.max !== undefined)) {
+      context.addIssue({ code: "custom", message: "Free or unknown costs must not include a monetary range." });
+    }
+  });
+
+const additionalCostSchema = costEstimateSchema.and(z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+}));
 
 const coordinateFields = {
   lat: z.number().min(-90).max(90).optional(),
@@ -224,6 +419,12 @@ const activitySchema = z.object({
   location: locationSchema.optional(),
   sourceUrl: httpUrl.optional(),
   guide: activityGuideSchema.optional(),
+  accessibility: activityAccessibilitySchema
+    .describe("Accessibility facts for this place when the traveller profile makes them relevant.")
+    .optional(),
+  cost: costEstimateSchema
+    .describe("Estimated public price for this activity or meal. Use party basis for a group-specific quote.")
+    .optional(),
   reservation: reservationSchema.optional(),
   travelToNext: z
     .object({
@@ -258,6 +459,10 @@ const daySchema = z.object({
     .optional(),
   fallback: z.string().optional(),
   activities: z.array(activitySchema),
+  additionalCosts: z
+    .array(additionalCostSchema)
+    .describe("Costs not already represented by an activity, such as a transit pass or nightly lodging.")
+    .optional(),
   route: routeSchema.optional(),
 });
 
@@ -283,6 +488,17 @@ export const itinerarySchema = z.object({
   endDate: isoDate,
   timezone: ianaTimezone.optional(),
   lodging: lodgingSchema.optional(),
+  travellers: itineraryTravellersSchema
+    .describe("Traveller counts used to expand per-person cost estimates.")
+    .optional(),
+  arrivalTime: isoTime.describe("Earliest usable local time on the first itinerary day.").optional(),
+  departureTime: isoTime.describe("Latest usable local time on the final itinerary day.").optional(),
+  dailySchedule: dailyScheduleSchema.optional(),
+  mobility: mobilityProfileSchema.optional(),
+  accessibilityNeeds: z.array(z.string().min(1)).optional(),
+  budget: tripBudgetSchema
+    .describe("Private spending constraint copied from the prepared brief. It is omitted from public shares.")
+    .optional(),
   transport: z.object({
     modes: z.array(transportMode).min(1),
     hasLicense: z.boolean(),
@@ -393,14 +609,14 @@ export const tripBriefSchema = z.object({
   startDate: isoDate.describe("Arrival or first itinerary date in YYYY-MM-DD format when known.").optional(),
   endDate: isoDate.describe("Departure or final itinerary date in YYYY-MM-DD format when known.").optional(),
   lodging: tripBriefLodgingSchema.describe("Known or provisional lodging context; an exact address is not required.").optional(),
-  travellers: z
-    .object({
-      adults: z.number().int().positive().describe("Number of adult travellers when stated.").optional(),
-      children: z.number().int().nonnegative().describe("Number of child travellers when stated.").optional(),
-    })
+  travellers: tripBriefTravellersSchema
     .describe("Party size extracted from the request.")
     .optional(),
-  budget: z.enum(["low", "medium", "high", "flexible"]).describe("Overall trip budget preference.").optional(),
+  arrivalTime: isoTime.describe("Known local arrival time; omit when it is not stated or does not constrain the day.").optional(),
+  departureTime: isoTime.describe("Known local departure time; omit when it is not stated or does not constrain the day.").optional(),
+  dailySchedule: dailyScheduleSchema.describe("Optional daily start, end, and meal-time preferences.").optional(),
+  mobility: mobilityProfileSchema.describe("Optional walking, stairs, wheelchair, and rest constraints.").optional(),
+  budget: tripBudgetSchema.optional(),
   pace: z.enum(["relaxed", "balanced", "intense"]).describe("Desired daily itinerary intensity.").optional(),
   interests: z.array(z.string()).describe("Travel interests already mentioned, in the user's own level of specificity.").optional(),
   mustDo: z.array(z.string()).describe("Places or experiences the user explicitly wants included.").optional(),
@@ -969,6 +1185,14 @@ export function normalizeItinerary(itinerary) {
   return {
     ...itinerary,
     locale: canonicalLocale(itinerary.locale),
+    ...(itinerary.travellers ? {
+      travellers: {
+        children: 0,
+        seniors: 0,
+        ...itinerary.travellers,
+      },
+    } : {}),
+    ...(itinerary.budget ? { budget: normalizeBudgetPreference(itinerary.budget) } : {}),
     days: [...itinerary.days]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((day) => {
@@ -1023,6 +1247,7 @@ export function validateItinerary(
     };
   }
   itinerary = parsed.data;
+  const budgetSummary = itineraryBudgetSummary(itinerary);
   const hasActionableReservationInfo = (reservation) => {
     if (!reservation) return false;
     const clearText = (value) => typeof value === "string" && value.trim().length >= 8;
@@ -1031,6 +1256,14 @@ export function validateItinerary(
 
   if (itinerary.startDate > itinerary.endDate) {
     errors.push("The trip start date is after the end date.");
+  }
+  if (
+    itinerary.startDate === itinerary.endDate
+    && itinerary.arrivalTime
+    && itinerary.departureTime
+    && itinerary.arrivalTime >= itinerary.departureTime
+  ) {
+    errors.push("For a one-day trip, departure time must be after arrival time.");
   }
   if (
     (itinerary.transport.wantsCar || itinerary.transport.modes.includes("car")) &&
@@ -1077,6 +1310,19 @@ export function validateItinerary(
           end: minutes(activity.endTime),
         });
       }
+      const activityEndTime = activity.endTime || activity.startTime;
+      if (day.date === itinerary.startDate && itinerary.arrivalTime && activity.startTime < itinerary.arrivalTime) {
+        errors.push(`${day.date} · ${activity.title}: starts before the available arrival time.`);
+      }
+      if (day.date === itinerary.endDate && itinerary.departureTime && activityEndTime > itinerary.departureTime) {
+        errors.push(`${day.date} · ${activity.title}: ends after the required departure time.`);
+      }
+      if (itinerary.dailySchedule?.earliestStartTime && activity.startTime < itinerary.dailySchedule.earliestStartTime) {
+        errors.push(`${day.date} · ${activity.title}: starts before the preferred daily window.`);
+      }
+      if (itinerary.dailySchedule?.latestEndTime && activityEndTime > itinerary.dailySchedule.latestEndTime) {
+        errors.push(`${day.date} · ${activity.title}: ends after the preferred daily window.`);
+      }
       if (!activity.location && !["rest", "free_time"].includes(activity.category || "")) {
         warnings.push(`${day.date} · ${activity.title}: add a location for route planning.`);
       }
@@ -1108,6 +1354,47 @@ export function validateItinerary(
       if (activity.reservation?.status === "confirmed" && !activity.locked) {
         warnings.push(`${day.date} · ${activity.title}: confirmed reservation should normally be locked.`);
       }
+      if (activity.cost?.status === "verified" && !activity.cost.checkedAt) {
+        warnings.push(`${day.date} · ${activity.title}: verified price should include when it was checked.`);
+      }
+      if (
+        itinerary.mobility?.maxWalkingMinutes
+        && activity.travelToNext?.mode === "walk"
+        && activity.travelToNext.durationMinutes > itinerary.mobility.maxWalkingMinutes
+      ) {
+        errors.push(
+          `${day.date} · ${activity.title}: the next walking leg exceeds the ${itinerary.mobility.maxWalkingMinutes}-minute limit.`,
+        );
+      }
+      if (activity.location && itinerary.mobility?.wheelchairAccess) {
+        if (
+          !activity.accessibility
+          || activity.accessibility.status === "unknown"
+          || activity.accessibility.wheelchairAccessible !== true
+        ) {
+          errors.push(`${day.date} · ${activity.title}: wheelchair accessibility must be positively supported.`);
+        }
+      }
+      if (
+        activity.location
+        && itinerary.mobility?.avoidStairs
+        && (
+          !activity.accessibility
+          || activity.accessibility.status === "unknown"
+          || activity.accessibility.stepFree !== true
+        )
+      ) {
+        errors.push(`${day.date} · ${activity.title}: a step-free route must be positively supported.`);
+      }
+      if (activity.accessibility?.status === "verified" && !activity.accessibility.checkedAt) {
+        warnings.push(`${day.date} · ${activity.title}: verified accessibility should include when it was checked.`);
+      }
+    }
+
+    for (const cost of day.additionalCosts || []) {
+      if (cost.status === "verified" && !cost.checkedAt) {
+        warnings.push(`${day.date} · ${cost.label}: verified price should include when it was checked.`);
+      }
     }
 
     if (routedLocationsWithoutCoordinates) {
@@ -1130,6 +1417,40 @@ export function validateItinerary(
     }
     if (!day.fallback && day.weather?.summary) {
       warnings.push(`${day.date}: add a weather or capacity fallback.`);
+    }
+  }
+
+  if (budgetSummary?.budget.amount) {
+    const budgetLabel = `${budgetSummary.currency || budgetSummary.budget.currency} ${budgetSummary.limit || budgetSummary.budget.amount}`;
+    const budgetCoverageIssues = budgetSummary.budget.flexibility === "strict" ? errors : warnings;
+    if (budgetSummary.budget.scope === "per_person" && !itinerary.travellers) {
+      errors.push("A per-person budget requires itinerary traveller counts.");
+    }
+    if (budgetSummary.mismatchedCurrencyItems) {
+      errors.push(
+        `${budgetSummary.mismatchedCurrencyItems} included cost item(s) use a different currency from the budget. Convert them with a current source before validation.`,
+      );
+    }
+    if (budgetSummary.pricedItems === 0) {
+      budgetCoverageIssues.push(`The ${budgetLabel} budget has no priced itinerary items yet.`);
+    }
+    if (budgetSummary.unknownItems) {
+      budgetCoverageIssues.push(
+        `${budgetSummary.unknownItems} included cost item(s) remain unknown, so the budget estimate is incomplete.`,
+      );
+    }
+    if (budgetSummary.missingCategories.length) {
+      budgetCoverageIssues.push(
+        `The budget has no cost coverage for: ${budgetSummary.missingCategories.join(", ")}. Add a priced, free, or explicitly unknown item for each included category.`,
+      );
+    }
+    if (budgetSummary.status === "over" || budgetSummary.status === "may_exceed") {
+      const message = budgetSummary.status === "over"
+        ? `The minimum included estimate exceeds the ${budgetLabel} budget.`
+        : `The included estimate may exceed the ${budgetLabel} budget.`;
+      (budgetSummary.budget.flexibility === "strict" ? errors : warnings).push(message);
+    } else if (budgetSummary.status === "near") {
+      warnings.push(`The included estimate is within 10% of the ${budgetLabel} budget.`);
     }
   }
 
@@ -1162,6 +1483,16 @@ export function prepareTripBrief(brief) {
     blocking.push("The start date is after the end date.");
     criticalFields.push("startDate", "endDate");
   }
+  if (
+    brief.startDate
+    && brief.startDate === brief.endDate
+    && brief.arrivalTime
+    && brief.departureTime
+    && brief.arrivalTime >= brief.departureTime
+  ) {
+    blocking.push("For a one-day trip, departure time must be after arrival time.");
+    criticalFields.push("startDate", "endDate");
+  }
   if (!brief.lodging?.address) {
     if (brief.lodging?.area) {
       assumptions.push(`Use ${brief.lodging.area} as the provisional daily origin.`);
@@ -1181,7 +1512,6 @@ export function prepareTripBrief(brief) {
     assumptions,
     brief: {
       locale: canonicalLocale(brief.locale),
-      budget: "flexible",
       pace: "balanced",
       interests: [],
       mustDo: [],
@@ -1190,6 +1520,14 @@ export function prepareTripBrief(brief) {
       accessibilityNeeds: [],
       fixedPlans: [],
       ...brief,
+      ...(brief.travellers ? {
+        travellers: {
+          children: 0,
+          seniors: 0,
+          ...brief.travellers,
+        },
+      } : {}),
+      budget: normalizeBudgetPreference(brief.budget),
     },
   };
 }
@@ -1424,6 +1762,9 @@ export function createTripPlannerServer({
   server.registerResource("itinerary-ui-v12", LEGACY_ITINERARY_V12_UI_URI, {}, async () =>
     itineraryResource(widgetOrigin, LEGACY_ITINERARY_V12_UI_URI, { mapsEmbedApiKey }),
   );
+  server.registerResource("itinerary-ui-v13", LEGACY_ITINERARY_V13_UI_URI, {}, async () =>
+    itineraryResource(widgetOrigin, LEGACY_ITINERARY_V13_UI_URI, { mapsEmbedApiKey }),
+  );
   server.registerResource("trip-intake-ui", TRIP_INTAKE_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin),
   );
@@ -1442,6 +1783,9 @@ export function createTripPlannerServer({
   server.registerResource("trip-intake-ui-v6", LEGACY_TRIP_INTAKE_V6_UI_URI, {}, async () =>
     tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_V6_UI_URI),
   );
+  server.registerResource("trip-intake-ui-v7", LEGACY_TRIP_INTAKE_V7_UI_URI, {}, async () =>
+    tripIntakeResource(widgetOrigin, LEGACY_TRIP_INTAKE_V7_UI_URI),
+  );
   server.registerResource("trip-list-ui", TRIP_LIST_UI_URI, {}, async () =>
     tripListResource(widgetOrigin),
   );
@@ -1459,6 +1803,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("trip-list-ui-v5", LEGACY_TRIP_LIST_V5_UI_URI, {}, async () =>
     tripListResource(widgetOrigin, LEGACY_TRIP_LIST_V5_UI_URI),
+  );
+  server.registerResource("trip-list-ui-v6", LEGACY_TRIP_LIST_V6_UI_URI, {}, async () =>
+    tripListResource(widgetOrigin, LEGACY_TRIP_LIST_V6_UI_URI),
   );
   server.registerResource("trip-requirements-ui", TRIP_REQUIREMENTS_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin),
@@ -1484,6 +1831,9 @@ export function createTripPlannerServer({
   server.registerResource("trip-requirements-ui-v7", LEGACY_TRIP_REQUIREMENTS_V7_UI_URI, {}, async () =>
     tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V7_UI_URI),
   );
+  server.registerResource("trip-requirements-ui-v8", LEGACY_TRIP_REQUIREMENTS_V8_UI_URI, {}, async () =>
+    tripRequirementsResource(widgetOrigin, LEGACY_TRIP_REQUIREMENTS_V8_UI_URI),
+  );
   server.registerResource("public-share-ui", PUBLIC_SHARE_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin),
   );
@@ -1501,6 +1851,9 @@ export function createTripPlannerServer({
   );
   server.registerResource("public-share-ui-v5", LEGACY_PUBLIC_SHARE_V5_UI_URI, {}, async () =>
     publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_V5_UI_URI),
+  );
+  server.registerResource("public-share-ui-v6", LEGACY_PUBLIC_SHARE_V6_UI_URI, {}, async () =>
+    publicShareResource(widgetOrigin, LEGACY_PUBLIC_SHARE_V6_UI_URI),
   );
 
   server.registerTool(

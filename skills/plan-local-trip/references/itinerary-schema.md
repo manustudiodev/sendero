@@ -9,6 +9,39 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
   "destination": "Lisbon, Portugal",
   "startDate": "2026-09-04",
   "endDate": "2026-09-10",
+  "travellers": {
+    "adults": 2,
+    "children": 1,
+    "childAges": [8],
+    "seniors": 1,
+    "seniorAges": [67]
+  },
+  "arrivalTime": "13:30",
+  "departureTime": "18:00",
+  "dailySchedule": {
+    "earliestStartTime": "09:00",
+    "latestEndTime": "21:30",
+    "mealTimes": {
+      "lunch": "13:00",
+      "dinner": "19:30"
+    }
+  },
+  "mobility": {
+    "walkingTolerance": "moderate",
+    "maxWalkingMinutes": 25,
+    "avoidStairs": true,
+    "wheelchairAccess": true,
+    "restFrequency": "regular"
+  },
+  "accessibilityNeeds": ["Seating during longer visits"],
+  "budget": {
+    "amount": 900,
+    "currency": "EUR",
+    "scope": "total",
+    "includes": ["activities", "food", "local_transport"],
+    "flexibility": "target",
+    "comfort": "medium"
+  },
   "lodging": {
     "name": "Apartment",
     "address": "Rua example 1, Lisbon",
@@ -38,6 +71,16 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
           "endTime": "16:00",
           "title": "Visit the museum",
           "category": "culture",
+          "cost": {
+            "category": "activities",
+            "status": "verified",
+            "currency": "EUR",
+            "min": 10,
+            "max": 10,
+            "basis": "person",
+            "sourceUrl": "https://example.com/museum-prices",
+            "checkedAt": "2026-09-01T12:00:00Z"
+          },
           "locked": true,
           "description": "Arrive 10 minutes early and allow time for the cloakroom before the one-hour visit.",
           "guide": {
@@ -60,6 +103,15 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
             "latitude": 38.7043,
             "longitude": -9.1624
           },
+          "accessibility": {
+            "status": "verified",
+            "wheelchairAccessible": true,
+            "stepFree": true,
+            "seatingAvailable": true,
+            "note": "The accessible entrance is on the east side.",
+            "sourceUrl": "https://example.com/museum-accessibility",
+            "checkedAt": "2026-09-01T12:00:00Z"
+          },
           "reservation": {
             "kind": "ticket",
             "requirement": "required",
@@ -71,6 +123,20 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
             "durationMinutes": 12,
             "summary": "Walk toward the river"
           }
+        }
+      ],
+      "additionalCosts": [
+        {
+          "id": "daily-transit-pass",
+          "label": "Daily public transport pass",
+          "category": "local_transport",
+          "status": "verified",
+          "currency": "EUR",
+          "min": 6.8,
+          "max": 6.8,
+          "basis": "person",
+          "sourceUrl": "https://example.com/transit-fares",
+          "checkedAt": "2026-09-01T12:00:00Z"
         }
       ],
       "route": {
@@ -91,6 +157,51 @@ Use this shape when calling `validate_itinerary` and `render_itinerary`. Optiona
 ```
 
 `locale` is the BCP 47 language tag inferred from the user's predominant language. It is semantically required for every new itinerary, although the server supplies `en` as a compatibility fallback for legacy snapshots. All generated user-visible copy in the snapshot must use this locale consistently; official proper nouns may remain in their original form. Preserve the locale when revising, restoring, opening, or sharing a trip unless the user explicitly requests a language change.
+
+## Required minimum and optional profile
+
+- The required brief fields are destination, start date, end date, at least one
+  adult, and at least one transport mode.
+- All other traveller-profile fields are optional. Omitted `children` and
+  `seniors` normalize to zero. Omitted arrival/departure times, daily schedule,
+  walking, rest, stairs, wheelchair, and accessibility fields create no matching
+  restriction; do not invent values for them.
+- Optional fields become enforceable constraints when present. `seniors` is the
+  number of older travellers within `adults`, not an additional party count.
+  `childAges` and `seniorAges` may be partial when only some ages are known.
+- `arrivalTime` limits the first day's earliest activity and `departureTime`
+  limits the final day's latest activity. `dailySchedule` applies on every day;
+  its meal times are preferences, while its start/end boundaries are hard limits.
+- `mobility.maxWalkingMinutes` limits each walking leg. `avoidStairs` and
+  `wheelchairAccess` require positive accessibility facts on every physical
+  activity location. `unknown` does not satisfy either constraint.
+- `activity.accessibility.status` is `verified`, `reported`, or `unknown`.
+  Verified facts require an absolute source URL; include `checkedAt` when known.
+- Traveller ages, schedule, mobility, accessibility needs, monetary budget, and
+  per-activity accessibility details are private planning context and are omitted
+  from public share snapshots.
+
+## Budget and costs
+
+- `budget.amount` is a limit or target, not an estimate. Its `scope` is `total`,
+  `per_person`, or `per_day`; `flexibility` is `strict`, `target`, or `flexible`.
+- `budget.includes` explicitly controls which categories count against the limit:
+  `activities`, `food`, `local_transport`, `lodging`,
+  `long_distance_transport`, and `other`. Lodging and long-distance transport are
+  excluded unless explicitly present.
+- `activity.cost` describes the price attached to one scheduled item.
+  `day.additionalCosts` contains only expenses not already represented by an
+  activity. Never duplicate the same expense in both places.
+- A priced item uses `estimated` or `verified`, a single three-letter currency,
+  `min`, `max`, and `basis` (`party` or `person`). `verified` also requires a
+  direct `sourceUrl`; include `checkedAt` whenever possible.
+- Use `free` only when no payment is required. Use `unknown` when no defensible
+  range exists. Missing or unknown costs are never treated as zero.
+- Sendero derives the included trip range and compares it with the normalized
+  budget. A strict budget blocks validation when its range can exceed the cap;
+  target and flexible budgets return visible warnings.
+- The budget constraint is private trip context and is intentionally omitted from
+  public share snapshots.
 
 ## Activity editorial fields
 

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { DisclosurePanel } from "../DisclosurePanel.jsx";
 import {
   formatDate,
+  formatList,
   localeLanguage,
   localeWeekStartsOnMonday,
   resolveContentLocale,
@@ -10,6 +11,10 @@ import {
   uiLocale,
   weekdayLabels,
 } from "../i18n/index.js";
+import {
+  formatMoneyRange,
+  itineraryBudgetSummary,
+} from "../../../shared/itinerary-budget.mjs";
 import { safeExternalUrl } from "../safe-url.js";
 import {
   buildMonthPage,
@@ -36,6 +41,79 @@ import {
 function transportLabel(locale, mode) {
   const label = t(locale, `transport.${mode}`);
   return label === `transport.${mode}` ? mode : label;
+}
+
+function costLabel(cost, locale) {
+  if (!cost) return "";
+  if (cost.status === "free") return t(locale, "viewer.costFree");
+  if (cost.status === "unknown") return t(locale, "viewer.costUnknown");
+  const range = formatMoneyRange(locale, cost.currency, cost.min, cost.max);
+  return cost.basis === "person" && range
+    ? t(locale, "viewer.costPerPerson", { amount: range })
+    : range;
+}
+
+function BudgetSummary({ itinerary, locale }) {
+  const summary = itineraryBudgetSummary(itinerary);
+  if (!summary) return null;
+  const estimate = summary.pricedItems
+    ? formatMoneyRange(locale, summary.currency, summary.estimatedMin, summary.estimatedMax)
+    : t(locale, "viewer.costUnknown");
+  const originalLimit = summary.budget.amount
+    ? formatMoneyRange(locale, summary.budget.currency, summary.budget.amount, summary.budget.amount)
+    : "";
+  const included = formatList(
+    locale,
+    summary.budget.includes.map((category) => t(locale, `viewer.budgetCategory.${category}`)),
+    { style: "long", type: "conjunction" },
+  );
+  return (
+    <aside className={`budget-summary is-${summary.status}`} aria-label={t(locale, "viewer.budgetTitle")}>
+      <div>
+        <p className="eyebrow">{t(locale, "viewer.budgetTitle")}</p>
+        <strong>{estimate}</strong>
+        <span>{t(locale, "viewer.budgetEstimate")}</span>
+      </div>
+      <div className="budget-summary-detail">
+        <span className="budget-status">{t(locale, `viewer.budgetStatus.${summary.status}`)}</span>
+        {originalLimit ? <p>{t(locale, "viewer.budgetLimit", { amount: originalLimit, scope: t(locale, `viewer.budgetScope.${summary.budget.scope}`) })}</p> : null}
+        <p>{t(locale, "viewer.budgetIncludes", { categories: included })}</p>
+        {!summary.complete ? <small>{t(locale, "viewer.budgetIncomplete", { count: summary.unknownItems + summary.mismatchedCurrencyItems + summary.missingCategories.length })}</small> : null}
+      </div>
+    </aside>
+  );
+}
+
+function TripProfileSummary({ itinerary, locale }) {
+  const travellers = itinerary.travellers;
+  const items = [];
+  if (itinerary.arrivalTime) items.push(t(locale, "viewer.profileArrival", { time: itinerary.arrivalTime }));
+  if (itinerary.departureTime) items.push(t(locale, "viewer.profileDeparture", { time: itinerary.departureTime }));
+  if (travellers) {
+    const party = [
+      `${travellers.adults} ${t(locale, travellers.adults === 1 ? "conversation.adult" : "conversation.adults")}`,
+      ...(travellers.children ? [`${travellers.children} ${t(locale, travellers.children === 1 ? "conversation.child" : "conversation.children")}${travellers.childAges?.length ? ` (${travellers.childAges.join(", ")})` : ""}`] : []),
+      ...(travellers.seniors ? [t(locale, "viewer.profileSeniors", { count: travellers.seniors, ages: travellers.seniorAges?.join(", ") || "" })] : []),
+    ];
+    items.push(t(locale, "viewer.profileParty", { party: formatList(locale, party) }));
+  }
+  if (itinerary.dailySchedule?.earliestStartTime) items.push(t(locale, "viewer.profileDayStart", { time: itinerary.dailySchedule.earliestStartTime }));
+  if (itinerary.dailySchedule?.latestEndTime) items.push(t(locale, "viewer.profileDayEnd", { time: itinerary.dailySchedule.latestEndTime }));
+  const mealTimes = Object.entries(itinerary.dailySchedule?.mealTimes || {}).map(([meal, time]) => `${t(locale, `profile.${meal}`)} ${time}`);
+  if (mealTimes.length) items.push(t(locale, "viewer.profileMeals", { meals: formatList(locale, mealTimes) }));
+  if (itinerary.mobility?.walkingTolerance) items.push(t(locale, "viewer.profileWalking", { value: t(locale, `profile.walking.${itinerary.mobility.walkingTolerance}`) }));
+  if (itinerary.mobility?.maxWalkingMinutes) items.push(t(locale, "viewer.profileMaxWalking", { minutes: itinerary.mobility.maxWalkingMinutes }));
+  if (itinerary.mobility?.restFrequency) items.push(t(locale, "viewer.profileRest", { value: t(locale, `profile.rest.${itinerary.mobility.restFrequency}`) }));
+  if (itinerary.mobility?.avoidStairs) items.push(t(locale, "viewer.profileAvoidStairs"));
+  if (itinerary.mobility?.wheelchairAccess) items.push(t(locale, "viewer.profileWheelchair"));
+  if (itinerary.accessibilityNeeds?.length) items.push(t(locale, "viewer.profileAccessibilityNeeds", { needs: formatList(locale, itinerary.accessibilityNeeds) }));
+  if (!items.length) return null;
+  return (
+    <aside className="profile-summary" aria-label={t(locale, "viewer.profileTitle")}>
+      <p className="eyebrow">{t(locale, "viewer.profileTitle")}</p>
+      <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+    </aside>
+  );
 }
 
 function primaryViewsFor(locale) {
@@ -110,7 +188,15 @@ function Activity({
   const hasReservation = showPrivateStatus && hasReservationManagement(activity);
   const reservationEntry = hasReservation ? { activity, reservation: activity.reservation } : null;
   const reservationLabel = reservationEntry ? reservationNavigationLabel(reservationEntry, locale) : "";
-  const hasBadges = (showPrivateStatus && activity.locked) || activity.travelToNext;
+  const activityCost = showPrivateStatus ? costLabel(activity.cost, locale) : "";
+  const accessibilityBadges = showPrivateStatus ? [
+    ...(activity.accessibility?.wheelchairAccessible ? [t(locale, "viewer.wheelchairAccessible")] : []),
+    ...(activity.accessibility?.stepFree ? [t(locale, "viewer.stepFree")] : []),
+    ...(activity.accessibility?.seatingAvailable ? [t(locale, "viewer.seatingAvailable")] : []),
+    ...(activity.accessibility?.status === "unknown" ? [t(locale, "viewer.accessibilityUnknown")] : []),
+  ] : [];
+  const accessibilitySourceUrl = showPrivateStatus ? safeExternalUrl(activity.accessibility?.sourceUrl) : "";
+  const hasBadges = (showPrivateStatus && activity.locked) || activity.travelToNext || activityCost || accessibilityBadges.length;
   useEffect(() => {
     if (!focused) return undefined;
     const frame = window.requestAnimationFrame(() => {
@@ -165,8 +251,12 @@ function Activity({
             {activity.travelToNext ? (
               <span className="badge">{activity.travelToNext.durationMinutes} min · {transportLabel(locale, activity.travelToNext.mode)}</span>
             ) : null}
+            {activityCost ? <span className="badge badge-cost">{activityCost}</span> : null}
+            {accessibilityBadges.map((label) => <span className="badge badge-accessibility" key={label}>{label}</span>)}
           </div>
         ) : null}
+        {showPrivateStatus && activity.accessibility?.note ? <p className="activity-accessibility">{activity.accessibility.note}</p> : null}
+        {accessibilitySourceUrl ? <a className="activity-source" href={accessibilitySourceUrl} onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(accessibilitySourceUrl); } : undefined} rel="noreferrer noopener" target="_blank">{t(locale, "viewer.accessibilitySource")} ↗</a> : null}
       </div>
     </li>
   );
@@ -188,7 +278,12 @@ function DayContext({ day, locale, onOpenExternal }) {
     } : null,
     day.fallback ? { label: t(locale, "viewer.alternative"), value: day.fallback } : null,
   ].filter(Boolean);
-  if (!context.length) return null;
+  const additionalCosts = (day.additionalCosts || []).map((cost) => ({
+    ...cost,
+    formatted: costLabel(cost, locale),
+    safeUrl: safeExternalUrl(cost.sourceUrl),
+  }));
+  if (!context.length && !additionalCosts.length) return null;
   return (
     <aside className="day-context" aria-label={t(locale, "viewer.usefulInfo", { title: day.title })}>
       {context.map((item) => {
@@ -212,6 +307,21 @@ function DayContext({ day, locale, onOpenExternal }) {
         </section>
         );
       })}
+      {additionalCosts.length ? (
+        <section className="day-context-item">
+          <b>{t(locale, "viewer.additionalCosts")}</b>
+          <ul className="day-costs">
+            {additionalCosts.map((cost) => (
+              <li key={cost.id}>
+                <span>{cost.label}</span>
+                {cost.safeUrl ? (
+                  <a href={cost.safeUrl} onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(cost.safeUrl); } : undefined} rel="noreferrer noopener" target="_blank">{cost.formatted} ↗</a>
+                ) : <strong>{cost.formatted}</strong>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </aside>
   );
 }
@@ -1066,6 +1176,8 @@ export function ItineraryViewer({
           ) : null}
         </div>
       </header>
+      {variant !== "public" ? <TripProfileSummary itinerary={itinerary} locale={locale} /> : null}
+      {variant !== "public" ? <BudgetSummary itinerary={itinerary} locale={locale} /> : null}
       <section className="content">
         <div
           aria-labelledby={currentPanelLabelId}

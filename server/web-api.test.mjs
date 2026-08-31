@@ -237,6 +237,7 @@ const plannedItinerary = {
   destination: "Valencia, España",
   startDate: "2027-04-10",
   endDate: "2027-04-10",
+  travellers: { adults: 2, children: 0, seniors: 0 },
   transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
   days: [{
     date: "2027-04-10",

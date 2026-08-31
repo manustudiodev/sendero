@@ -5,6 +5,16 @@ import { callTool, sendFollowUpMessage, setWidgetState, updateModelContext, useC
 import { tripIntakeContinuation } from "../conversation.js";
 import { resolveContentLocale, t } from "../i18n/index.js";
 import { normalizeToolOutput } from "../tool-output.js";
+import {
+  BudgetFields,
+  budgetDraftFromValue,
+  budgetValueFromDraft,
+} from "../budget/BudgetFields.jsx";
+import {
+  TripProfileFields,
+  tripProfileDraftFromBrief,
+  tripProfileValueFromDraft,
+} from "../profile/TripProfileFields.jsx";
 
 const launcherActionIds = ["new", "open", "adjust", "refresh"];
 const transportValues = ["walk", "public_transit", "taxi", "bike", "car"];
@@ -21,6 +31,8 @@ const defaultDraft = {
   hasLicense: false,
   pace: "balanced",
   interests: "",
+  budget: budgetDraftFromValue(),
+  profile: tripProfileDraftFromBrief(),
 };
 
 function draftFromBrief(brief = {}) {
@@ -38,29 +50,43 @@ function draftFromBrief(brief = {}) {
     hasLicense: brief.transport?.hasLicense || false,
     pace: brief.pace || "balanced",
     interests: brief.interests?.join(", ") || "",
+    budget: budgetDraftFromValue(brief.budget),
+    profile: tripProfileDraftFromBrief(brief),
   };
 }
 
 function toBrief(draft, baseBrief = {}, localeValue) {
   const locale = resolveContentLocale(baseBrief.locale || localeValue);
+  const {
+    accessibilityNeeds: _accessibilityNeeds,
+    arrivalTime: _arrivalTime,
+    dailySchedule: _dailySchedule,
+    departureTime: _departureTime,
+    mobility: _mobility,
+    travellers: _travellers,
+    ...briefBase
+  } = baseBrief;
+  const profile = tripProfileValueFromDraft(draft.profile);
   const lodging = draft.lodgingStatus === "confirmed"
     ? { status: "confirmed", name: t(locale, "intake.lodgingName"), address: draft.lodgingValue.trim() }
     : draft.lodgingStatus === "area_only"
       ? { status: "area_only", name: t(locale, "intake.lodgingAreaName"), area: draft.lodgingValue.trim() }
       : { status: "undecided", name: t(locale, "intake.lodgingUndecidedName") };
   return {
-    ...baseBrief,
+    ...briefBase,
+    ...profile,
     locale,
     destination: draft.destination.trim(),
     startDate: draft.startDate,
     endDate: draft.endDate,
     lodging,
     travellers: {
-      ...(baseBrief.travellers || {}),
       adults: Number(draft.adults),
       children: Number(draft.children),
+      ...profile.travellers,
     },
     pace: draft.pace,
+    budget: budgetValueFromDraft(draft.budget),
     interests: draft.interests.split(",").map((value) => value.trim()).filter(Boolean),
     transport: {
       ...(baseBrief.transport || {}),
@@ -98,7 +124,15 @@ export function TripIntakeApp() {
   const [baseBrief, setBaseBrief] = useState(() => saved.baseBrief || output?.brief || null);
   const localeBrief = baseBrief || output?.brief;
   const locale = useComponentLocale(localeBrief ? resolveContentLocale(localeBrief.locale) : undefined);
-  const [draft, setDraft] = useState(() => saved.draft || draftFromBrief(output?.brief));
+  const [draft, setDraft] = useState(() => {
+    const initialDraft = saved.draft || draftFromBrief(output?.brief);
+    return {
+      ...defaultDraft,
+      ...initialDraft,
+      budget: initialDraft.budget || budgetDraftFromValue(),
+      profile: initialDraft.profile || tripProfileDraftFromBrief(saved.baseBrief || output?.brief),
+    };
+  });
   const [continuation, setContinuation] = useState(saved.continuation || null);
   const [status, setStatus] = useState(() => initialStatus(saved, locale));
   const launcherActions = launcherActionIds.map((id) => ({
@@ -107,6 +141,33 @@ export function TripIntakeApp() {
     description: t(locale, `intake.launcher.${id}.description`),
   }));
   const transportOptions = transportValues.map((value) => ({ value, label: t(locale, `transport.${value}`) }));
+  const budgetCopy = {
+    title: t(locale, "budget.title"),
+    description: t(locale, "budget.description"),
+    comfort: t(locale, "budget.comfort"),
+    comforts: Object.fromEntries(["flexible", "low", "medium", "high"].map((value) => [value, t(locale, `budget.comfort.${value}`)])),
+    amount: t(locale, "budget.amount"),
+    optional: t(locale, "budget.optional"),
+    currency: t(locale, "budget.currency"),
+    scope: t(locale, "budget.scope"),
+    scopes: Object.fromEntries(["total", "per_person", "per_day"].map((value) => [value, t(locale, `budget.scope.${value}`)])),
+    flexibility: t(locale, "budget.flexibility"),
+    flexibilities: Object.fromEntries(["strict", "target", "flexible"].map((value) => [value, t(locale, `budget.flexibility.${value}`)])),
+    includes: t(locale, "budget.includes"),
+    categories: Object.fromEntries(["activities", "food", "local_transport", "lodging", "long_distance_transport"].map((value) => [value, t(locale, `budget.category.${value}`)])),
+    note: t(locale, "budget.note"),
+  };
+  const profileCopy = {
+    title: t(locale, "profile.title"), optional: t(locale, "profile.optional"), description: t(locale, "profile.description"),
+    tripTimes: t(locale, "profile.tripTimes"), arrivalTime: t(locale, "profile.arrivalTime"), departureTime: t(locale, "profile.departureTime"),
+    party: t(locale, "profile.party"), childAges: t(locale, "profile.childAges"), seniors: t(locale, "profile.seniors"), seniorAges: t(locale, "profile.seniorAges"), agesPlaceholder: t(locale, "profile.agesPlaceholder"), seniorAgesPlaceholder: t(locale, "profile.seniorAgesPlaceholder"), seniorsHint: t(locale, "profile.seniorsHint"),
+    dailySchedule: t(locale, "profile.dailySchedule"), earliestStart: t(locale, "profile.earliestStart"), latestEnd: t(locale, "profile.latestEnd"), breakfast: t(locale, "profile.breakfast"), lunch: t(locale, "profile.lunch"), dinner: t(locale, "profile.dinner"),
+    mobility: t(locale, "profile.mobility"), walkingTolerance: t(locale, "profile.walkingTolerance"),
+    walkingOptions: Object.fromEntries(["none", "low", "moderate", "high"].map((value) => [value, t(locale, `profile.walking.${value}`)])),
+    maxWalkingMinutes: t(locale, "profile.maxWalkingMinutes"), minutesPlaceholder: t(locale, "profile.minutesPlaceholder"), restFrequency: t(locale, "profile.restFrequency"),
+    restOptions: Object.fromEntries(["none", "frequent", "regular", "minimal"].map((value) => [value, t(locale, `profile.rest.${value}`)])),
+    avoidStairs: t(locale, "profile.avoidStairs"), wheelchairAccess: t(locale, "profile.wheelchairAccess"), accessibilityNeeds: t(locale, "profile.accessibilityNeeds"), accessibilityPlaceholder: t(locale, "profile.accessibilityPlaceholder"), note: t(locale, "profile.note"),
+  };
 
   useEffect(() => {
     if (!output?.brief || outputHydratedRef.current) return;
@@ -263,6 +324,31 @@ export function TripIntakeApp() {
       setStatus({ state: "error", message: t(locale, "intake.validation.license") });
       return;
     }
+    if (draft.budget.amount && !/^[A-Za-z]{3}$/.test(draft.budget.currency.trim())) {
+      setStatus({ state: "error", message: t(locale, "intake.validation.budget") });
+      return;
+    }
+    const profile = tripProfileValueFromDraft(draft.profile);
+    if (profile.travellers.seniors > Number(draft.adults)) {
+      setStatus({ state: "error", message: t(locale, "intake.validation.seniors") });
+      return;
+    }
+    if ((profile.travellers.childAges?.length || 0) > Number(draft.children)) {
+      setStatus({ state: "error", message: t(locale, "intake.validation.childAges") });
+      return;
+    }
+    if ((profile.travellers.seniorAges?.length || 0) > profile.travellers.seniors) {
+      setStatus({ state: "error", message: t(locale, "intake.validation.seniorAges") });
+      return;
+    }
+    if (
+      profile.dailySchedule?.earliestStartTime
+      && profile.dailySchedule?.latestEndTime
+      && profile.dailySchedule.earliestStartTime >= profile.dailySchedule.latestEndTime
+    ) {
+      setStatus({ state: "error", message: t(locale, "intake.validation.dailySchedule") });
+      return;
+    }
 
     pendingRef.current = true;
     setStatus({ state: "sending", message: t(locale, "status.validating") });
@@ -368,6 +454,8 @@ export function TripIntakeApp() {
             <div className="field-wide"><ChoiceChips label={t(locale, "intake.transport")} onChange={(value) => update("transportModes", value)} options={transportOptions} values={draft.transportModes} /></div>
             {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />{t(locale, "intake.license")}</label> : null}
             <div className="field-wide"><SegmentedControl label={t(locale, "intake.pace")} onChange={(value) => update("pace", value)} options={[{ value: "relaxed", label: t(locale, "intake.pace.relaxed") }, { value: "balanced", label: t(locale, "intake.pace.balanced") }, { value: "intense", label: t(locale, "intake.pace.intense") }]} value={draft.pace} /></div>
+            <TripProfileFields adultsCount={draft.adults} childrenCount={draft.children} copy={profileCopy} onChange={(value) => update("profile", value)} value={draft.profile} />
+            <BudgetFields copy={budgetCopy} onChange={(value) => update("budget", value)} value={draft.budget} />
             <Field className="field-wide" hint={t(locale, "intake.interestsHint")} label={t(locale, "intake.interests")}><textarea onChange={(event) => update("interests", event.target.value)} placeholder={t(locale, "intake.interestsPlaceholder")} value={draft.interests} /></Field>
           </div>
           {status.message ? <InlineNotice tone={status.state === "error" ? "error" : "neutral"}>{status.message}</InlineNotice> : null}

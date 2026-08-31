@@ -23,6 +23,7 @@ const itinerary = {
   destination: "Valencia, España",
   startDate: "2027-04-10",
   endDate: "2027-04-10",
+  travellers: { adults: 2, children: 0, seniors: 0 },
   transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
   days: [{
     date: "2027-04-10",
@@ -53,7 +54,7 @@ function stageInput(overrides = {}) {
 test("returns one versioned protocol with the canonical schema and a prepared brief", () => {
   const result = planningProtocol(brief);
   assert.equal(result.brief.ready, true);
-  assert.equal(result.protocol.version, "1.0.0");
+  assert.equal(result.protocol.version, "1.2.0");
   assert.match(result.protocol.hash, /^[a-f0-9]{64}$/);
   assert.match(result.protocol.instructions, /validate_and_stage_itinerary/);
   assert.equal(result.protocol.itinerarySchema.type, "object");
@@ -81,6 +82,92 @@ test("allows a destination to be made more specific without weakening operationa
     (error) => error instanceof ItineraryPlanningError
       && error.code === "itinerary_brief_mismatch"
       && error.details.fields.includes("lodging.address"),
+  );
+});
+
+test("keeps a constrained budget and per-person traveller count aligned with the brief", () => {
+  const constrainedBudget = {
+    amount: 90,
+    currency: "EUR",
+    scope: "per_person",
+    flexibility: "target",
+    comfort: "medium",
+    includes: ["activities"],
+  };
+  const matching = validatedDraft(stageInput({
+    brief: { ...brief, budget: constrainedBudget },
+    itinerary: {
+      ...itinerary,
+      travellers: brief.travellers,
+      budget: constrainedBudget,
+      days: [{
+        ...itinerary.days[0],
+        activities: [{
+          ...itinerary.days[0].activities[0],
+          cost: {
+            category: "activities",
+            status: "free",
+          },
+        }],
+      }],
+    },
+  }));
+  assert.equal(matching.itinerary.budget.amount, 90);
+
+  assert.throws(
+    () => validatedDraft(stageInput({
+      brief: { ...brief, budget: constrainedBudget },
+      itinerary: {
+        ...itinerary,
+        travellers: { adults: 1, children: 0 },
+        budget: constrainedBudget,
+      },
+    })),
+    (error) => error instanceof ItineraryPlanningError
+      && error.code === "itinerary_brief_mismatch"
+      && error.details.fields.includes("travellers"),
+  );
+});
+
+test("carries every supplied optional traveller and schedule constraint into the itinerary", () => {
+  const profile = {
+    travellers: {
+      adults: 2,
+      children: 1,
+      childAges: [8],
+      seniors: 1,
+      seniorAges: [67],
+    },
+    arrivalTime: "09:00",
+    departureTime: "17:00",
+    dailySchedule: {
+      earliestStartTime: "09:00",
+      latestEndTime: "18:00",
+      mealTimes: { lunch: "13:00" },
+    },
+    mobility: {
+      walkingTolerance: "low",
+      maxWalkingMinutes: 20,
+      avoidStairs: true,
+      wheelchairAccess: true,
+      restFrequency: "frequent",
+    },
+    accessibilityNeeds: ["Asientos durante esperas largas"],
+  };
+  const matching = validatedDraft(stageInput({
+    brief: { ...brief, ...profile },
+    itinerary: { ...itinerary, ...profile },
+  }));
+  assert.deepEqual(matching.itinerary.mobility, profile.mobility);
+
+  assert.throws(
+    () => validatedDraft(stageInput({
+      brief: { ...brief, ...profile },
+      itinerary: { ...itinerary, ...profile, departureTime: undefined },
+    })),
+    (error) => error instanceof ItineraryPlanningError
+      && error.code === "itinerary_brief_mismatch"
+      && error.details.fields.includes("departureTime"),
   );
 });
 

@@ -18,21 +18,25 @@ import {
   LEGACY_ITINERARY_V10_UI_URI,
   LEGACY_ITINERARY_V11_UI_URI,
   LEGACY_ITINERARY_V12_UI_URI,
+  LEGACY_ITINERARY_V13_UI_URI,
   LEGACY_PUBLIC_SHARE_UI_URI,
   LEGACY_PUBLIC_SHARE_V2_UI_URI,
   LEGACY_PUBLIC_SHARE_V3_UI_URI,
   LEGACY_PUBLIC_SHARE_V4_UI_URI,
   LEGACY_PUBLIC_SHARE_V5_UI_URI,
+  LEGACY_PUBLIC_SHARE_V6_UI_URI,
   LEGACY_TRIP_INTAKE_UI_URI,
   LEGACY_TRIP_INTAKE_V3_UI_URI,
   LEGACY_TRIP_INTAKE_V4_UI_URI,
   LEGACY_TRIP_INTAKE_V5_UI_URI,
   LEGACY_TRIP_INTAKE_V6_UI_URI,
+  LEGACY_TRIP_INTAKE_V7_UI_URI,
   LEGACY_TRIP_LIST_UI_URI,
   LEGACY_TRIP_LIST_V2_UI_URI,
   LEGACY_TRIP_LIST_V3_UI_URI,
   LEGACY_TRIP_LIST_V4_UI_URI,
   LEGACY_TRIP_LIST_V5_UI_URI,
+  LEGACY_TRIP_LIST_V6_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V2_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V3_UI_URI,
@@ -40,6 +44,7 @@ import {
   LEGACY_TRIP_REQUIREMENTS_V5_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V6_UI_URI,
   LEGACY_TRIP_REQUIREMENTS_V7_UI_URI,
+  LEGACY_TRIP_REQUIREMENTS_V8_UI_URI,
   PUBLIC_SHARE_UI_URI,
   TRIP_INTAKE_UI_URI,
   TRIP_LIST_UI_URI,
@@ -47,6 +52,7 @@ import {
   buildDailyRouteUrl,
   createTripPlannerServer,
   normalizeItinerary,
+  prepareTripBrief,
   validateItinerary,
 } from "./server.mjs";
 
@@ -78,11 +84,11 @@ test("pins a fresh URI for every current Sendero component bundle", () => {
       share: PUBLIC_SHARE_UI_URI,
     },
     {
-      itinerary: "ui://sendero/itinerary-v13.html",
-      intake: "ui://sendero/trip-intake-v7.html",
-      trips: "ui://sendero/trip-list-v6.html",
-      requirements: "ui://sendero/trip-requirements-v8.html",
-      share: "ui://sendero/public-share-control-v6.html",
+      itinerary: "ui://sendero/itinerary-v14.html",
+      intake: "ui://sendero/trip-intake-v8.html",
+      trips: "ui://sendero/trip-list-v7.html",
+      requirements: "ui://sendero/trip-requirements-v9.html",
+      share: "ui://sendero/public-share-control-v7.html",
     },
   );
 });
@@ -169,6 +175,174 @@ test("validates realistic constraints and creates a daily route", () => {
   assert.equal(normalized.days[0].route.returnToLodging, true);
   assert.equal(normalized.days[0].route.origin, "Bairro Alto, Lisboa");
   assert.deepEqual(normalized.days[0].activities[0].guide, itinerary.days[0].activities[0].guide);
+});
+
+test("keeps the required brief small and gives omitted profile fields neutral defaults", () => {
+  const prepared = prepareTripBrief({
+    locale: "es",
+    destination: "Lyon, Francia",
+    startDate: "2027-05-02",
+    endDate: "2027-05-04",
+    travellers: { adults: 2 },
+    transport: { modes: ["walk"] },
+  });
+
+  assert.equal(prepared.ready, true);
+  assert.deepEqual(prepared.brief.travellers, { adults: 2, children: 0, seniors: 0 });
+  assert.equal(prepared.brief.arrivalTime, undefined);
+  assert.equal(prepared.brief.departureTime, undefined);
+  assert.equal(prepared.brief.dailySchedule, undefined);
+  assert.equal(prepared.brief.mobility, undefined);
+});
+
+test("enforces supplied arrival, daily-window, mobility, and accessibility constraints", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.endDate = candidate.startDate;
+  candidate.travellers = {
+    adults: 2,
+    children: 1,
+    childAges: [8],
+    seniors: 1,
+    seniorAges: [67],
+  };
+  candidate.arrivalTime = "08:30";
+  candidate.departureTime = "23:00";
+  candidate.dailySchedule = {
+    earliestStartTime: "09:00",
+    latestEndTime: "22:00",
+    mealTimes: { lunch: "13:00", dinner: "19:30" },
+  };
+  candidate.mobility = {
+    walkingTolerance: "low",
+    maxWalkingMinutes: 20,
+    avoidStairs: true,
+    wheelchairAccess: true,
+    restFrequency: "frequent",
+  };
+  candidate.accessibilityNeeds = ["Asientos durante esperas largas"];
+  for (const activity of candidate.days[0].activities) {
+    activity.accessibility = {
+      status: "verified",
+      wheelchairAccessible: true,
+      stepFree: true,
+      seatingAvailable: true,
+      sourceUrl: "https://access.example/venue",
+      checkedAt: "2026-08-20",
+    };
+  }
+
+  assert.equal(validateItinerary(candidate).valid, true);
+
+  candidate.arrivalTime = "09:30";
+  assert.ok(validateItinerary(candidate).errors.some((message) => message.includes("before the available arrival time")));
+
+  candidate.arrivalTime = "08:30";
+  candidate.days[0].activities[0].travelToNext = { mode: "walk", durationMinutes: 35 };
+  assert.ok(validateItinerary(candidate).errors.some((message) => message.includes("walking leg exceeds")));
+
+  candidate.days[0].activities[0].travelToNext = { mode: "taxi", durationMinutes: 35 };
+  candidate.days[0].activities[1].accessibility.status = "unknown";
+  assert.ok(validateItinerary(candidate).errors.some((message) => message.includes("wheelchair accessibility")));
+});
+
+test("rejects inconsistent traveller age profiles and impossible one-day times", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.travellers = { adults: 2, children: 1, childAges: [6, 8], seniors: 0 };
+  assert.ok(validateItinerary(candidate).errors.some((message) => message.includes("Child ages")));
+
+  const prepared = prepareTripBrief({
+    destination: "Berlín, Alemania",
+    startDate: "2027-06-12",
+    endDate: "2027-06-12",
+    arrivalTime: "18:00",
+    departureTime: "10:00",
+    travellers: { adults: 1 },
+    transport: { modes: ["public_transit"] },
+  });
+  assert.equal(prepared.ready, false);
+  assert.ok(prepared.warnings.some((message) => message.includes("departure time must be after arrival")));
+});
+
+test("enforces monetary budget coverage and strict caps", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.travellers = { adults: 2, children: 0 };
+  candidate.budget = {
+    amount: 100,
+    currency: "EUR",
+    scope: "total",
+    flexibility: "strict",
+    includes: ["activities", "food", "local_transport"],
+  };
+  candidate.days[0].activities[0].cost = {
+    category: "activities",
+    status: "verified",
+    currency: "EUR",
+    min: 20,
+    max: 20,
+    basis: "person",
+    sourceUrl: "https://tickets.example/activity",
+    checkedAt: "2026-08-20",
+  };
+  candidate.days[0].activities[1].cost = {
+    category: "food",
+    status: "estimated",
+    currency: "EUR",
+    min: 30,
+    max: 45,
+    basis: "party",
+  };
+  candidate.days[0].additionalCosts = [{
+    id: "local-transit-day-1",
+    label: "Transporte local",
+    category: "local_transport",
+    status: "estimated",
+    currency: "EUR",
+    min: 10,
+    max: 15,
+    basis: "person",
+  }];
+
+  const tooExpensive = validateItinerary(candidate);
+  assert.equal(tooExpensive.valid, false);
+  assert.ok(tooExpensive.errors.some((message) => message.includes("may exceed")));
+
+  candidate.budget.amount = 120;
+  const withinBudget = validateItinerary(candidate);
+  assert.equal(withinBudget.valid, true);
+  assert.equal(withinBudget.errors.length, 0);
+
+  delete candidate.days[0].additionalCosts;
+  const missingCoverage = validateItinerary(candidate);
+  assert.equal(missingCoverage.valid, false);
+  assert.ok(missingCoverage.errors.some((message) => message.includes("local_transport")));
+
+  candidate.days[0].additionalCosts = [{
+    id: "local-transit-day-1",
+    label: "Transporte local",
+    category: "local_transport",
+    status: "estimated",
+    currency: "USD",
+    min: 10,
+    max: 15,
+    basis: "party",
+  }];
+  const mixedCurrency = validateItinerary(candidate);
+  assert.equal(mixedCurrency.valid, false);
+  assert.ok(mixedCurrency.errors.some((message) => message.includes("different currency")));
+});
+
+test("requires traceability for verified costs", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.days[0].activities[0].cost = {
+    category: "activities",
+    status: "verified",
+    currency: "EUR",
+    min: 20,
+    max: 20,
+  };
+  const validation = validateItinerary(candidate);
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((message) => message.includes("verified cost requires")));
 });
 
 test("keeps operational descriptions separate from source-backed place guides", () => {
@@ -587,6 +761,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyItineraryV12Resource = await client.readResource({ uri: LEGACY_ITINERARY_V12_UI_URI });
   assertInlineWidgetResource(legacyItineraryV12Resource, LEGACY_ITINERARY_V12_UI_URI);
   assert.equal(legacyItineraryV12Resource.contents[0].text, resource.contents[0].text);
+  const legacyItineraryV13Resource = await client.readResource({ uri: LEGACY_ITINERARY_V13_UI_URI });
+  assertInlineWidgetResource(legacyItineraryV13Resource, LEGACY_ITINERARY_V13_UI_URI);
+  assert.equal(legacyItineraryV13Resource.contents[0].text, resource.contents[0].text);
 
   const intake = await client.callTool({ name: "render_trip_intake", arguments: {} });
   assert.equal(intake.structuredContent.mode, "new");
@@ -617,6 +794,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyIntakeV6Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V6_UI_URI });
   assertInlineWidgetResource(legacyIntakeV6Resource, LEGACY_TRIP_INTAKE_V6_UI_URI);
   assert.equal(legacyIntakeV6Resource.contents[0].text, intakeResource.contents[0].text);
+  const legacyIntakeV7Resource = await client.readResource({ uri: LEGACY_TRIP_INTAKE_V7_UI_URI });
+  assertInlineWidgetResource(legacyIntakeV7Resource, LEGACY_TRIP_INTAKE_V7_UI_URI);
+  assert.equal(legacyIntakeV7Resource.contents[0].text, intakeResource.contents[0].text);
 
   const tripListResource = await client.readResource({ uri: TRIP_LIST_UI_URI });
   assertInlineWidgetResource(tripListResource, TRIP_LIST_UI_URI);
@@ -639,6 +819,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyTripListV5Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V5_UI_URI });
   assertInlineWidgetResource(legacyTripListV5Resource, LEGACY_TRIP_LIST_V5_UI_URI);
   assert.equal(legacyTripListV5Resource.contents[0].text, tripListResource.contents[0].text);
+  const legacyTripListV6Resource = await client.readResource({ uri: LEGACY_TRIP_LIST_V6_UI_URI });
+  assertInlineWidgetResource(legacyTripListV6Resource, LEGACY_TRIP_LIST_V6_UI_URI);
+  assert.equal(legacyTripListV6Resource.contents[0].text, tripListResource.contents[0].text);
 
   const requirementsResource = await client.readResource({ uri: TRIP_REQUIREMENTS_UI_URI });
   assertInlineWidgetResource(requirementsResource, TRIP_REQUIREMENTS_UI_URI);
@@ -672,6 +855,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyRequirementsV7Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V7_UI_URI });
   assertInlineWidgetResource(legacyRequirementsV7Resource, LEGACY_TRIP_REQUIREMENTS_V7_UI_URI);
   assert.equal(legacyRequirementsV7Resource.contents[0].text, requirementsResource.contents[0].text);
+  const legacyRequirementsV8Resource = await client.readResource({ uri: LEGACY_TRIP_REQUIREMENTS_V8_UI_URI });
+  assertInlineWidgetResource(legacyRequirementsV8Resource, LEGACY_TRIP_REQUIREMENTS_V8_UI_URI);
+  assert.equal(legacyRequirementsV8Resource.contents[0].text, requirementsResource.contents[0].text);
 
   const publicShareResource = await client.readResource({ uri: PUBLIC_SHARE_UI_URI });
   assertInlineWidgetResource(publicShareResource, PUBLIC_SHARE_UI_URI);
@@ -698,6 +884,9 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
   const legacyPublicShareV5Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V5_UI_URI });
   assertInlineWidgetResource(legacyPublicShareV5Resource, LEGACY_PUBLIC_SHARE_V5_UI_URI);
   assert.equal(legacyPublicShareV5Resource.contents[0].text, publicShareResource.contents[0].text);
+  const legacyPublicShareV6Resource = await client.readResource({ uri: LEGACY_PUBLIC_SHARE_V6_UI_URI });
+  assertInlineWidgetResource(legacyPublicShareV6Resource, LEGACY_PUBLIC_SHARE_V6_UI_URI);
+  assert.equal(legacyPublicShareV6Resource.contents[0].text, publicShareResource.contents[0].text);
 
   await client.close();
   await server.close();

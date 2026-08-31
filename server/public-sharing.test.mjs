@@ -22,6 +22,19 @@ function privateItinerary() {
     startDate: "2027-08-13",
     endDate: "2027-08-14",
     timezone: "America/Argentina/Buenos_Aires",
+    travellers: { adults: 2, children: 0 },
+    arrivalTime: "PRIVATE ARRIVAL TIME",
+    departureTime: "PRIVATE DEPARTURE TIME",
+    dailySchedule: { earliestStartTime: "09:00", latestEndTime: "21:00" },
+    mobility: { maxWalkingMinutes: 15, avoidStairs: true, wheelchairAccess: true },
+    accessibilityNeeds: ["PRIVATE ACCESSIBILITY NEED"],
+    budget: {
+      amount: 1300,
+      currency: "USD",
+      scope: "total",
+      flexibility: "strict",
+      includes: ["activities", "food", "local_transport"],
+    },
     lodging: {
       name: "Secret Hotel",
       address: "PRIVATE LODGING ADDRESS 123",
@@ -67,6 +80,22 @@ function privateItinerary() {
               ],
             },
             category: "museum",
+            cost: {
+              category: "activities",
+              status: "verified",
+              currency: "USD",
+              min: 25,
+              max: 25,
+              sourceUrl: "https://museum.example/private-price",
+            },
+            accessibility: {
+              status: "verified",
+              wheelchairAccessible: true,
+              stepFree: true,
+              note: "PRIVATE ACCESSIBILITY NOTE",
+              sourceUrl: "https://museum.example/private-accessibility-source",
+              checkedAt: "2027-08-10T10:00:00Z",
+            },
             locked: true,
             location: {
               name: "Museo público",
@@ -98,6 +127,15 @@ function privateItinerary() {
           totalMinutes: 99,
           mapUrl: "https://maps.example/?origin=PRIVATE+LODGING+ADDRESS+123",
         },
+        additionalCosts: [{
+          id: "private-food-budget",
+          label: "PRIVATE DAILY BUDGET",
+          category: "food",
+          status: "estimated",
+          currency: "USD",
+          min: 80,
+          max: 120,
+        }],
       },
     ],
     sources: [
@@ -118,6 +156,16 @@ test("creates a strict, versionable public projection without known private fiel
   assert.deepEqual(published.transport, { modes: ["walk", "public_transit"] });
   assert.equal("locked" in published.days[0].activities[0], false);
   assert.equal("reservation" in published.days[0].activities[0], false);
+  assert.equal("budget" in published, false);
+  assert.equal("travellers" in published, false);
+  assert.equal("arrivalTime" in published, false);
+  assert.equal("departureTime" in published, false);
+  assert.equal("dailySchedule" in published, false);
+  assert.equal("mobility" in published, false);
+  assert.equal("accessibilityNeeds" in published, false);
+  assert.equal("cost" in published.days[0].activities[0], false);
+  assert.equal("accessibility" in published.days[0].activities[0], false);
+  assert.equal("additionalCosts" in published.days[0], false);
   assert.equal(published.days[0].activities[0].publicId, "2027-08-13:activity:1");
   assert.deepEqual(published.days[0].activities[0].booking, {
     required: true,
@@ -162,6 +210,12 @@ test("creates a strict, versionable public projection without known private fiel
     "private@example.com",
     "private-user-id",
     "private reason",
+    "PRIVATE DAILY BUDGET",
+    "PRIVATE ARRIVAL TIME",
+    "PRIVATE DEPARTURE TIME",
+    "PRIVATE ACCESSIBILITY NEED",
+    "PRIVATE ACCESSIBILITY NOTE",
+    "private-accessibility-source",
   ]) {
     assert.doesNotMatch(serialized, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

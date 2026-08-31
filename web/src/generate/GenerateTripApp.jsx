@@ -7,8 +7,19 @@ import {
 } from "../account/web-client.js";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
 import { hrefForLocale, useUiLocale } from "../i18n/LanguageSelector.jsx";
+import { t } from "../i18n/index.js";
 import { createItineraryGenerationFacade } from "./generation-client.js";
 import { registerItineraryGenerationTools } from "./webmcp.js";
+import {
+  BudgetFields,
+  budgetDraftFromValue,
+  budgetValueFromDraft,
+} from "../budget/BudgetFields.jsx";
+import {
+  TripProfileFields,
+  tripProfileDraftFromBrief,
+  tripProfileValueFromDraft,
+} from "../profile/TripProfileFields.jsx";
 
 const generateStyles = `
 .generate-layout { display: grid; grid-template-columns: minmax(280px, 390px) minmax(0, 1fr); gap: 22px; align-items: start; }
@@ -50,7 +61,9 @@ const initialBrief = {
   pace: "balanced",
   interests: [],
   transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
-  lodging: { area: "", address: "", status: "provisional" },
+  lodging: { area: "", address: "", status: "undecided" },
+  budget: budgetDraftFromValue(),
+  profile: tripProfileDraftFromBrief(),
   notes: "",
 };
 
@@ -61,6 +74,13 @@ const COPY = {
     licence: "At least one person has a valid driving licence", lodgingArea: "Lodging area", lodgingAreaPlaceholder: "Neighbourhood or area; it can be provisional",
     address: "Confirmed address", optional: "Optional", pace: "Pace", paces: { relaxed: "Relaxed", balanced: "Balanced", intense: "Intense" },
     interests: "Interests", interestsPlaceholder: "Architecture, local food, music…", notes: "Notes and constraints", notesPlaceholder: "Fixed plans, accessibility, things to avoid…",
+    budget: {
+      title: "Budget", description: "Set a spending style and, if useful, a monetary limit.", comfort: "Spending style", comforts: { flexible: "Flexible", low: "Economy", medium: "Mid-range", high: "Premium" },
+      amount: "Limit", optional: "Optional", currency: "Currency", scope: "Applied to", scopes: { total: "Whole trip", per_person: "Per person", per_day: "Per day" },
+      flexibility: "How firm is it?", flexibilities: { strict: "Hard cap", target: "Target", flexible: "Reference" }, includes: "Counts toward the limit",
+      categories: { activities: "Activities", food: "Food", local_transport: "Local transport", lodging: "Lodging", long_distance_transport: "Travel to destination" },
+      note: "Lodging and travel to the destination count only when selected. Sendero uses price ranges, not false precision.",
+    },
     prepare: "Prepare for ChatGPT", protocolReady: "The brief is complete. ChatGPT can now research and generate the itinerary with the current protocol.",
     criticalMissing: (fields) => `Critical details are missing: ${fields}.`, prepareError: "We couldn't prepare the trip.", saved: "The trip was saved in Sendero.",
     saveError: "We couldn't save the trip.", discarded: "The temporary draft was discarded.", discardError: "We couldn't discard the draft.",
@@ -84,6 +104,13 @@ const COPY = {
     licence: "Al menos una persona tiene licencia válida", lodgingArea: "Zona de alojamiento", lodgingAreaPlaceholder: "Barrio o zona; puede ser provisional",
     address: "Dirección confirmada", optional: "Opcional", pace: "Ritmo", paces: { relaxed: "Relajado", balanced: "Equilibrado", intense: "Intenso" },
     interests: "Intereses", interestsPlaceholder: "Arquitectura, comida local, música…", notes: "Notas y restricciones", notesPlaceholder: "Planes fijos, accesibilidad, cosas que evitar…",
+    budget: {
+      title: "Presupuesto", description: "Define el estilo de gasto y, si sirve, un límite monetario.", comfort: "Estilo de gasto", comforts: { flexible: "Flexible", low: "Económico", medium: "Medio", high: "Premium" },
+      amount: "Límite", optional: "Opcional", currency: "Moneda", scope: "Se aplica a", scopes: { total: "Todo el viaje", per_person: "Por persona", per_day: "Por día" },
+      flexibility: "¿Qué tan firme es?", flexibilities: { strict: "Tope estricto", target: "Objetivo", flexible: "Referencia" }, includes: "Cuenta dentro del límite",
+      categories: { activities: "Actividades", food: "Comidas", local_transport: "Transporte local", lodging: "Alojamiento", long_distance_transport: "Viaje al destino" },
+      note: "Alojamiento y viaje al destino cuentan solo si los seleccionas. Sendero usa rangos, no falsa precisión.",
+    },
     prepare: "Preparar para ChatGPT", protocolReady: "El brief está completo. ChatGPT ya puede investigar y generar el itinerario con el protocolo actual.",
     criticalMissing: (fields) => `Faltan datos críticos: ${fields}.`, prepareError: "No pudimos preparar el viaje.", saved: "El viaje quedó guardado en Sendero.",
     saveError: "No pudimos guardar el viaje.", discarded: "El borrador temporal fue descartado.", discardError: "No pudimos descartar el borrador.",
@@ -107,6 +134,13 @@ const COPY = {
     licence: "Pelo menos uma pessoa tem carteira de motorista válida", lodgingArea: "Área de hospedagem", lodgingAreaPlaceholder: "Bairro ou área; pode ser provisório",
     address: "Endereço confirmado", optional: "Opcional", pace: "Ritmo", paces: { relaxed: "Tranquilo", balanced: "Equilibrado", intense: "Intenso" },
     interests: "Interesses", interestsPlaceholder: "Arquitetura, comida local, música…", notes: "Observações e restrições", notesPlaceholder: "Planos fixos, acessibilidade, coisas a evitar…",
+    budget: {
+      title: "Orçamento", description: "Defina o estilo de gasto e, se for útil, um limite monetário.", comfort: "Estilo de gasto", comforts: { flexible: "Flexível", low: "Econômico", medium: "Médio", high: "Premium" },
+      amount: "Limite", optional: "Opcional", currency: "Moeda", scope: "Aplicado a", scopes: { total: "Viagem inteira", per_person: "Por pessoa", per_day: "Por dia" },
+      flexibility: "Quão rígido é?", flexibilities: { strict: "Teto rígido", target: "Meta", flexible: "Referência" }, includes: "Conta no limite",
+      categories: { activities: "Atividades", food: "Alimentação", local_transport: "Transporte local", lodging: "Hospedagem", long_distance_transport: "Viagem até o destino" },
+      note: "Hospedagem e viagem até o destino contam somente quando selecionadas. O Sendero usa faixas, não falsa precisão.",
+    },
     prepare: "Preparar para o ChatGPT", protocolReady: "O brief está completo. O ChatGPT já pode pesquisar e gerar o roteiro com o protocolo atual.",
     criticalMissing: (fields) => `Faltam dados críticos: ${fields}.`, prepareError: "Não foi possível preparar a viagem.", saved: "A viagem foi salva no Sendero.",
     saveError: "Não foi possível salvar a viagem.", discarded: "O rascunho temporário foi descartado.", discardError: "Não foi possível descartar o rascunho.",
@@ -130,6 +164,13 @@ const COPY = {
     licence: "Au moins une personne possède un permis de conduire valide", lodgingArea: "Zone d’hébergement", lodgingAreaPlaceholder: "Quartier ou zone ; cela peut être provisoire",
     address: "Adresse confirmée", optional: "Facultatif", pace: "Rythme", paces: { relaxed: "Détendu", balanced: "Équilibré", intense: "Intense" },
     interests: "Centres d’intérêt", interestsPlaceholder: "Architecture, cuisine locale, musique…", notes: "Notes et contraintes", notesPlaceholder: "Plans fixes, accessibilité, choses à éviter…",
+    budget: {
+      title: "Budget", description: "Définissez le niveau de dépenses et, si utile, une limite monétaire.", comfort: "Niveau de dépenses", comforts: { flexible: "Flexible", low: "Économique", medium: "Intermédiaire", high: "Premium" },
+      amount: "Limite", optional: "Facultatif", currency: "Devise", scope: "S’applique à", scopes: { total: "Tout le voyage", per_person: "Par personne", per_day: "Par jour" },
+      flexibility: "Quel degré de fermeté ?", flexibilities: { strict: "Plafond strict", target: "Objectif", flexible: "Référence" }, includes: "Pris en compte dans la limite",
+      categories: { activities: "Activités", food: "Repas", local_transport: "Transports locaux", lodging: "Hébergement", long_distance_transport: "Trajet vers la destination" },
+      note: "L’hébergement et le trajet vers la destination ne comptent que s’ils sont sélectionnés. Sendero utilise des fourchettes, sans fausse précision.",
+    },
     prepare: "Préparer pour ChatGPT", protocolReady: "Le brief est complet. ChatGPT peut maintenant rechercher et générer l’itinéraire avec le protocole actuel.",
     criticalMissing: (fields) => `Informations essentielles manquantes : ${fields}.`, prepareError: "Impossible de préparer le voyage.", saved: "Le voyage a été enregistré dans Sendero.",
     saveError: "Impossible d’enregistrer le voyage.", discarded: "Le brouillon temporaire a été supprimé.", discardError: "Impossible de supprimer le brouillon.",
@@ -153,6 +194,13 @@ const COPY = {
     licence: "Mindestens eine Person besitzt einen gültigen Führerschein", lodgingArea: "Unterkunftsgegend", lodgingAreaPlaceholder: "Viertel oder Gegend; kann vorläufig sein",
     address: "Bestätigte Adresse", optional: "Optional", pace: "Tempo", paces: { relaxed: "Entspannt", balanced: "Ausgewogen", intense: "Intensiv" },
     interests: "Interessen", interestsPlaceholder: "Architektur, lokale Küche, Musik…", notes: "Hinweise und Einschränkungen", notesPlaceholder: "Feste Pläne, Barrierefreiheit, zu vermeidende Dinge…",
+    budget: {
+      title: "Budget", description: "Lege den Ausgabenstil und bei Bedarf eine Geldgrenze fest.", comfort: "Ausgabenstil", comforts: { flexible: "Flexibel", low: "Günstig", medium: "Mittel", high: "Premium" },
+      amount: "Grenze", optional: "Optional", currency: "Währung", scope: "Gilt für", scopes: { total: "Gesamte Reise", per_person: "Pro Person", per_day: "Pro Tag" },
+      flexibility: "Wie verbindlich?", flexibilities: { strict: "Feste Obergrenze", target: "Ziel", flexible: "Richtwert" }, includes: "Wird auf die Grenze angerechnet",
+      categories: { activities: "Aktivitäten", food: "Verpflegung", local_transport: "Nahverkehr", lodging: "Unterkunft", long_distance_transport: "Anreise zum Ziel" },
+      note: "Unterkunft und Anreise zählen nur, wenn sie ausgewählt sind. Sendero arbeitet mit Spannen statt mit Scheingenauigkeit.",
+    },
     prepare: "Für ChatGPT vorbereiten", protocolReady: "Die Angaben sind vollständig. ChatGPT kann den Reiseplan jetzt mit dem aktuellen Protokoll recherchieren und erstellen.",
     criticalMissing: (fields) => `Wesentliche Angaben fehlen: ${fields}.`, prepareError: "Die Reise konnte nicht vorbereitet werden.", saved: "Die Reise wurde in Sendero gespeichert.",
     saveError: "Die Reise konnte nicht gespeichert werden.", discarded: "Der temporäre Entwurf wurde verworfen.", discardError: "Der Entwurf konnte nicht verworfen werden.",
@@ -172,12 +220,27 @@ const COPY = {
   },
 };
 
+function profileCopy(locale) {
+  return {
+    title: t(locale, "profile.title"), optional: t(locale, "profile.optional"), description: t(locale, "profile.description"),
+    tripTimes: t(locale, "profile.tripTimes"), arrivalTime: t(locale, "profile.arrivalTime"), departureTime: t(locale, "profile.departureTime"),
+    party: t(locale, "profile.party"), childAges: t(locale, "profile.childAges"), seniors: t(locale, "profile.seniors"), seniorAges: t(locale, "profile.seniorAges"), agesPlaceholder: t(locale, "profile.agesPlaceholder"), seniorAgesPlaceholder: t(locale, "profile.seniorAgesPlaceholder"), seniorsHint: t(locale, "profile.seniorsHint"),
+    dailySchedule: t(locale, "profile.dailySchedule"), earliestStart: t(locale, "profile.earliestStart"), latestEnd: t(locale, "profile.latestEnd"), breakfast: t(locale, "profile.breakfast"), lunch: t(locale, "profile.lunch"), dinner: t(locale, "profile.dinner"),
+    mobility: t(locale, "profile.mobility"), walkingTolerance: t(locale, "profile.walkingTolerance"),
+    walkingOptions: Object.fromEntries(["none", "low", "moderate", "high"].map((value) => [value, t(locale, `profile.walking.${value}`)])),
+    maxWalkingMinutes: t(locale, "profile.maxWalkingMinutes"), minutesPlaceholder: t(locale, "profile.minutesPlaceholder"), restFrequency: t(locale, "profile.restFrequency"),
+    restOptions: Object.fromEntries(["none", "frequent", "regular", "minimal"].map((value) => [value, t(locale, `profile.rest.${value}`)])),
+    avoidStairs: t(locale, "profile.avoidStairs"), wheelchairAccess: t(locale, "profile.wheelchairAccess"), accessibilityNeeds: t(locale, "profile.accessibilityNeeds"), accessibilityPlaceholder: t(locale, "profile.accessibilityPlaceholder"), note: t(locale, "profile.note"),
+  };
+}
+
 function compactBrief(brief) {
   const clean = (value) => typeof value === "string" ? value.trim() : value;
+  const { travellers: profileTravellers, ...profileFields } = tripProfileValueFromDraft(brief.profile);
   const lodging = {
     ...(clean(brief.lodging?.area) ? { area: clean(brief.lodging.area) } : {}),
     ...(clean(brief.lodging?.address) ? { address: clean(brief.lodging.address) } : {}),
-    status: clean(brief.lodging?.address) ? "confirmed" : "provisional",
+    status: clean(brief.lodging?.address) ? "confirmed" : "area_only",
   };
   return {
     locale: clean(brief.locale) || "es",
@@ -187,7 +250,9 @@ function compactBrief(brief) {
     travellers: {
       adults: Number(brief.travellers?.adults) || 1,
       children: Math.max(0, Number(brief.travellers?.children) || 0),
+      ...profileTravellers,
     },
+    ...profileFields,
     pace: brief.pace,
     interests: brief.interests.filter(Boolean),
     transport: {
@@ -195,6 +260,7 @@ function compactBrief(brief) {
       hasLicense: brief.transport.hasLicense,
       wantsCar: brief.transport.modes.includes("car"),
     },
+    budget: budgetValueFromDraft(brief.budget),
     ...(Object.keys(lodging).length > 1 ? { lodging } : {}),
     ...(clean(brief.notes) ? { notes: clean(brief.notes) } : {}),
   };
@@ -235,6 +301,8 @@ function BriefForm({ brief, busy, copy, onChange, onSubmit }) {
       <label className="generate-field"><span>{copy.lodgingArea}</span><input onChange={(event) => onChange({ ...brief, lodging: { ...brief.lodging, area: event.target.value } })} placeholder={copy.lodgingAreaPlaceholder} value={brief.lodging.area} /></label>
       <label className="generate-field"><span>{copy.address}</span><input onChange={(event) => onChange({ ...brief, lodging: { ...brief.lodging, address: event.target.value } })} placeholder={copy.optional} value={brief.lodging.address} /></label>
       <label className="generate-field"><span>{copy.pace}</span><select onChange={(event) => onChange({ ...brief, pace: event.target.value })} value={brief.pace}>{Object.entries(copy.paces).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <TripProfileFields adultsCount={brief.travellers.adults} childrenCount={brief.travellers.children} copy={copy.profile} onChange={(profile) => onChange({ ...brief, profile })} value={brief.profile} />
+      <BudgetFields copy={copy.budget} onChange={(budget) => onChange({ ...brief, budget })} value={brief.budget} />
       <label className="generate-field"><span>{copy.interests}</span><textarea onChange={(event) => onChange({ ...brief, interests: event.target.value.split(",").map((value) => value.trim()) })} placeholder={copy.interestsPlaceholder} value={brief.interests.join(", ")} /></label>
       <label className="generate-field"><span>{copy.notes}</span><textarea onChange={(event) => onChange({ ...brief, notes: event.target.value })} placeholder={copy.notesPlaceholder} value={brief.notes} /></label>
       <WebButton disabled={busy || brief.transport.modes.length === 0} tone="primary" type="submit">{copy.prepare}</WebButton>
@@ -244,7 +312,7 @@ function BriefForm({ brief, busy, copy, onChange, onSubmit }) {
 
 export function GenerateTripApp() {
   const { language, locale } = useUiLocale();
-  const copy = COPY[language] || COPY.es;
+  const copy = { ...(COPY[language] || COPY.es), profile: profileCopy(locale) };
   const [page, setPage] = useState({ kind: "loading" });
   const [brief, setBrief] = useState(() => ({ ...initialBrief, locale }));
   const [draft, setDraft] = useState(null);
