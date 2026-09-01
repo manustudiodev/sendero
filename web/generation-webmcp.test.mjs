@@ -19,18 +19,30 @@ function facade() {
 
 test("registers the five authenticated generation tools on the top-level page", async () => {
   const registered = [];
+  const reports = [];
   const controller = new AbortController();
   const supported = await registerItineraryGenerationTools({
     modelContext: { registerTool(tool, options) { registered.push({ tool, options }); } },
-  }, facade(), { signal: controller.signal });
+  }, facade(), { report: (event) => reports.push(event), signal: controller.signal });
   assert.equal(supported, true);
   assert.deepEqual(registered.map(({ tool }) => tool.name), ITINERARY_GENERATION_TOOL_NAMES);
   assert.equal(registered.every(({ options }) => options.signal === controller.signal), true);
   assert.equal(registered.every(({ tool }) => tool.inputSchema.additionalProperties === false), true);
+  assert.deepEqual(reports.map(({ type }) => type), [
+    "webmcp_support_detected",
+    "webmcp_tools_registered",
+  ]);
+  assert.match(registered[0].tool.description, /prefer this page workflow over remote Sendero planning tools/i);
+  assert.match(registered[1].tool.description, /authoritative review handoff/i);
+  assert.match(registered[3].tool.description, /current web account/i);
 });
 
 test("leaves the page usable without WebMCP and keeps failures compact", async () => {
-  assert.equal(await registerItineraryGenerationTools({}, facade()), false);
+  const reports = [];
+  assert.equal(await registerItineraryGenerationTools({}, facade(), {
+    report: (event) => reports.push(event),
+  }), false);
+  assert.deepEqual(reports, [{ type: "webmcp_support_unavailable" }]);
   const broken = facade();
   broken.stage = async () => {
     const error = new Error("The itinerary has blocking validation errors.");
@@ -43,6 +55,19 @@ test("leaves the page usable without WebMCP and keeps failures compact", async (
   const result = await tool.execute({});
   assert.deepEqual(result.error.details, { errors: ["overlap"] });
   assert.equal("stack" in result.error, false);
+});
+
+test("reports tool lifecycle without exposing the generated itinerary", async () => {
+  const reports = [];
+  const tool = itineraryGenerationToolDefinitions(facade(), {
+    report: (event) => reports.push(event),
+  }).find(({ name }) => name === "validate_and_stage_itinerary");
+  await tool.execute({});
+  assert.deepEqual(reports.map(({ type, toolName }) => ({ type, toolName })), [
+    { type: "webmcp_tool_started", toolName: "validate_and_stage_itinerary" },
+    { type: "webmcp_tool_succeeded", toolName: "validate_and_stage_itinerary" },
+  ]);
+  assert.equal(reports.some((event) => "itinerary" in event), false);
 });
 
 test("uses CSRF for temporary and canonical mutations and reuses operation IDs", async () => {

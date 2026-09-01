@@ -99,11 +99,11 @@ test("account page covers the authenticated state machine", () => {
   assert.match(source, /\/api\/trips/);
 });
 
-test("authenticated page frame exposes safe account switching and logout", () => {
+test("authenticated page frame exposes safe logout without a persistent account-switch action", () => {
   const source = readFileSync(new URL("./src/account/PageFrame.jsx", import.meta.url), "utf8");
   assert.match(source, /\/auth\/logout/);
   assert.match(source, /"X-CSRF-Token": csrfToken/);
-  assert.match(source, /Cambiar cuenta/);
+  assert.doesNotMatch(source, /Cambiar cuenta|Switch account|copy\.changeAccount/);
   assert.match(source, /Cerrar sesión/);
   assert.match(source, /No pudimos cerrar la sesión/);
 });

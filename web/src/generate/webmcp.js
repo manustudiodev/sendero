@@ -61,7 +61,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
   return [
     definition({
       name: "get_itinerary_planning_protocol",
-      description: "Load Sendero's current versioned instructions, prepared brief, and canonical JSON schema for generating a new itinerary. Use this before researching or constructing the itinerary. Sendero returns instructions but does not call a model.",
+      description: "Load Sendero's current versioned instructions, prepared brief, and canonical JSON schema for generating a new itinerary. Use this before researching or constructing the itinerary. When this page-scoped tool is available for the open Sendero creation page, prefer this page workflow over remote Sendero planning tools so the page can show progress, review, and authoritative save state. Sendero returns instructions but does not call a model.",
       inputSchema: {
         type: "object",
         properties: { brief: BRIEF_SCHEMA },
@@ -72,7 +72,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
     }),
     definition({
       name: "validate_and_stage_itinerary",
-      description: "Validate one complete generated itinerary against the current Sendero protocol and create a temporary draft. This does not save a canonical trip. Correct blocking errors before continuing and review all warnings.",
+      description: "Validate one complete generated itinerary against the current Sendero protocol and create a temporary draft in the open creation page. This is the authoritative review handoff for that page and should be preferred over a remote presentation tool when available. It does not save a canonical trip. Correct blocking errors before continuing and review all warnings.",
       inputSchema: {
         type: "object",
         properties: {
@@ -104,7 +104,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
     }),
     definition({
       name: "save_staged_itinerary",
-      description: "Explicitly save one validated temporary draft as an authoritative Sendero trip. Call only when the user asked to save. Report success only from the returned trip, webId, and version.",
+      description: "Explicitly save one validated temporary draft from the open creation page as an authoritative Sendero trip. Call only when the user asked to save. When this page-scoped tool is available, prefer it over remote Sendero save tools so the page and the current web account receive the same result. Report success only from the returned trip, webId, and version.",
       inputSchema: {
         type: "object",
         properties: { draftId: DRAFT_ID },

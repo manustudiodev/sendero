@@ -75,35 +75,30 @@ a { color: inherit; }
 const FRAME_COPY = {
   en: {
     home: "Sendero, home",
-    changeAccount: "Switch account",
     logout: "Sign out",
     logoutError: "We couldn't sign you out. Try again.",
     errorEyebrow: "We couldn't continue",
   },
   es: {
     home: "Sendero, inicio",
-    changeAccount: "Cambiar cuenta",
     logout: "Cerrar sesión",
     logoutError: "No pudimos cerrar la sesión. Intenta nuevamente.",
     errorEyebrow: "No pudimos continuar",
   },
   pt: {
     home: "Sendero, início",
-    changeAccount: "Trocar conta",
     logout: "Sair",
     logoutError: "Não foi possível encerrar a sessão. Tente novamente.",
     errorEyebrow: "Não foi possível continuar",
   },
   fr: {
     home: "Sendero, accueil",
-    changeAccount: "Changer de compte",
     logout: "Se déconnecter",
     logoutError: "Impossible de vous déconnecter. Réessayez.",
     errorEyebrow: "Impossible de continuer",
   },
   de: {
     home: "Sendero, Startseite",
-    changeAccount: "Konto wechseln",
     logout: "Abmelden",
     logoutError: "Die Abmeldung ist fehlgeschlagen. Versuche es erneut.",
     errorEyebrow: "Fortfahren nicht möglich",
@@ -137,12 +132,12 @@ function WebAccount({ copy, csrfToken, user }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function finishSession(changeAccount) {
+  async function finishSession() {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      await endSenderoSession(csrfToken, { changeAccount });
+      await endSenderoSession(csrfToken);
     } catch {
       setBusy(false);
       setError(copy.logoutError);
@@ -153,8 +148,7 @@ function WebAccount({ copy, csrfToken, user }) {
     <div className="web-account">
       <span className="web-user">{user.name || user.email}</span>
       <div className="web-account-actions">
-        <button className="web-account-action" disabled={busy} onClick={() => finishSession(true)} type="button">{copy.changeAccount}</button>
-        <button className="web-account-action" disabled={busy} onClick={() => finishSession(false)} type="button">{copy.logout}</button>
+        <button className="web-account-action" disabled={busy} onClick={finishSession} type="button">{copy.logout}</button>
       </div>
       {error ? <p className="web-account-error" role="alert">{error}</p> : null}
     </div>

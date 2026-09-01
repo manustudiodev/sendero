@@ -600,6 +600,8 @@ test("advertises the planning tools and renders the MCP Apps resource", async ()
     saveAndPresentTool.inputSchema.properties.changeLanguage.type,
     "boolean",
   );
+  assert.match(presentTripTool.description, /page-scoped Sendero creation tools/i);
+  assert.match(saveAndPresentTool.description, /save_staged_itinerary/);
   assert.equal(intakeTool._meta.ui.resourceUri, TRIP_INTAKE_UI_URI);
   assert.equal(tripListTool._meta.ui.resourceUri, TRIP_LIST_UI_URI);
   assert.equal(tripListTool._meta["openai/outputTemplate"], TRIP_LIST_UI_URI);

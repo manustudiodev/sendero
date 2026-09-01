@@ -1,7 +1,6 @@
 const PROMPT_COPY = Object.freeze({
   en: {
     intro: "Create a complete travel itinerary with Sendero using the trip details below.",
-    tools: "Use the connected Sendero plugin and start creating the itinerary immediately. Do not describe which tools or integration you will use, and do not narrate your process.",
     research: "Verify current opening hours, closures, transport, prices, weather, events, and reservation requirements with reliable sources. Do not invent missing preferences or operational facts.",
     review: "Show me the complete itinerary in Sendero, including any warnings and assumptions. Do not save it until I explicitly approve it.",
     brief: "Trip details",
@@ -35,7 +34,6 @@ const PROMPT_COPY = Object.freeze({
   },
   es: {
     intro: "Crea un itinerario de viaje completo con Sendero usando los datos que aparecen abajo.",
-    tools: "Utiliza el plugin conectado de Sendero y empieza a crear el itinerario directamente. No describas qué herramientas o integración vas a usar ni narres tu proceso.",
     research: "Verifica horarios, cierres, transporte, precios, clima, eventos y requisitos de reserva actuales con fuentes confiables. No inventes preferencias faltantes ni datos operativos.",
     review: "Muéstrame el itinerario completo en Sendero, junto con sus advertencias y supuestos. No lo guardes hasta que yo lo apruebe explícitamente.",
     brief: "Datos del viaje",
@@ -69,7 +67,6 @@ const PROMPT_COPY = Object.freeze({
   },
   pt: {
     intro: "Crie um roteiro de viagem completo com o Sendero usando os dados abaixo.",
-    tools: "Use o plugin conectado do Sendero e comece a criar o roteiro diretamente. Não descreva quais ferramentas ou integração usará nem narre o processo.",
     research: "Verifique horários, fechamentos, transporte, preços, clima, eventos e requisitos de reserva atuais com fontes confiáveis. Não invente preferências ausentes nem informações operacionais.",
     review: "Mostre o roteiro completo no Sendero, incluindo avisos e pressupostos. Não o salve até que eu aprove explicitamente.",
     brief: "Dados da viagem",
@@ -96,7 +93,6 @@ const PROMPT_COPY = Object.freeze({
   },
   fr: {
     intro: "Créez un itinéraire de voyage complet avec Sendero à partir des informations ci-dessous.",
-    tools: "Utilisez le plugin Sendero connecté et commencez directement la création de l’itinéraire. Ne décrivez pas les outils ou l’intégration utilisés et ne racontez pas votre processus.",
     research: "Vérifiez les horaires, fermetures, transports, prix, météo, événements et conditions de réservation actuels à l’aide de sources fiables. N’inventez ni préférences manquantes ni informations pratiques.",
     review: "Présentez-moi l’itinéraire complet dans Sendero, avec ses avertissements et hypothèses. Ne l’enregistrez pas avant mon approbation explicite.",
     brief: "Informations sur le voyage",
@@ -123,7 +119,6 @@ const PROMPT_COPY = Object.freeze({
   },
   de: {
     intro: "Erstelle mit Sendero anhand der folgenden Angaben einen vollständigen Reiseplan.",
-    tools: "Verwende das verbundene Sendero-Plugin und beginne direkt mit der Erstellung. Beschreibe weder die verwendeten Tools oder die Integration noch deinen Arbeitsprozess.",
     research: "Prüfe aktuelle Öffnungszeiten, Schließungen, Verkehr, Preise, Wetter, Veranstaltungen und Reservierungsbedingungen anhand zuverlässiger Quellen. Erfinde weder fehlende Präferenzen noch praktische Angaben.",
     review: "Zeige mir den vollständigen Reiseplan in Sendero, einschließlich Warnungen und Annahmen. Speichere ihn erst nach meiner ausdrücklichen Zustimmung.",
     brief: "Reiseangaben",
@@ -253,7 +248,6 @@ export function createItineraryHandoffPrompt(brief, language = "en") {
   const copy = PROMPT_COPY[resolvedLanguage];
   return [
     copy.intro,
-    copy.tools,
     copy.research,
     copy.review,
     `${copy.brief}:\n${formatItineraryBrief(brief || {}, resolvedLanguage, copy)}`,

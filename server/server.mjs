@@ -1663,6 +1663,7 @@ const SERVER_INSTRUCTIONS = [
   "Infer the predominant language and the most appropriate BCP 47 locale from the user's request without asking them. Always pass it as brief.locale and itinerary.locale; use English when the language is ambiguous or unsupported. Generate every user-authored or editorial itinerary string in that locale, including titles, summaries, weather and fallback text, activity copy, guide content, reservation notes, and generic source labels; keep proper nouns in their official form and avoid mixed-language filler.",
   "A saved itinerary's locale is authoritative when it is opened, rendered, revised, restored, or shared. Preserve it across revisions unless the user explicitly asks to change language; a language change requires translating all user-visible itinerary copy and saving the new locale with changeLanguage true. Omit changeLanguage for ordinary revisions. Legacy trips without a locale use English as a compatibility fallback.",
   "Choose the tool that represents the user's complete current intent. Do not compose compatibility primitives when an intent-level facade exists.",
+  "If page-scoped Sendero creation tools are available from an open trip-creation page, prefer that page workflow over this remote creation flow. It is the only route that can update that page's progress, staged review, and browser-session save state. Use the remote creation facades only when no page-scoped creation tools are available.",
   "Use open_trip once to resolve and present an unchanged saved trip by exact ID, latest_updated selector, or natural reference. Only a needs_selection result justifies showing the saved-trip picker.",
   "Use present_trip once for a complete new or changed itinerary that must be shown without persistence. It is intentionally unsaved and must not receive a saved trip ID, version, or role.",
   "Use save_and_present_trip once when the user asked to persist a new trip or revision. Reuse its operationId on retries and supply expectedVersion for updates.",
@@ -2136,7 +2137,7 @@ export function createTripPlannerServer({
     {
       title: "Present a completed trip",
       description:
-        "Strictly validate and present one complete itinerary without saving it. Use this single read-only facade for a new or changed plan when persistence is not part of the user's request; do not call validate_itinerary or render_itinerary before or after it.",
+        "Strictly validate and present one complete itinerary without saving it. Use this remote facade for a new or changed plan when persistence is not part of the user's request and no page-scoped Sendero creation tools are available. If validate_and_stage_itinerary is available from an open creation page, use that page workflow instead so the page receives the draft. Do not call validate_itinerary or render_itinerary before or after this facade.",
       inputSchema: { itinerary: itinerarySchema },
       outputSchema: {
         state: z.literal("presented"),
@@ -2571,7 +2572,7 @@ export function createTripPlannerServer({
     {
       title: "Save and present a completed trip",
       description:
-        "Strictly validate, persist, and present the authoritative saved itinerary snapshot in one action. Use this facade when the user asked to save a new trip or revision; do not call validate_itinerary, save_itinerary, get_itinerary, or render_itinerary before or after it. Reuse the same operationId for retries. Updating an existing trip also requires its authoritative expectedVersion.",
+        "Strictly validate, persist, and present the authoritative saved itinerary snapshot in one action. Use this remote facade when the user asked to save a new trip or revision and no page-scoped Sendero creation save tool is available. If save_staged_itinerary is available from an open creation page, use it instead so the page and its browser account receive the authoritative result. Do not call validate_itinerary, save_itinerary, get_itinerary, or render_itinerary before or after this facade. Reuse the same operationId for retries. Updating an existing trip also requires its authoritative expectedVersion.",
       inputSchema: {
         tripId: z.string().min(1).optional(),
         itinerary: itinerarySchema,
