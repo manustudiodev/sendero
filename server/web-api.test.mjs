@@ -302,6 +302,7 @@ test("returns authenticated destination suggestions and requires CSRF", async ()
         label: "Sydney NSW, Australia",
         primaryText: "Sydney",
         secondaryText: "NSW, Australia",
+        types: ["locality", "political"],
       }],
     },
   });

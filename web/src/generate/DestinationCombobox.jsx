@@ -95,7 +95,11 @@ export function DestinationCombobox({
     setOpen(false);
     setActiveIndex(-1);
     sessionTokenRef.current = newSessionToken();
-    onChange({ label: suggestion.label, placeId: suggestion.placeId });
+    onChange({
+      label: suggestion.label,
+      placeId: suggestion.placeId,
+      types: suggestion.types || [],
+    });
   }
 
   function handleInput(event) {
@@ -103,7 +107,7 @@ export function DestinationCombobox({
     setQuery(next);
     setOpen(destinationQueryReady(next));
     setActiveIndex(-1);
-    onChange({ label: next, placeId: "" });
+    onChange({ label: next, placeId: "", types: [] });
   }
 
   function handleKeyDown(event) {

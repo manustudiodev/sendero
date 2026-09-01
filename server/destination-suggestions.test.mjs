@@ -93,12 +93,14 @@ test("requests regional predictions and returns only canonical cities and countr
         label: "Santiago, Chile",
         primaryText: "Santiago",
         secondaryText: "Chile",
+        types: ["locality", "political"],
       },
       {
         placeId: "country-1",
         label: "San Marino",
         primaryText: "San Marino",
         secondaryText: "",
+        types: ["country", "political"],
       },
     ],
   });
@@ -201,6 +203,7 @@ test("restricts lodging areas to the selected destination and caches its place c
     label: "Palermo, Buenos Aires, Argentina",
     primaryText: "Palermo",
     secondaryText: "Buenos Aires, Argentina",
+    types: ["neighborhood", "political"],
   }]);
   assert.deepEqual(second.suggestions, first.suggestions);
 });
@@ -245,6 +248,7 @@ test("searches lodging names and exact addresses inside a selected country", asy
   assert.equal("includedPrimaryTypes" in autocompleteBody, false);
   assert.deepEqual(autocompleteBody.includedRegionCodes, ["ar"]);
   assert.equal(result.suggestions[0].placeId, "hotel-1");
+  assert.deepEqual(result.suggestions[0].types, ["lodging", "hotel", "point_of_interest"]);
 });
 
 test("rejects a non-destination place ID as lodging search context", async () => {

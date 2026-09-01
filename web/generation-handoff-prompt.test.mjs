@@ -48,6 +48,11 @@ test("keeps the browser extension path primary without a ChatGPT exit button or 
   assert.match(source, /generationStatusFromEvent/);
   assert.match(source, /hrefForLocale\("\/app", locale\)/);
   assert.match(source, /Esta página no está conectada con ChatGPT/);
+  assert.doesNotMatch(source, /Utiliza el plugin conectado de Sendero y empieza a crear el itinerario directamente/);
+  assert.doesNotMatch(source, /No describas qué herramientas o integración vas a usar ni narres tu proceso/);
+  assert.equal((source.match(/name="lodging-address-search"/g) || []).length, 1);
+  assert.doesNotMatch(source, /name="lodging-area-search"/);
+  assert.match(source, /Dirección o zona de alojamiento/);
   assert.doesNotMatch(source, /generate-connection|chatGptUrl\(|CHATGPT_SITE_TOOLS_GUIDE_URL|openChatgpt/);
   assert.ok(source.indexOf("<aside className=\"generate-handoff-guide\">") < source.indexOf("<div className=\"generate-prompt\">"));
 });

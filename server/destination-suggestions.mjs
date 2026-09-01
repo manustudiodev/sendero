@@ -73,6 +73,7 @@ function normalizePrediction(value, kind) {
     label,
     primaryText: cleanText(prediction?.structuredFormat?.mainText?.text) || label,
     secondaryText: cleanText(prediction?.structuredFormat?.secondaryText?.text),
+    types,
   };
 }
 

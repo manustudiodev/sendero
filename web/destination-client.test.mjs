@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   destinationQueryReady,
+  isLodgingAreaSuggestion,
   normalizeDestinationSuggestions,
   requestDestinationSuggestions,
 } from "./src/generate/destination-client.js";
@@ -9,6 +10,11 @@ import {
 test("starts destination search only after three normalized characters", () => {
   assert.equal(destinationQueryReady(" pa "), false);
   assert.equal(destinationQueryReady(" par "), true);
+});
+
+test("classifies regional lodging suggestions without treating hotels as provisional areas", () => {
+  assert.equal(isLodgingAreaSuggestion(["neighborhood", "political"]), true);
+  assert.equal(isLodgingAreaSuggestion(["lodging", "hotel", "point_of_interest"]), false);
 });
 
 test("posts a normalized destination query with the authenticated CSRF token", async () => {
@@ -70,7 +76,7 @@ test("adds the selected destination context to lodging searches", async () => {
 
 test("drops malformed and duplicate client suggestions", () => {
   assert.deepEqual(normalizeDestinationSuggestions({ suggestions: [
-    { placeId: "place-1", label: "Paris, France", primaryText: "Paris", secondaryText: "France" },
+    { placeId: "place-1", label: "Paris, France", primaryText: "Paris", secondaryText: "France", types: ["locality", "political", "locality"] },
     { placeId: "place-1", label: "Duplicate" },
     { placeId: "", label: "Missing ID" },
   ] }), [{
@@ -78,5 +84,6 @@ test("drops malformed and duplicate client suggestions", () => {
     label: "Paris, France",
     primaryText: "Paris",
     secondaryText: "France",
+    types: ["locality", "political"],
   }]);
 });
