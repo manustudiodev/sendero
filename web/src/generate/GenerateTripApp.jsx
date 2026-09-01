@@ -10,10 +10,7 @@ import { hrefForLocale, useUiLocale } from "../i18n/LanguageSelector.jsx";
 import { formatDate, t } from "../i18n/index.js";
 import { createItineraryGenerationFacade } from "./generation-client.js";
 import { DestinationCombobox } from "./DestinationCombobox.jsx";
-import {
-  CHATGPT_SITE_TOOLS_GUIDE_URL,
-  createItineraryHandoffPrompt,
-} from "./handoff-prompt.js";
+import { createItineraryHandoffPrompt } from "./handoff-prompt.js";
 import { registerItineraryGenerationTools } from "./webmcp.js";
 import {
   BudgetFields,
@@ -77,22 +74,19 @@ const generateStyles = `
 .generate-handoff { display: grid; gap: 24px; }
 .generate-handoff-header { display: grid; max-width: 780px; gap: 8px; }
 .generate-handoff-header p { margin: 0; color: var(--web-muted); }
-.generate-connection { display: flex; align-items: flex-start; gap: 10px; border-radius: 14px; padding: 13px 15px; background: var(--web-soft); color: var(--web-muted); }
-.generate-connection.is-ready { background: rgba(162, 212, 94, .2); color: var(--web-ink); }
-.generate-connection-dot { width: 9px; height: 9px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: var(--web-muted); }
-.generate-connection.is-ready .generate-connection-dot { background: var(--web-forest); }
-.generate-handoff-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 20px; align-items: start; }
+.generate-handoff-grid { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
 .generate-prompt { display: grid; gap: 10px; }
 .generate-prompt label { font-size: 14px; font-weight: 720; }
-.generate-prompt textarea { width: 100%; min-height: 330px; border: 1px solid var(--web-line); border-radius: 14px; padding: 15px; background: var(--web-soft); color: var(--web-ink); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
+.generate-prompt textarea { width: 100%; min-height: 390px; border: 1px solid var(--web-line); border-radius: 14px; padding: 16px; background: var(--web-soft); color: var(--web-ink); font: inherit; font-size: 14px; line-height: 1.62; resize: vertical; }
 .generate-prompt textarea:focus { background: var(--web-surface); }
-.generate-handoff-guide { display: grid; gap: 18px; border: 1px solid var(--web-line); border-radius: 16px; padding: 20px; }
+.generate-handoff-guide { display: grid; gap: 18px; border: 2px solid color-mix(in srgb, var(--web-forest) 72%, var(--web-line)); border-radius: 16px; padding: 22px; background: color-mix(in srgb, var(--web-grass) 12%, var(--web-surface)); }
 .generate-handoff-guide h3 { margin: 0; font-size: 18px; }
 .generate-handoff-guide p { margin: 6px 0 0; color: var(--web-muted); }
 .generate-handoff-guide ol { margin: 0; padding-left: 21px; color: var(--web-muted); }
 .generate-handoff-guide li + li { margin-top: 9px; }
 .generate-secondary-path { border-top: 1px solid var(--web-line); padding-top: 18px; }
-.generate-secondary-path a:not(.web-button), .generate-extension-link { color: var(--web-forest); font-weight: 680; }
+.generate-secondary-path h3 { font-size: 16px; }
+.generate-browser-note { border-radius: 10px; padding: 10px 12px; background: var(--web-surface); color: var(--web-muted); font-size: 13px; }
 .generate-copy-status { min-height: 21px; margin: 0; color: var(--web-muted); font-size: 13px; }
 .generate-draft-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
 .generate-preview { min-width: 0; overflow: hidden; }
@@ -320,7 +314,7 @@ const COPY = {
     contextTitle: "Trip context", contextDetail: "Complete the essentials. ChatGPT can enrich this brief with what you already discussed.", protocol: "Protocol",
     savedTitle: "Saved trip", draftTitle: "Validated draft", savedDetail: "This is the authoritative Sendero version.", draftDetail: "It is not part of your trips yet. Review the warnings before saving it.",
     emptyPreviewTitle: "Your itinerary will appear here after validation.", emptySteps: ["Prepare the brief.", "Ask ChatGPT to create the itinerary with Sendero.", "Review the draft and save it explicitly."],
-    openChatgpt: "Open ChatGPT", viewTrips: "View my trips",
+    viewTrips: "View my trips",
     documentTitle: "Create a trip",
   },
   es: {
@@ -350,7 +344,7 @@ const COPY = {
     contextTitle: "Contexto del viaje", contextDetail: "Completa lo esencial. ChatGPT puede enriquecer este brief con lo que ya hablaron.", protocol: "Protocolo",
     savedTitle: "Viaje guardado", draftTitle: "Borrador validado", savedDetail: "Esta es la versión autoritativa de Sendero.", draftDetail: "Todavía no forma parte de tus viajes. Revisa las advertencias antes de guardarlo.",
     emptyPreviewTitle: "Tu itinerario aparecerá aquí después de validarse.", emptySteps: ["Prepara el brief.", "Pide a ChatGPT que cree el itinerario con Sendero.", "Revisa el borrador y guárdalo explícitamente."],
-    openChatgpt: "Abrir ChatGPT", viewTrips: "Ver mis viajes",
+    viewTrips: "Ver mis viajes",
     documentTitle: "Crear un viaje",
   },
   pt: {
@@ -380,7 +374,7 @@ const COPY = {
     contextTitle: "Contexto da viagem", contextDetail: "Complete o essencial. O ChatGPT pode enriquecer este brief com o que vocês já conversaram.", protocol: "Protocolo",
     savedTitle: "Viagem salva", draftTitle: "Rascunho validado", savedDetail: "Esta é a versão oficial do Sendero.", draftDetail: "Ainda não faz parte das suas viagens. Revise os avisos antes de salvá-lo.",
     emptyPreviewTitle: "Seu roteiro aparecerá aqui depois de ser validado.", emptySteps: ["Prepare o brief.", "Peça ao ChatGPT para criar o roteiro com o Sendero.", "Revise o rascunho e salve-o explicitamente."],
-    openChatgpt: "Abrir ChatGPT", viewTrips: "Ver minhas viagens",
+    viewTrips: "Ver minhas viagens",
     documentTitle: "Criar uma viagem",
   },
   fr: {
@@ -410,7 +404,7 @@ const COPY = {
     contextTitle: "Contexte du voyage", contextDetail: "Complétez l’essentiel. ChatGPT peut enrichir ce brief avec les éléments déjà abordés.", protocol: "Protocole",
     savedTitle: "Voyage enregistré", draftTitle: "Brouillon validé", savedDetail: "Il s’agit de la version de référence dans Sendero.", draftDetail: "Il ne fait pas encore partie de vos voyages. Vérifiez les avertissements avant de l’enregistrer.",
     emptyPreviewTitle: "Votre itinéraire apparaîtra ici après validation.", emptySteps: ["Préparez le brief.", "Demandez à ChatGPT de créer l’itinéraire avec Sendero.", "Vérifiez le brouillon et enregistrez-le explicitement."],
-    openChatgpt: "Ouvrir ChatGPT", viewTrips: "Voir mes voyages",
+    viewTrips: "Voir mes voyages",
     documentTitle: "Créer un voyage",
   },
   de: {
@@ -440,7 +434,7 @@ const COPY = {
     contextTitle: "Reisekontext", contextDetail: "Vervollständige das Wichtigste. ChatGPT kann diese Angaben mit bereits Besprochenem ergänzen.", protocol: "Protokoll",
     savedTitle: "Gespeicherte Reise", draftTitle: "Validierter Entwurf", savedDetail: "Dies ist die maßgebliche Sendero-Version.", draftDetail: "Der Entwurf gehört noch nicht zu deinen Reisen. Prüfe vor dem Speichern die Warnungen.",
     emptyPreviewTitle: "Dein Reiseplan erscheint hier nach der Validierung.", emptySteps: ["Bereite die Angaben vor.", "Bitte ChatGPT, den Reiseplan mit Sendero zu erstellen.", "Prüfe den Entwurf und speichere ihn ausdrücklich."],
-    openChatgpt: "ChatGPT öffnen", viewTrips: "Meine Reisen anzeigen",
+    viewTrips: "Meine Reisen anzeigen",
     documentTitle: "Reise erstellen",
   },
 };
@@ -461,21 +455,19 @@ const FLOW_COPY = {
     editBrief: "Edit details",
     handoffEyebrow: "Step 2 · Continue in ChatGPT",
     handoffTitle: "Your prompt is ready",
-    handoffDetail: "No itinerary has been generated or validated yet. Copy this prompt and send it to ChatGPT to continue.",
+    handoffDetail: "Keep Sendero open and use ChatGPT from this browser. The web and desktop apps remain available as an alternative.",
     promptLabel: "Prompt to paste in ChatGPT",
     copyPrompt: "Copy prompt",
-    copied: "Prompt copied. Now paste it into ChatGPT.",
+    copied: "Prompt copied. Open ChatGPT from your browser and paste it there.",
     copyError: "We couldn't copy it automatically. Select the prompt and copy it manually.",
-    connected: "Sendero site tools are available in this browser. Keep this page open so ChatGPT can return the validated draft here.",
-    notConnected: "Sendero site tools are not available in this browser. For the integrated flow, open Sendero in the ChatGPT desktop app's built-in browser; otherwise use the prompt with the connected Sendero plugin.",
-    recommended: "Integrated flow",
-    sideChatTitle: "Continue in the ChatGPT desktop app",
-    sideChatDetail: "Open Sendero in ChatGPT's built-in browser so ChatGPT can discover the site's tools and return the validated draft here.",
-    sideChatSteps: ["Copy the prompt on this page.", "From the ChatGPT desktop toolbar, open the built-in browser, visit this Sendero page, and sign in.", "Paste and send the prompt in your conversation. Keep the Sendero page open while ChatGPT creates and validates the itinerary."],
-    extensionGuide: "Learn how ChatGPT site tools work",
-    alternativeTitle: "Or use ChatGPT web or Chrome",
-    alternativeDetail: "Open ChatGPT in another tab or with the Chrome extension or sidebar, paste the same prompt, and use the connected Sendero plugin. Site tools are not available in Chrome.",
-    waiting: "After ChatGPT returns a validated draft, Sendero will show the preview as step 3. Nothing is saved without your approval.",
+    recommended: "Recommended",
+    sideChatTitle: "Use ChatGPT in this browser",
+    sideChatDetail: "Open the ChatGPT extension or side panel in the browser you are already using. Sendero stays visible while you create the itinerary.",
+    sideChatSteps: ["Copy the prompt on this page.", "Open ChatGPT from this browser's extension or side panel.", "Make sure the Sendero plugin is connected in ChatGPT, paste the prompt, and send it. Keep Sendero open while ChatGPT works."],
+    browserNote: "If this browser does not have a ChatGPT extension or side panel, use either option below.",
+    alternativeTitle: "Other option · ChatGPT web or desktop",
+    alternativeDetail: "Paste the same prompt into ChatGPT web or the desktop app with Sendero connected. This may take you away from this page, so it is the secondary route.",
+    waiting: "ChatGPT will create the itinerary with Sendero. Nothing is saved without your explicit approval.",
     previewEyebrow: "Step 3 · Review in Sendero",
   },
   es: {
@@ -493,21 +485,19 @@ const FLOW_COPY = {
     editBrief: "Editar datos",
     handoffEyebrow: "Paso 2 · Continuar en ChatGPT",
     handoffTitle: "Tu prompt está listo",
-    handoffDetail: "Todavía no se generó ni validó ningún itinerario. Copia este prompt y envíalo a ChatGPT para continuar.",
+    handoffDetail: "Mantén Sendero abierto y usa ChatGPT desde este navegador. La web y la app de escritorio quedan como alternativa.",
     promptLabel: "Prompt para pegar en ChatGPT",
     copyPrompt: "Copiar prompt",
-    copied: "Prompt copiado. Ahora pégalo en ChatGPT.",
+    copied: "Prompt copiado. Abre ChatGPT desde tu navegador y pégalo allí.",
     copyError: "No pudimos copiarlo automáticamente. Selecciona el prompt y cópialo manualmente.",
-    connected: "Las herramientas de Sendero están disponibles en este navegador. Mantén esta página abierta para que ChatGPT pueda devolver aquí el borrador validado.",
-    notConnected: "Las herramientas de sitio de Sendero no están disponibles en este navegador. Para el flujo integrado, abre Sendero en el navegador incorporado de la app de escritorio de ChatGPT; si no, usa el prompt con el plugin conectado de Sendero.",
-    recommended: "Flujo integrado",
-    sideChatTitle: "Continúa en la app de escritorio de ChatGPT",
-    sideChatDetail: "Abre Sendero en el navegador incorporado de ChatGPT para que pueda descubrir las herramientas del sitio y devolver aquí el borrador validado.",
-    sideChatSteps: ["Copia el prompt de esta página.", "Desde la barra de la app de escritorio de ChatGPT, abre el navegador incorporado, visita esta página de Sendero e inicia sesión.", "Pega y envía el prompt en tu conversación. Mantén abierta la página de Sendero mientras ChatGPT crea y valida el itinerario."],
-    extensionGuide: "Cómo funcionan las herramientas de sitio de ChatGPT",
-    alternativeTitle: "O usa ChatGPT web o Chrome",
-    alternativeDetail: "Abre ChatGPT en otra pestaña o con la extensión o barra lateral de Chrome, pega el mismo prompt y utiliza el plugin conectado de Sendero. Las herramientas de sitio no están disponibles en Chrome.",
-    waiting: "Cuando ChatGPT devuelva un borrador validado, Sendero mostrará el preview como paso 3. Nada se guarda sin tu aprobación.",
+    recommended: "Recomendado",
+    sideChatTitle: "Usa ChatGPT en este navegador",
+    sideChatDetail: "Abre la extensión o barra lateral de ChatGPT en el navegador que ya estás usando. Sendero permanece visible mientras creas el itinerario.",
+    sideChatSteps: ["Copia el prompt de esta página.", "Abre ChatGPT desde la extensión o barra lateral de este navegador.", "Comprueba que el plugin de Sendero esté conectado en ChatGPT, pega el prompt y envíalo. Mantén Sendero abierto mientras ChatGPT trabaja."],
+    browserNote: "Si este navegador no tiene una extensión o barra lateral de ChatGPT, usa una de las alternativas de abajo.",
+    alternativeTitle: "Otra opción · ChatGPT web o escritorio",
+    alternativeDetail: "Pega el mismo prompt en ChatGPT web o en la app de escritorio con Sendero conectado. Como puede sacarte de esta página, queda como camino secundario.",
+    waiting: "ChatGPT creará el itinerario con Sendero. Nada se guarda sin tu aprobación explícita.",
     previewEyebrow: "Paso 3 · Revisar en Sendero",
   },
   pt: {
@@ -525,21 +515,19 @@ const FLOW_COPY = {
     editBrief: "Editar dados",
     handoffEyebrow: "Etapa 2 · Continuar no ChatGPT",
     handoffTitle: "Seu prompt está pronto",
-    handoffDetail: "Nenhum roteiro foi gerado ou validado ainda. Copie este prompt e envie-o ao ChatGPT para continuar.",
+    handoffDetail: "Mantenha o Sendero aberto e use o ChatGPT neste navegador. A web e o app para desktop ficam como alternativa.",
     promptLabel: "Prompt para colar no ChatGPT",
     copyPrompt: "Copiar prompt",
-    copied: "Prompt copiado. Agora cole-o no ChatGPT.",
+    copied: "Prompt copiado. Abra o ChatGPT no navegador e cole-o lá.",
     copyError: "Não foi possível copiá-lo automaticamente. Selecione o prompt e copie-o manualmente.",
-    connected: "As ferramentas do Sendero estão disponíveis neste navegador. Mantenha esta página aberta para que o ChatGPT possa devolver o rascunho validado aqui.",
-    notConnected: "As ferramentas de site do Sendero não estão disponíveis neste navegador. Para o fluxo integrado, abra o Sendero no navegador incorporado do app para desktop do ChatGPT; caso contrário, use o prompt com o plugin conectado do Sendero.",
-    recommended: "Fluxo integrado",
-    sideChatTitle: "Continue no app para desktop do ChatGPT",
-    sideChatDetail: "Abra o Sendero no navegador incorporado do ChatGPT para que ele descubra as ferramentas do site e devolva aqui o rascunho validado.",
-    sideChatSteps: ["Copie o prompt desta página.", "Na barra do app para desktop do ChatGPT, abra o navegador incorporado, visite esta página do Sendero e entre na sua conta.", "Cole e envie o prompt na conversa. Mantenha a página do Sendero aberta enquanto o ChatGPT cria e valida o roteiro."],
-    extensionGuide: "Como funcionam as ferramentas de site do ChatGPT",
-    alternativeTitle: "Ou use o ChatGPT web ou Chrome",
-    alternativeDetail: "Abra o ChatGPT em outra aba ou com a extensão ou barra lateral do Chrome, cole o mesmo prompt e use o plugin conectado do Sendero. As ferramentas de site não estão disponíveis no Chrome.",
-    waiting: "Quando o ChatGPT devolver um rascunho validado, o Sendero mostrará a prévia como etapa 3. Nada é salvo sem sua aprovação.",
+    recommended: "Recomendado",
+    sideChatTitle: "Use o ChatGPT neste navegador",
+    sideChatDetail: "Abra a extensão ou barra lateral do ChatGPT no navegador que você já está usando. O Sendero continua visível enquanto você cria o roteiro.",
+    sideChatSteps: ["Copie o prompt desta página.", "Abra o ChatGPT pela extensão ou barra lateral deste navegador.", "Confirme que o plugin do Sendero está conectado no ChatGPT, cole o prompt e envie. Mantenha o Sendero aberto enquanto o ChatGPT trabalha."],
+    browserNote: "Se este navegador não tiver uma extensão ou barra lateral do ChatGPT, use uma das alternativas abaixo.",
+    alternativeTitle: "Outra opção · ChatGPT web ou desktop",
+    alternativeDetail: "Cole o mesmo prompt no ChatGPT web ou no app para desktop com o Sendero conectado. Como isso pode tirar você desta página, é o caminho secundário.",
+    waiting: "O ChatGPT criará o roteiro com o Sendero. Nada é salvo sem sua aprovação explícita.",
     previewEyebrow: "Etapa 3 · Revisar no Sendero",
   },
   fr: {
@@ -557,21 +545,19 @@ const FLOW_COPY = {
     editBrief: "Modifier les détails",
     handoffEyebrow: "Étape 2 · Continuer dans ChatGPT",
     handoffTitle: "Votre prompt est prêt",
-    handoffDetail: "Aucun itinéraire n’a encore été généré ni validé. Copiez ce prompt et envoyez-le à ChatGPT pour continuer.",
+    handoffDetail: "Gardez Sendero ouvert et utilisez ChatGPT depuis ce navigateur. Le web et l’application de bureau restent des alternatives.",
     promptLabel: "Prompt à coller dans ChatGPT",
     copyPrompt: "Copier le prompt",
-    copied: "Prompt copié. Collez-le maintenant dans ChatGPT.",
+    copied: "Prompt copié. Ouvrez ChatGPT dans votre navigateur et collez-le.",
     copyError: "Impossible de le copier automatiquement. Sélectionnez le prompt et copiez-le manuellement.",
-    connected: "Les outils Sendero sont disponibles dans ce navigateur. Gardez cette page ouverte afin que ChatGPT puisse y renvoyer le brouillon validé.",
-    notConnected: "Les outils de site Sendero ne sont pas disponibles dans ce navigateur. Pour le parcours intégré, ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT ; sinon, utilisez le prompt avec le plugin Sendero connecté.",
-    recommended: "Parcours intégré",
-    sideChatTitle: "Continuez dans l’application de bureau ChatGPT",
-    sideChatDetail: "Ouvrez Sendero dans le navigateur intégré de ChatGPT afin qu’il découvre les outils du site et renvoie ici le brouillon validé.",
-    sideChatSteps: ["Copiez le prompt de cette page.", "Dans la barre de l’application de bureau ChatGPT, ouvrez le navigateur intégré, consultez cette page Sendero et connectez-vous.", "Collez et envoyez le prompt dans votre conversation. Gardez la page Sendero ouverte pendant la création et la validation de l’itinéraire."],
-    extensionGuide: "Comprendre les outils de site ChatGPT",
-    alternativeTitle: "Ou utilisez ChatGPT web ou Chrome",
-    alternativeDetail: "Ouvrez ChatGPT dans un autre onglet ou avec l’extension ou la barre latérale Chrome, collez le même prompt et utilisez le plugin Sendero connecté. Les outils de site ne sont pas disponibles dans Chrome.",
-    waiting: "Lorsque ChatGPT renverra un brouillon validé, Sendero affichera l’aperçu à l’étape 3. Rien n’est enregistré sans votre accord.",
+    recommended: "Recommandé",
+    sideChatTitle: "Utilisez ChatGPT dans ce navigateur",
+    sideChatDetail: "Ouvrez l’extension ou la barre latérale ChatGPT du navigateur que vous utilisez déjà. Sendero reste visible pendant la création de l’itinéraire.",
+    sideChatSteps: ["Copiez le prompt de cette page.", "Ouvrez ChatGPT depuis l’extension ou la barre latérale de ce navigateur.", "Vérifiez que le plugin Sendero est connecté dans ChatGPT, collez le prompt et envoyez-le. Gardez Sendero ouvert pendant que ChatGPT travaille."],
+    browserNote: "Si ce navigateur ne dispose pas d’une extension ou d’une barre latérale ChatGPT, utilisez l’une des alternatives ci-dessous.",
+    alternativeTitle: "Autre option · ChatGPT web ou bureau",
+    alternativeDetail: "Collez le même prompt dans ChatGPT web ou l’application de bureau avec Sendero connecté. Comme cela peut vous faire quitter cette page, ce parcours reste secondaire.",
+    waiting: "ChatGPT créera l’itinéraire avec Sendero. Rien n’est enregistré sans votre approbation explicite.",
     previewEyebrow: "Étape 3 · Vérifier dans Sendero",
   },
   de: {
@@ -589,21 +575,19 @@ const FLOW_COPY = {
     editBrief: "Daten bearbeiten",
     handoffEyebrow: "Schritt 2 · In ChatGPT fortfahren",
     handoffTitle: "Dein Prompt ist bereit",
-    handoffDetail: "Es wurde noch kein Reiseplan erstellt oder validiert. Kopiere diesen Prompt und sende ihn an ChatGPT, um fortzufahren.",
+    handoffDetail: "Lass Sendero geöffnet und verwende ChatGPT in diesem Browser. Web- und Desktop-App bleiben als Alternative verfügbar.",
     promptLabel: "Prompt zum Einfügen in ChatGPT",
     copyPrompt: "Prompt kopieren",
-    copied: "Prompt kopiert. Füge ihn jetzt in ChatGPT ein.",
+    copied: "Prompt kopiert. Öffne ChatGPT im Browser und füge ihn dort ein.",
     copyError: "Der Prompt konnte nicht automatisch kopiert werden. Markiere ihn und kopiere ihn manuell.",
-    connected: "Die Sendero-Tools sind in diesem Browser verfügbar. Lass diese Seite geöffnet, damit ChatGPT den validierten Entwurf hier zurückgeben kann.",
-    notConnected: "Die Sendero-Website-Tools sind in diesem Browser nicht verfügbar. Öffne Sendero für den integrierten Ablauf im eingebauten Browser der ChatGPT-Desktop-App; andernfalls verwende den Prompt mit dem verbundenen Sendero-Plugin.",
-    recommended: "Integrierter Ablauf",
-    sideChatTitle: "In der ChatGPT-Desktop-App fortfahren",
-    sideChatDetail: "Öffne Sendero im eingebauten Browser von ChatGPT, damit die Website-Tools erkannt werden und der validierte Entwurf hierher zurückkehrt.",
-    sideChatSteps: ["Kopiere den Prompt auf dieser Seite.", "Öffne über die Leiste der ChatGPT-Desktop-App den eingebauten Browser, rufe diese Sendero-Seite auf und melde dich an.", "Füge den Prompt in deine Unterhaltung ein und sende ihn. Lass die Sendero-Seite geöffnet, während ChatGPT den Reiseplan erstellt und validiert."],
-    extensionGuide: "So funktionieren Website-Tools in ChatGPT",
-    alternativeTitle: "Oder ChatGPT Web beziehungsweise Chrome verwenden",
-    alternativeDetail: "Öffne ChatGPT in einem anderen Tab oder mit der Chrome-Erweiterung beziehungsweise Seitenleiste, füge denselben Prompt ein und verwende das verbundene Sendero-Plugin. Website-Tools sind in Chrome nicht verfügbar.",
-    waiting: "Sobald ChatGPT einen validierten Entwurf zurückgibt, zeigt Sendero die Vorschau als Schritt 3. Ohne deine Zustimmung wird nichts gespeichert.",
+    recommended: "Empfohlen",
+    sideChatTitle: "ChatGPT in diesem Browser verwenden",
+    sideChatDetail: "Öffne die ChatGPT-Erweiterung oder Seitenleiste in dem Browser, den du bereits verwendest. Sendero bleibt während der Erstellung sichtbar.",
+    sideChatSteps: ["Kopiere den Prompt auf dieser Seite.", "Öffne ChatGPT über die Erweiterung oder Seitenleiste dieses Browsers.", "Stelle sicher, dass das Sendero-Plugin in ChatGPT verbunden ist, füge den Prompt ein und sende ihn. Lass Sendero geöffnet, während ChatGPT arbeitet."],
+    browserNote: "Falls dieser Browser keine ChatGPT-Erweiterung oder Seitenleiste hat, verwende eine der folgenden Alternativen.",
+    alternativeTitle: "Andere Option · ChatGPT Web oder Desktop",
+    alternativeDetail: "Füge denselben Prompt in ChatGPT Web oder der Desktop-App mit verbundenem Sendero ein. Da du dadurch diese Seite verlassen könntest, ist dies der sekundäre Weg.",
+    waiting: "ChatGPT erstellt den Reiseplan mit Sendero. Ohne deine ausdrückliche Zustimmung wird nichts gespeichert.",
     previewEyebrow: "Schritt 3 · In Sendero prüfen",
   },
 };
@@ -661,10 +645,6 @@ function compactBrief(brief) {
     ...(Object.keys(lodging).length > 1 ? { lodging } : {}),
     ...(clean(brief.notes) ? { notes: clean(brief.notes) } : {}),
   };
-}
-
-function chatGptUrl() {
-  return document.querySelector('meta[name="sendero-chatgpt-url"]')?.content || "https://chatgpt.com/";
 }
 
 function BriefForm({ brief, busy, copy, csrfToken, locale, onChange, onSubmit }) {
@@ -836,7 +816,6 @@ function HandoffPanel({
   onCopy,
   onEdit,
   prompt,
-  webmcp,
 }) {
   const startDate = formatDate(locale, brief.startDate, { dateStyle: "medium" });
   const endDate = formatDate(locale, brief.endDate, { dateStyle: "medium" });
@@ -856,22 +835,7 @@ function HandoffPanel({
         <h2 id="generate-handoff-title">{copy.handoffTitle}</h2>
         <p>{copy.handoffDetail}</p>
       </div>
-      <div className={`generate-connection ${webmcp === "available" ? "is-ready" : ""}`}>
-        <span aria-hidden="true" className="generate-connection-dot" />
-        <span>{webmcp === "available" ? copy.connected : copy.notConnected}</span>
-      </div>
       <div className="generate-handoff-grid">
-        <div className="generate-prompt">
-          <label htmlFor="sendero-handoff-prompt">{copy.promptLabel}</label>
-          <textarea id="sendero-handoff-prompt" readOnly value={prompt} />
-          <div className="generate-handoff-actions">
-            <WebButton onClick={onCopy} tone="primary">{copy.copyPrompt}</WebButton>
-            <a className="web-button" href={chatGptUrl()} rel="noreferrer" target="_blank">{copy.openChatgpt} ↗</a>
-          </div>
-          <p aria-live="polite" className="generate-copy-status" role="status">
-            {copyState === "copied" ? copy.copied : copyState === "error" ? copy.copyError : ""}
-          </p>
-        </div>
         <aside className="generate-handoff-guide">
           <div>
             <p className="web-eyebrow">{copy.recommended}</p>
@@ -879,13 +843,23 @@ function HandoffPanel({
             <p>{copy.sideChatDetail}</p>
           </div>
           <ol>{copy.sideChatSteps.map((step) => <li key={step}>{step}</li>)}</ol>
-          <a className="generate-extension-link" href={CHATGPT_SITE_TOOLS_GUIDE_URL} rel="noreferrer" target="_blank">{copy.extensionGuide} ↗</a>
+          <p className="generate-browser-note">{copy.browserNote}</p>
           <div className="generate-secondary-path">
             <h3>{copy.alternativeTitle}</h3>
             <p>{copy.alternativeDetail}</p>
           </div>
           <p>{copy.waiting}</p>
         </aside>
+        <div className="generate-prompt">
+          <label htmlFor="sendero-handoff-prompt">{copy.promptLabel}</label>
+          <textarea id="sendero-handoff-prompt" readOnly value={prompt} />
+          <div className="generate-handoff-actions">
+            <WebButton onClick={onCopy} tone="primary">{copy.copyPrompt}</WebButton>
+          </div>
+          <p aria-live="polite" className="generate-copy-status" role="status">
+            {copyState === "copied" ? copy.copied : copyState === "error" ? copy.copyError : ""}
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -908,7 +882,6 @@ export function GenerateTripApp() {
   const [copyState, setCopyState] = useState("idle");
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [webmcp, setWebmcp] = useState("checking");
   const briefRef = useRef(brief);
   const draftRef = useRef(draft);
   const facadeRef = useRef(null);
@@ -977,11 +950,7 @@ export function GenerateTripApp() {
     facadeRef.current = facade;
     registerItineraryGenerationTools(document, facade, {
       signal: controller.signal,
-      report(event) {
-        if (event.type === "webmcp_support_detected") setWebmcp("available");
-        if (event.type === "webmcp_support_unavailable") setWebmcp("unavailable");
-      },
-    }).catch(() => setWebmcp("error"));
+    }).catch(() => {});
     return () => {
       facadeRef.current = null;
       controller.abort();
@@ -1085,7 +1054,6 @@ export function GenerateTripApp() {
             onCopy={copyPrompt}
             onEdit={editBrief}
             prompt={handoffPrompt}
-            webmcp={webmcp}
           />
         ) : null}
         {activeStep === 3 ? (
