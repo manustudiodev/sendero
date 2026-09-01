@@ -121,7 +121,13 @@ const initialBrief = {
   pace: "balanced",
   interests: [],
   transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
-  lodging: { area: "", address: "", status: "undecided" },
+  lodging: {
+    area: "",
+    areaPlaceId: "",
+    address: "",
+    addressPlaceId: "",
+    status: "undecided",
+  },
   budget: budgetDraftFromValue(),
   profile: tripProfileDraftFromBrief(),
   notes: "",
@@ -175,12 +181,123 @@ const DESTINATION_COPY = {
   },
 };
 
+const LODGING_SEARCH_COPY = {
+  en: {
+    area: {
+      loading: "Searching neighbourhoods and areas…",
+      empty: "No matching neighbourhood or area found in this destination.",
+      error: "Lodging area search is unavailable. Try again in a moment.",
+      choose: "Choose a neighbourhood or area from the suggestions.",
+      selected: "Lodging area selected.",
+      selectionRequired: "Choose the lodging area from the suggestions or leave the field empty.",
+      disabled: "Select a destination before searching for a lodging area.",
+    },
+    address: {
+      loading: "Searching lodgings and addresses…",
+      empty: "No matching lodging or address found in this destination.",
+      error: "Lodging address search is unavailable. Try again in a moment.",
+      choose: "Choose a lodging or address from the suggestions.",
+      selected: "Lodging address selected.",
+      selectionRequired: "Choose the confirmed lodging or address from the suggestions, or leave the field empty.",
+      disabled: "Select a destination before searching for a lodging address.",
+    },
+  },
+  es: {
+    area: {
+      loading: "Buscando barrios y zonas…",
+      empty: "No encontramos un barrio o zona que coincida dentro de este destino.",
+      error: "La búsqueda de zonas de alojamiento no está disponible. Intenta de nuevo en un momento.",
+      choose: "Elige un barrio o zona de las sugerencias.",
+      selected: "Zona de alojamiento seleccionada.",
+      selectionRequired: "Elige la zona de alojamiento de las sugerencias o deja el campo vacío.",
+      disabled: "Selecciona un destino antes de buscar una zona de alojamiento.",
+    },
+    address: {
+      loading: "Buscando alojamientos y direcciones…",
+      empty: "No encontramos un alojamiento o dirección que coincida dentro de este destino.",
+      error: "La búsqueda de direcciones de alojamiento no está disponible. Intenta de nuevo en un momento.",
+      choose: "Elige un alojamiento o dirección de las sugerencias.",
+      selected: "Dirección de alojamiento seleccionada.",
+      selectionRequired: "Elige el alojamiento o la dirección confirmada de las sugerencias, o deja el campo vacío.",
+      disabled: "Selecciona un destino antes de buscar una dirección de alojamiento.",
+    },
+  },
+  pt: {
+    area: {
+      loading: "Buscando bairros e áreas…",
+      empty: "Nenhum bairro ou área correspondente foi encontrado neste destino.",
+      error: "A busca de áreas de hospedagem não está disponível. Tente novamente em instantes.",
+      choose: "Escolha um bairro ou uma área nas sugestões.",
+      selected: "Área de hospedagem selecionada.",
+      selectionRequired: "Escolha a área de hospedagem nas sugestões ou deixe o campo vazio.",
+      disabled: "Selecione um destino antes de buscar uma área de hospedagem.",
+    },
+    address: {
+      loading: "Buscando hospedagens e endereços…",
+      empty: "Nenhuma hospedagem ou endereço correspondente foi encontrado neste destino.",
+      error: "A busca de endereços de hospedagem não está disponível. Tente novamente em instantes.",
+      choose: "Escolha uma hospedagem ou endereço nas sugestões.",
+      selected: "Endereço da hospedagem selecionado.",
+      selectionRequired: "Escolha a hospedagem ou o endereço confirmado nas sugestões, ou deixe o campo vazio.",
+      disabled: "Selecione um destino antes de buscar um endereço de hospedagem.",
+    },
+  },
+  fr: {
+    area: {
+      loading: "Recherche de quartiers et de zones…",
+      empty: "Aucun quartier ni aucune zone ne correspond dans cette destination.",
+      error: "La recherche de zones d’hébergement est indisponible. Réessayez dans un instant.",
+      choose: "Choisissez un quartier ou une zone parmi les suggestions.",
+      selected: "Zone d’hébergement sélectionnée.",
+      selectionRequired: "Choisissez la zone d’hébergement parmi les suggestions ou laissez le champ vide.",
+      disabled: "Sélectionnez une destination avant de rechercher une zone d’hébergement.",
+    },
+    address: {
+      loading: "Recherche d’hébergements et d’adresses…",
+      empty: "Aucun hébergement ni aucune adresse ne correspond dans cette destination.",
+      error: "La recherche d’adresses d’hébergement est indisponible. Réessayez dans un instant.",
+      choose: "Choisissez un hébergement ou une adresse parmi les suggestions.",
+      selected: "Adresse d’hébergement sélectionnée.",
+      selectionRequired: "Choisissez l’hébergement ou l’adresse confirmée parmi les suggestions, ou laissez le champ vide.",
+      disabled: "Sélectionnez une destination avant de rechercher une adresse d’hébergement.",
+    },
+  },
+  de: {
+    area: {
+      loading: "Viertel und Gegenden werden gesucht…",
+      empty: "In diesem Reiseziel wurde kein passendes Viertel und keine passende Gegend gefunden.",
+      error: "Die Suche nach Unterkunftsgegenden ist derzeit nicht verfügbar. Versuche es gleich noch einmal.",
+      choose: "Wähle ein Viertel oder eine Gegend aus den Vorschlägen aus.",
+      selected: "Unterkunftsgegend ausgewählt.",
+      selectionRequired: "Wähle die Unterkunftsgegend aus den Vorschlägen aus oder lasse das Feld leer.",
+      disabled: "Wähle zuerst ein Reiseziel aus, bevor du nach einer Unterkunftsgegend suchst.",
+    },
+    address: {
+      loading: "Unterkünfte und Adressen werden gesucht…",
+      empty: "In diesem Reiseziel wurde keine passende Unterkunft und keine passende Adresse gefunden.",
+      error: "Die Suche nach Unterkunftsadressen ist derzeit nicht verfügbar. Versuche es gleich noch einmal.",
+      choose: "Wähle eine Unterkunft oder Adresse aus den Vorschlägen aus.",
+      selected: "Unterkunftsadresse ausgewählt.",
+      selectionRequired: "Wähle die bestätigte Unterkunft oder Adresse aus den Vorschlägen aus oder lasse das Feld leer.",
+      disabled: "Wähle zuerst ein Reiseziel aus, bevor du nach einer Unterkunftsadresse suchst.",
+    },
+  },
+};
+
+function lodgingSearchCopy(language, kind) {
+  const resolvedLanguage = LODGING_SEARCH_COPY[language] ? language : "es";
+  return {
+    remaining: DESTINATION_COPY[resolvedLanguage].remaining,
+    ...LODGING_SEARCH_COPY[resolvedLanguage][kind],
+  };
+}
+
 const COPY = {
   en: {
     destination: "Destination", destinationPlaceholder: "City and country", arrival: "Arrival", departure: "Departure",
     adults: "Adults", children: "Children", transport: "Transport", modes: { walk: "On foot", public_transit: "Public transport", taxi: "Taxi", car: "Car" },
     licence: "At least one person has a valid driving licence", lodgingArea: "Lodging area", lodgingAreaPlaceholder: "Neighbourhood or area; it can be provisional",
-    address: "Confirmed address", optional: "Optional", pace: "Pace", paces: { relaxed: "Relaxed", balanced: "Balanced", intense: "Intense" },
+    address: "Confirmed address", addressPlaceholder: "Lodging or exact address; optional", optional: "Optional", pace: "Pace", paces: { relaxed: "Relaxed", balanced: "Balanced", intense: "Intense" },
     interests: "Interests", interestsPlaceholder: "Architecture, local food, music…", notes: "Notes and constraints", notesPlaceholder: "Fixed plans, accessibility, things to avoid…",
     budget: {
       title: "Budget", description: "Set a spending style and, if useful, a monetary limit.", comfort: "Spending style", comforts: { flexible: "Flexible", low: "Economy", medium: "Mid-range", high: "Premium" },
@@ -210,7 +327,7 @@ const COPY = {
     destination: "Destino", destinationPlaceholder: "Ciudad y país", arrival: "Llegada", departure: "Salida",
     adults: "Adultos", children: "Niños", transport: "Transporte", modes: { walk: "A pie", public_transit: "Transporte público", taxi: "Taxi", car: "Auto" },
     licence: "Al menos una persona tiene licencia válida", lodgingArea: "Zona de alojamiento", lodgingAreaPlaceholder: "Barrio o zona; puede ser provisional",
-    address: "Dirección confirmada", optional: "Opcional", pace: "Ritmo", paces: { relaxed: "Relajado", balanced: "Equilibrado", intense: "Intenso" },
+    address: "Dirección confirmada", addressPlaceholder: "Alojamiento o dirección exacta; opcional", optional: "Opcional", pace: "Ritmo", paces: { relaxed: "Relajado", balanced: "Equilibrado", intense: "Intenso" },
     interests: "Intereses", interestsPlaceholder: "Arquitectura, comida local, música…", notes: "Notas y restricciones", notesPlaceholder: "Planes fijos, accesibilidad, cosas que evitar…",
     budget: {
       title: "Presupuesto", description: "Define el estilo de gasto y, si sirve, un límite monetario.", comfort: "Estilo de gasto", comforts: { flexible: "Flexible", low: "Económico", medium: "Medio", high: "Premium" },
@@ -240,7 +357,7 @@ const COPY = {
     destination: "Destino", destinationPlaceholder: "Cidade e país", arrival: "Chegada", departure: "Saída",
     adults: "Adultos", children: "Crianças", transport: "Transporte", modes: { walk: "A pé", public_transit: "Transporte público", taxi: "Táxi", car: "Carro" },
     licence: "Pelo menos uma pessoa tem carteira de motorista válida", lodgingArea: "Área de hospedagem", lodgingAreaPlaceholder: "Bairro ou área; pode ser provisório",
-    address: "Endereço confirmado", optional: "Opcional", pace: "Ritmo", paces: { relaxed: "Tranquilo", balanced: "Equilibrado", intense: "Intenso" },
+    address: "Endereço confirmado", addressPlaceholder: "Hospedagem ou endereço exato; opcional", optional: "Opcional", pace: "Ritmo", paces: { relaxed: "Tranquilo", balanced: "Equilibrado", intense: "Intenso" },
     interests: "Interesses", interestsPlaceholder: "Arquitetura, comida local, música…", notes: "Observações e restrições", notesPlaceholder: "Planos fixos, acessibilidade, coisas a evitar…",
     budget: {
       title: "Orçamento", description: "Defina o estilo de gasto e, se for útil, um limite monetário.", comfort: "Estilo de gasto", comforts: { flexible: "Flexível", low: "Econômico", medium: "Médio", high: "Premium" },
@@ -270,7 +387,7 @@ const COPY = {
     destination: "Destination", destinationPlaceholder: "Ville et pays", arrival: "Arrivée", departure: "Départ",
     adults: "Adultes", children: "Enfants", transport: "Transport", modes: { walk: "À pied", public_transit: "Transports en commun", taxi: "Taxi", car: "Voiture" },
     licence: "Au moins une personne possède un permis de conduire valide", lodgingArea: "Zone d’hébergement", lodgingAreaPlaceholder: "Quartier ou zone ; cela peut être provisoire",
-    address: "Adresse confirmée", optional: "Facultatif", pace: "Rythme", paces: { relaxed: "Détendu", balanced: "Équilibré", intense: "Intense" },
+    address: "Adresse confirmée", addressPlaceholder: "Hébergement ou adresse exacte ; facultatif", optional: "Facultatif", pace: "Rythme", paces: { relaxed: "Détendu", balanced: "Équilibré", intense: "Intense" },
     interests: "Centres d’intérêt", interestsPlaceholder: "Architecture, cuisine locale, musique…", notes: "Notes et contraintes", notesPlaceholder: "Plans fixes, accessibilité, choses à éviter…",
     budget: {
       title: "Budget", description: "Définissez le niveau de dépenses et, si utile, une limite monétaire.", comfort: "Niveau de dépenses", comforts: { flexible: "Flexible", low: "Économique", medium: "Intermédiaire", high: "Premium" },
@@ -300,7 +417,7 @@ const COPY = {
     destination: "Reiseziel", destinationPlaceholder: "Stadt und Land", arrival: "Anreise", departure: "Abreise",
     adults: "Erwachsene", children: "Kinder", transport: "Verkehrsmittel", modes: { walk: "Zu Fuß", public_transit: "Öffentliche Verkehrsmittel", taxi: "Taxi", car: "Auto" },
     licence: "Mindestens eine Person besitzt einen gültigen Führerschein", lodgingArea: "Unterkunftsgegend", lodgingAreaPlaceholder: "Viertel oder Gegend; kann vorläufig sein",
-    address: "Bestätigte Adresse", optional: "Optional", pace: "Tempo", paces: { relaxed: "Entspannt", balanced: "Ausgewogen", intense: "Intensiv" },
+    address: "Bestätigte Adresse", addressPlaceholder: "Unterkunft oder genaue Adresse; optional", optional: "Optional", pace: "Tempo", paces: { relaxed: "Entspannt", balanced: "Ausgewogen", intense: "Intensiv" },
     interests: "Interessen", interestsPlaceholder: "Architektur, lokale Küche, Musik…", notes: "Hinweise und Einschränkungen", notesPlaceholder: "Feste Pläne, Barrierefreiheit, zu vermeidende Dinge…",
     budget: {
       title: "Budget", description: "Lege den Ausgabenstil und bei Bedarf eine Geldgrenze fest.", comfort: "Ausgabenstil", comforts: { flexible: "Flexibel", low: "Günstig", medium: "Mittel", high: "Premium" },
@@ -510,7 +627,13 @@ function compactBrief(brief) {
   const { travellers: profileTravellers, ...profileFields } = tripProfileValueFromDraft(brief.profile);
   const lodging = {
     ...(clean(brief.lodging?.area) ? { area: clean(brief.lodging.area) } : {}),
+    ...(clean(brief.lodging?.area) && clean(brief.lodging?.areaPlaceId)
+      ? { areaPlaceId: clean(brief.lodging.areaPlaceId) }
+      : {}),
     ...(clean(brief.lodging?.address) ? { address: clean(brief.lodging.address) } : {}),
+    ...(clean(brief.lodging?.address) && clean(brief.lodging?.addressPlaceId)
+      ? { addressPlaceId: clean(brief.lodging.addressPlaceId) }
+      : {}),
     status: clean(brief.lodging?.address) ? "confirmed" : "area_only",
   };
   return {
@@ -556,15 +679,33 @@ function BriefForm({ brief, busy, copy, csrfToken, locale, onChange, onSubmit })
       <DestinationCombobox
         copy={copy.destinationSearch}
         csrfToken={csrfToken}
+        kind="destination"
         label={copy.destination}
         locale={locale}
-        onChange={({ label, placeId }) => onChange({
-          ...brief,
-          destination: label,
-          destinationPlaceId: placeId,
-        })}
+        name="destination-search"
+        onChange={({ label, placeId }) => {
+          const resetLodging = Boolean(
+            brief.destinationPlaceId && brief.destinationPlaceId !== placeId,
+          );
+          onChange({
+            ...brief,
+            destination: label,
+            destinationPlaceId: placeId,
+            ...(resetLodging ? {
+              lodging: {
+                area: "",
+                areaPlaceId: "",
+                address: "",
+                addressPlaceId: "",
+                status: "undecided",
+              },
+            } : {}),
+          });
+        }}
         placeholder={copy.destinationPlaceholder}
+        required
         value={{ label: brief.destination, placeId: brief.destinationPlaceId }}
+        wide
       />
       <div className="generate-row">
         <label className="generate-field"><span>{copy.arrival}</span><input onChange={(event) => onChange({ ...brief, startDate: event.target.value })} required type="date" value={brief.startDate} /></label>
@@ -581,8 +722,38 @@ function BriefForm({ brief, busy, copy, csrfToken, locale, onChange, onSubmit })
         ))}
       </fieldset>
       {brief.transport.modes.includes("car") ? <label className="generate-option"><input checked={brief.transport.hasLicense} onChange={(event) => onChange({ ...brief, transport: { ...brief.transport, hasLicense: event.target.checked } })} type="checkbox" />{copy.licence}</label> : null}
-      <label className="generate-field"><span>{copy.lodgingArea}</span><input onChange={(event) => onChange({ ...brief, lodging: { ...brief.lodging, area: event.target.value } })} placeholder={copy.lodgingAreaPlaceholder} value={brief.lodging.area} /></label>
-      <label className="generate-field"><span>{copy.address}</span><input onChange={(event) => onChange({ ...brief, lodging: { ...brief.lodging, address: event.target.value } })} placeholder={copy.optional} value={brief.lodging.address} /></label>
+      <DestinationCombobox
+        copy={copy.lodgingAreaSearch}
+        csrfToken={csrfToken}
+        destinationPlaceId={brief.destinationPlaceId}
+        disabled={!brief.destinationPlaceId}
+        kind="lodging_area"
+        label={copy.lodgingArea}
+        locale={locale}
+        name="lodging-area-search"
+        onChange={({ label, placeId }) => onChange({
+          ...brief,
+          lodging: { ...brief.lodging, area: label, areaPlaceId: placeId },
+        })}
+        placeholder={copy.lodgingAreaPlaceholder}
+        value={{ label: brief.lodging.area, placeId: brief.lodging.areaPlaceId }}
+      />
+      <DestinationCombobox
+        copy={copy.lodgingAddressSearch}
+        csrfToken={csrfToken}
+        destinationPlaceId={brief.destinationPlaceId}
+        disabled={!brief.destinationPlaceId}
+        kind="lodging_address"
+        label={copy.address}
+        locale={locale}
+        name="lodging-address-search"
+        onChange={({ label, placeId }) => onChange({
+          ...brief,
+          lodging: { ...brief.lodging, address: label, addressPlaceId: placeId },
+        })}
+        placeholder={copy.addressPlaceholder}
+        value={{ label: brief.lodging.address, placeId: brief.lodging.addressPlaceId }}
+      />
       <label className="generate-field"><span>{copy.pace}</span><select onChange={(event) => onChange({ ...brief, pace: event.target.value })} value={brief.pace}>{Object.entries(copy.paces).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <TripProfileFields adultsCount={brief.travellers.adults} childrenCount={brief.travellers.children} copy={copy.profile} onChange={(profile) => onChange({ ...brief, profile })} value={brief.profile} />
       <BudgetFields copy={copy.budget} onChange={(budget) => onChange({ ...brief, budget })} value={brief.budget} />
@@ -598,6 +769,12 @@ function BriefForm({ brief, busy, copy, csrfToken, locale, onChange, onSubmit })
 function briefIssue(brief, copy) {
   if (!brief.destination || !brief.destinationPlaceId) {
     return copy.destinationSearch.selectionRequired;
+  }
+  if (brief.lodging?.area?.trim() && !brief.lodging?.areaPlaceId) {
+    return copy.lodgingAreaSearch.selectionRequired;
+  }
+  if (brief.lodging?.address?.trim() && !brief.lodging?.addressPlaceId) {
+    return copy.lodgingAddressSearch.selectionRequired;
   }
   if (brief.startDate && brief.endDate && brief.startDate > brief.endDate) {
     return copy.invalidDates;
@@ -720,6 +897,8 @@ export function GenerateTripApp() {
     ...(COPY[language] || COPY.es),
     ...(FLOW_COPY[language] || FLOW_COPY.es),
     destinationSearch: DESTINATION_COPY[language] || DESTINATION_COPY.es,
+    lodgingAreaSearch: lodgingSearchCopy(language, "area"),
+    lodgingAddressSearch: lodgingSearchCopy(language, "address"),
     profile: profileCopy(locale),
   };
   const [page, setPage] = useState({ kind: "loading" });

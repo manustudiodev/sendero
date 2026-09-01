@@ -52,13 +52,24 @@ function stageInput(overrides = {}) {
 }
 
 test("returns one versioned protocol with the canonical schema and a prepared brief", () => {
-  const result = planningProtocol(brief);
+  const result = planningProtocol({
+    ...brief,
+    lodging: {
+      area: "Ciutat Vella, Valencia, España",
+      areaPlaceId: "area-place-1",
+      address: "Hotel Valencia, Carrer de la Pau, Valencia, España",
+      addressPlaceId: "address-place-1",
+      status: "confirmed",
+    },
+  });
   assert.equal(result.brief.ready, true);
   assert.equal(result.protocol.version, "1.2.0");
   assert.match(result.protocol.hash, /^[a-f0-9]{64}$/);
   assert.match(result.protocol.instructions, /validate_and_stage_itinerary/);
   assert.equal(result.protocol.itinerarySchema.type, "object");
   assert.ok(result.protocol.itinerarySchema.required.includes("days"));
+  assert.equal(result.brief.brief.lodging.areaPlaceId, "area-place-1");
+  assert.equal(result.brief.brief.lodging.addressPlaceId, "address-place-1");
 });
 
 test("normalizes and accepts a complete itinerary while retaining warnings", () => {

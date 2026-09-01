@@ -371,7 +371,19 @@ const lodgingSchema = z.object({
 const tripBriefLodgingSchema = z.object({
   name: z.string().min(1).describe("Hotel, rental, or lodging name when known.").optional(),
   address: z.string().min(1).describe("Exact lodging address only when the user supplied it.").optional(),
+  addressPlaceId: z
+    .string()
+    .min(1)
+    .max(255)
+    .describe("Canonical Google Maps place ID selected for the exact lodging or address.")
+    .optional(),
   area: z.string().min(1).describe("Neighborhood or area where the user will stay, including a provisional base.").optional(),
+  areaPlaceId: z
+    .string()
+    .min(1)
+    .max(255)
+    .describe("Canonical Google Maps place ID selected for the provisional lodging area.")
+    .optional(),
   status: z
     .enum(["confirmed", "area_only", "undecided"])
     .describe("Whether lodging is confirmed, known only by area, or still undecided.")

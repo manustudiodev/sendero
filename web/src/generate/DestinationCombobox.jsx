@@ -19,11 +19,17 @@ function newSessionToken() {
 export function DestinationCombobox({
   copy,
   csrfToken,
+  destinationPlaceId,
+  disabled = false,
+  kind = "destination",
   label,
   locale,
+  name = "place-search",
   onChange,
   placeholder,
+  required = false,
   value,
+  wide = false,
 }) {
   const inputId = useId();
   const listboxId = `${inputId}-listbox`;
@@ -36,12 +42,12 @@ export function DestinationCombobox({
   const selected = Boolean(value.placeId && value.label === query);
 
   useEffect(() => {
-    if (value.placeId && value.label !== query) setQuery(value.label);
-  }, [query, value.label, value.placeId]);
+    setQuery((current) => current === (value.label || "") ? current : (value.label || ""));
+  }, [value.label, value.placeId]);
 
   useEffect(() => {
     const normalized = query.trim();
-    if (selected || !destinationQueryReady(normalized)) {
+    if (disabled || selected || !destinationQueryReady(normalized)) {
       setSuggestions([]);
       setState("idle");
       setOpen(false);
@@ -57,6 +63,8 @@ export function DestinationCombobox({
       try {
         const next = await requestDestinationSuggestions({
           csrfToken,
+          destinationPlaceId,
+          kind,
           locale,
           query: normalized,
           sessionToken: sessionTokenRef.current,
@@ -78,7 +86,7 @@ export function DestinationCombobox({
       globalThis.clearTimeout(timeout);
       controller.abort();
     };
-  }, [csrfToken, locale, query, selected]);
+  }, [csrfToken, destinationPlaceId, disabled, kind, locale, query, selected]);
 
   function choose(suggestion) {
     setQuery(suggestion.label);
@@ -95,7 +103,7 @@ export function DestinationCombobox({
     setQuery(next);
     setOpen(destinationQueryReady(next));
     setActiveIndex(-1);
-    if (value.label || value.placeId) onChange({ label: "", placeId: "" });
+    onChange({ label: next, placeId: "" });
   }
 
   function handleKeyDown(event) {
@@ -121,7 +129,9 @@ export function DestinationCombobox({
   }
 
   const remaining = Math.max(0, DESTINATION_QUERY_MIN_LENGTH - query.trim().length);
-  const status = selected
+  const status = disabled
+    ? copy.disabled
+    : selected
     ? copy.selected
     : state === "loading"
       ? copy.loading
@@ -132,10 +142,10 @@ export function DestinationCombobox({
           : remaining > 0
             ? copy.remaining(remaining)
             : copy.choose;
-  const showPanel = open && destinationQueryReady(query) && state !== "idle";
+  const showPanel = !disabled && open && destinationQueryReady(query) && state !== "idle";
 
   return (
-    <div className="generate-field generate-field-wide generate-destination-field">
+    <div className={`generate-field${wide ? " generate-field-wide" : ""} generate-destination-field`}>
       <label htmlFor={inputId}>{label}</label>
       <div className="generate-combobox">
         <input
@@ -146,14 +156,15 @@ export function DestinationCombobox({
           aria-invalid={query.length > 0 && !selected}
           autoCapitalize="words"
           autoComplete="off"
+          disabled={disabled}
           id={inputId}
-          name="destination-search"
+          name={name}
           onBlur={() => setOpen(false)}
           onChange={handleInput}
           onFocus={() => suggestions.length && setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          required
+          required={required}
           role="combobox"
           value={query}
         />

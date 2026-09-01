@@ -31,6 +31,8 @@ export function normalizeDestinationSuggestions(payload) {
 
 export async function requestDestinationSuggestions({
   csrfToken,
+  destinationPlaceId,
+  kind = "destination",
   locale,
   query,
   request = requestJson,
@@ -40,7 +42,13 @@ export async function requestDestinationSuggestions({
   const normalizedQuery = normalizedDestinationQuery(query);
   if (!destinationQueryReady(normalizedQuery)) return [];
   const payload = await request("/api/destination-suggestions", {
-    body: { locale, query: normalizedQuery, sessionToken },
+    body: {
+      ...(destinationPlaceId ? { destinationPlaceId } : {}),
+      kind,
+      locale,
+      query: normalizedQuery,
+      sessionToken,
+    },
     csrfToken,
     method: "POST",
     signal,

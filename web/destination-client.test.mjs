@@ -27,6 +27,7 @@ test("posts a normalized destination query with the authenticated CSRF token", a
     path: "/api/destination-suggestions",
     options: {
       body: {
+        kind: "destination",
         locale: "fr-FR",
         query: "New York",
         sessionToken: "3dfb0938-9dc6-47ea-b945-75c87f1b9830",
@@ -42,6 +43,29 @@ test("posts a normalized destination query with the authenticated CSRF token", a
     primaryText: "New York, NY, USA",
     secondaryText: "",
   }]);
+});
+
+test("adds the selected destination context to lodging searches", async () => {
+  let captured;
+  await requestDestinationSuggestions({
+    csrfToken: "csrf-token",
+    destinationPlaceId: "destination-1",
+    kind: "lodging_area",
+    locale: "es-AR",
+    query: " pal ",
+    sessionToken: "3dfb0938-9dc6-47ea-b945-75c87f1b9830",
+    async request(path, options) {
+      captured = { path, options };
+      return { suggestions: [] };
+    },
+  });
+  assert.deepEqual(captured.options.body, {
+    destinationPlaceId: "destination-1",
+    kind: "lodging_area",
+    locale: "es-AR",
+    query: "pal",
+    sessionToken: "3dfb0938-9dc6-47ea-b945-75c87f1b9830",
+  });
 });
 
 test("drops malformed and duplicate client suggestions", () => {
