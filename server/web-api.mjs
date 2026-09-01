@@ -14,6 +14,11 @@ import {
 } from "./public-sharing.mjs";
 import { canonicalLocale, DEFAULT_LOCALE, localeLanguage } from "../shared/locale.mjs";
 import {
+  DestinationSuggestionsError,
+  destinationSuggestions,
+  destinationSuggestionsRequestSchema,
+} from "./destination-suggestions.mjs";
+import {
   draftSummary,
   ItineraryPlanningError,
   MAX_ITINERARY_BODY_BYTES,
@@ -157,6 +162,9 @@ function errorResponse(context, code, status, message, retryable = status >= 500
 }
 
 function mappedFailure(context, error, logger) {
+  if (error instanceof DestinationSuggestionsError) {
+    return errorResponse(context, error.code, error.status, error.message, error.retryable);
+  }
   if (error instanceof ItineraryPlanningError) {
     return context.json({
       error: {
@@ -224,6 +232,8 @@ export function registerWebApiRoutes(app, {
   logger = console,
   now = () => Date.now(),
   planningEnabled = false,
+  placesApiKey,
+  placesFetch = globalThis.fetch,
   persistenceFactory,
   publicShareSecret,
   publicWebUrl,
@@ -287,6 +297,21 @@ export function registerWebApiRoutes(app, {
         ...(planningEnabled ? planningProtocolIdentity() : {}),
       },
     }),
+  ));
+
+  app.post("/api/destination-suggestions", (context) => authenticated(
+    context,
+    async () => {
+      const input = await readJson(context, destinationSuggestionsRequestSchema);
+      return context.json({
+        data: await destinationSuggestions(input, {
+          apiKey: placesApiKey,
+          fetchImpl: placesFetch,
+          signal: context.req.raw.signal,
+        }),
+      });
+    },
+    { mutate: true },
   ));
 
   app.post("/api/itinerary-planning/protocol", (context) => authenticated(

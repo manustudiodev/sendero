@@ -62,9 +62,9 @@ a { color: inherit; }
 @media (prefers-reduced-motion: reduce) { .web-loading-dot { animation: none; } }
 @media (max-width: 640px) {
   .web-shell { width: min(100% - 22px, 1120px); padding-top: 14px; }
-  .web-topbar { margin-bottom: 30px; }
+  .web-topbar { align-items: flex-start; flex-direction: column; gap: 12px; margin-bottom: 30px; }
   .web-account { align-items: flex-end; flex-direction: column; gap: 2px; }
-  .web-topbar-actions { align-items: flex-end; gap: 4px; }
+  .web-topbar-actions { width: 100%; align-items: flex-start; justify-content: space-between; gap: 8px; }
   .web-user { max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .web-account-actions { gap: 0; }
   .web-account-action { min-height: 32px; padding: 5px 7px; }

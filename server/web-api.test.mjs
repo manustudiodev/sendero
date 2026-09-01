@@ -40,6 +40,8 @@ function fixture({
   emailVerified = true,
   inspectionTrip,
   planningEnabled = false,
+  placesApiKey,
+  placesFetch,
   storage = {},
   sendInvitationEmail,
 } = {}) {
@@ -194,6 +196,8 @@ function fixture({
     invitePepper: INVITE_PEPPER,
     now: () => Date.UTC(2026, 7, 27, 12),
     planningEnabled,
+    placesApiKey,
+    placesFetch,
     persistenceFactory: ({ authToken }) => authToken ? authenticatedStorage : publicStorage,
     publicShareSecret: SHARE_SECRET,
     publicWebUrl: "https://sendero.example",
@@ -225,6 +229,7 @@ function jsonRequest(path, body, { csrf = CSRF, method = "POST" } = {}) {
 const planningBrief = {
   locale: "es",
   destination: "Valencia, España",
+  destinationPlaceId: "ChIJb7Dv8ExPYA0ROR1_HwFRo7Q",
   startDate: "2027-04-10",
   endDate: "2027-04-10",
   travellers: { adults: 2 },
@@ -252,6 +257,67 @@ const plannedItinerary = {
     }],
   }],
 };
+
+test("returns authenticated destination suggestions and requires CSRF", async () => {
+  const upstreamCalls = [];
+  const { app } = fixture({
+    placesApiKey: "server-only-test-key",
+    async placesFetch(url, options) {
+      upstreamCalls.push({ url, options });
+      return new Response(JSON.stringify({
+        suggestions: [{
+          placePrediction: {
+            placeId: "ChIJP3Sa8ziYEmsRUKgyFmh9AQM",
+            text: { text: "Sydney NSW, Australia" },
+            structuredFormat: {
+              mainText: { text: "Sydney" },
+              secondaryText: { text: "NSW, Australia" },
+            },
+            types: ["locality", "political"],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    },
+  });
+  const body = {
+    query: "syd",
+    locale: "en-AU",
+    sessionToken: "3dfb0938-9dc6-47ea-b945-75c87f1b9830",
+  };
+
+  const rejected = await app.request(jsonRequest(
+    "/api/destination-suggestions",
+    body,
+    { csrf: "wrong" },
+  ));
+  assert.equal(rejected.status, 403);
+  assert.equal(upstreamCalls.length, 0);
+
+  const response = await app.request(jsonRequest("/api/destination-suggestions", body));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    data: {
+      suggestions: [{
+        placeId: "ChIJP3Sa8ziYEmsRUKgyFmh9AQM",
+        label: "Sydney NSW, Australia",
+        primaryText: "Sydney",
+        secondaryText: "NSW, Australia",
+      }],
+    },
+  });
+  assert.equal(upstreamCalls.length, 1);
+});
+
+test("fails closed when destination suggestions are not configured", async () => {
+  const { app } = fixture();
+  const response = await app.request(jsonRequest("/api/destination-suggestions", {
+    query: "par",
+    locale: "fr",
+    sessionToken: "3dfb0938-9dc6-47ea-b945-75c87f1b9830",
+  }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "destination_search_unavailable");
+});
 
 test("keeps itinerary planning disabled by default behind an authenticated capability", async () => {
   const { app } = fixture();
@@ -293,6 +359,7 @@ test("returns the current protocol and stages only server-validated itineraries"
   assert.equal(protocolResponse.status, 200);
   const protocol = (await protocolResponse.json()).data;
   assert.equal(protocol.brief.ready, true);
+  assert.equal(protocol.brief.brief.destinationPlaceId, planningBrief.destinationPlaceId);
   assert.match(protocol.protocol.instructions, /active conversation is the reasoning/);
 
   const identity = planningProtocolIdentity();

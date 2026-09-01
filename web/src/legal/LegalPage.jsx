@@ -8,7 +8,9 @@ const COPY = {
     privacyTitle: "Privacy", termsTitle: "Terms of use",
     privacyIntro: "This policy explains what information Sendero processes and what happens when you share a trip.",
     termsIntro: "These terms define responsible use of Sendero and the scope of its travel information.",
-    updated: "Last updated: August 27, 2026", legalNav: "Legal information", privacy: "Privacy", terms: "Terms",
+    updated: "Last updated: September 1, 2026", legalNav: "Legal information", privacy: "Privacy", terms: "Terms",
+    mapsPrivacy: "When you search for a destination, Sendero sends the text you type and the interface language to Google Maps to return city and country suggestions. Google processes that request under its Privacy Policy.",
+    mapsTerms: "Destination suggestions are Google Maps content and are also subject to the Google Maps Platform Terms of Service.",
     privacySections: [
       ["1. Information Sendero processes", "When you create an account, we may receive basic identity data such as your name, email address, and identifiers from the sign-in provider.", "When you plan a trip, we process the information you choose to share: destinations, dates, preferences, travellers, mobility, lodging, activities, notes, bookings, and itinerary changes.", "We may also record the minimum technical data needed to operate and protect the service, such as timestamps, access actions, errors, and security logs."],
       ["2. How we use information", "We use it to create and preserve itineraries, display interactive components, synchronize authorized changes, manage collaborators, resolve shared links, and keep the service secure.", "We do not make private trip content public. Publishing or inviting another person requires an explicit action."],
@@ -32,7 +34,9 @@ const COPY = {
     privacyTitle: "Privacidad", termsTitle: "Términos de uso",
     privacyIntro: "Esta política explica qué información trata Sendero y qué ocurre cuando compartes un viaje.",
     termsIntro: "Estas condiciones definen el uso responsable de Sendero y el alcance de la información de viaje.",
-    updated: "Última actualización: 27 de agosto de 2026", legalNav: "Información legal", privacy: "Privacidad", terms: "Términos",
+    updated: "Última actualización: 1 de septiembre de 2026", legalNav: "Información legal", privacy: "Privacidad", terms: "Términos",
+    mapsPrivacy: "Cuando buscas un destino, Sendero envía a Google Maps el texto que escribes y el idioma de la interfaz para devolver sugerencias de ciudades y países. Google trata esa solicitud conforme a su Política de Privacidad.",
+    mapsTerms: "Las sugerencias de destinos son contenido de Google Maps y también están sujetas a los Términos del Servicio de Google Maps Platform.",
     privacySections: [
       ["1. Qué información trata Sendero", "Cuando creas una cuenta, podemos recibir datos básicos de identidad como nombre, correo electrónico e identificadores del proveedor de acceso.", "Cuando planificas un viaje, tratamos la información que decides compartir: destinos, fechas, preferencias, acompañantes, movilidad, alojamiento, actividades, notas, reservas y cambios del itinerario.", "También podemos registrar datos técnicos mínimos para operar y proteger el servicio, como marcas de tiempo, acciones de acceso, errores y registros de seguridad."],
       ["2. Para qué usamos la información", "La usamos para crear y conservar itinerarios, mostrar componentes interactivos, sincronizar cambios autorizados, gestionar colaboradores, resolver enlaces compartidos y mantener la seguridad del servicio.", "No usamos el contenido privado de un viaje para hacerlo público. Publicar o invitar a otra persona requiere una acción explícita."],
@@ -56,7 +60,9 @@ const COPY = {
     privacyTitle: "Privacidade", termsTitle: "Termos de uso",
     privacyIntro: "Esta política explica quais informações o Sendero processa e o que acontece quando você compartilha uma viagem.",
     termsIntro: "Estes termos definem o uso responsável do Sendero e o alcance das informações de viagem.",
-    updated: "Última atualização: 27 de agosto de 2026", legalNav: "Informações legais", privacy: "Privacidade", terms: "Termos",
+    updated: "Última atualização: 1 de setembro de 2026", legalNav: "Informações legais", privacy: "Privacidade", terms: "Termos",
+    mapsPrivacy: "Ao buscar um destino, o Sendero envia ao Google Maps o texto digitado e o idioma da interface para obter sugestões de cidades e países. O Google processa essa solicitação de acordo com sua Política de Privacidade.",
+    mapsTerms: "As sugestões de destinos são conteúdo do Google Maps e também estão sujeitas aos Termos de Serviço da Google Maps Platform.",
     privacySections: [
       ["1. Quais informações o Sendero processa", "Ao criar uma conta, podemos receber dados básicos de identidade, como nome, e-mail e identificadores do provedor de acesso.", "Ao planejar uma viagem, processamos as informações que você decide compartilhar: destinos, datas, preferências, acompanhantes, mobilidade, hospedagem, atividades, notas, reservas e alterações no roteiro.", "Também podemos registrar os dados técnicos mínimos para operar e proteger o serviço, como horários, ações de acesso, erros e registros de segurança."],
       ["2. Como usamos as informações", "Usamos essas informações para criar e conservar roteiros, mostrar componentes interativos, sincronizar alterações autorizadas, gerenciar colaboradores, resolver links compartilhados e manter a segurança do serviço.", "Não tornamos público o conteúdo privado de uma viagem. Publicar ou convidar outra pessoa exige uma ação explícita."],
@@ -80,7 +86,9 @@ const COPY = {
     privacyTitle: "Confidentialité", termsTitle: "Conditions d’utilisation",
     privacyIntro: "Cette politique explique quelles informations Sendero traite et ce qui se passe lorsque vous partagez un voyage.",
     termsIntro: "Ces conditions définissent l’utilisation responsable de Sendero et la portée de ses informations de voyage.",
-    updated: "Dernière mise à jour : 27 août 2026", legalNav: "Informations légales", privacy: "Confidentialité", terms: "Conditions",
+    updated: "Dernière mise à jour : 1er septembre 2026", legalNav: "Informations légales", privacy: "Confidentialité", terms: "Conditions",
+    mapsPrivacy: "Lorsque vous recherchez une destination, Sendero transmet à Google Maps le texte saisi et la langue de l’interface afin d’obtenir des suggestions de villes et de pays. Google traite cette requête conformément à sa Politique de confidentialité.",
+    mapsTerms: "Les suggestions de destinations constituent du contenu Google Maps et sont également soumises aux Conditions d’utilisation de Google Maps Platform.",
     privacySections: [
       ["1. Informations traitées par Sendero", "Lorsque vous créez un compte, nous pouvons recevoir des données d’identité de base, comme votre nom, votre adresse e-mail et les identifiants fournis par le service de connexion.", "Lorsque vous planifiez un voyage, nous traitons les informations que vous choisissez de partager : destinations, dates, préférences, voyageurs, mobilité, hébergement, activités, notes, réservations et modifications de l’itinéraire.", "Nous pouvons aussi enregistrer les données techniques minimales nécessaires au fonctionnement et à la protection du service, telles que les horodatages, les actions d’accès, les erreurs et les journaux de sécurité."],
       ["2. Utilisation des informations", "Nous les utilisons pour créer et conserver des itinéraires, afficher des composants interactifs, synchroniser les modifications autorisées, gérer les collaborateurs, résoudre les liens partagés et assurer la sécurité du service.", "Nous ne rendons pas public le contenu privé d’un voyage. Publier ou inviter une autre personne exige une action explicite."],
@@ -104,7 +112,9 @@ const COPY = {
     privacyTitle: "Datenschutz", termsTitle: "Nutzungsbedingungen",
     privacyIntro: "Diese Richtlinie erklärt, welche Informationen Sendero verarbeitet und was beim Teilen einer Reise geschieht.",
     termsIntro: "Diese Bedingungen legen die verantwortungsvolle Nutzung von Sendero und den Umfang der Reiseinformationen fest.",
-    updated: "Zuletzt aktualisiert: 27. August 2026", legalNav: "Rechtliche Informationen", privacy: "Datenschutz", terms: "Nutzungsbedingungen",
+    updated: "Zuletzt aktualisiert: 1. September 2026", legalNav: "Rechtliche Informationen", privacy: "Datenschutz", terms: "Nutzungsbedingungen",
+    mapsPrivacy: "Bei der Suche nach einem Reiseziel sendet Sendero den eingegebenen Text und die Sprache der Benutzeroberfläche an Google Maps, um Vorschläge für Städte und Länder abzurufen. Google verarbeitet diese Anfrage gemäß seiner Datenschutzerklärung.",
+    mapsTerms: "Zielvorschläge sind Inhalte von Google Maps und unterliegen zusätzlich den Nutzungsbedingungen der Google Maps Platform.",
     privacySections: [
       ["1. Von Sendero verarbeitete Informationen", "Wenn du ein Konto erstellst, können wir grundlegende Identitätsdaten wie deinen Namen, deine E-Mail-Adresse und Kennungen des Anmeldeanbieters erhalten.", "Wenn du eine Reise planst, verarbeiten wir die Informationen, die du teilen möchtest: Reiseziele, Daten, Vorlieben, Reisende, Mobilität, Unterkunft, Aktivitäten, Notizen, Buchungen und Änderungen am Reiseplan.", "Wir können außerdem die für Betrieb und Schutz des Dienstes mindestens erforderlichen technischen Daten erfassen, etwa Zeitstempel, Zugriffsaktionen, Fehler und Sicherheitsprotokolle."],
       ["2. Verwendung der Informationen", "Wir verwenden sie, um Reisepläne zu erstellen und zu erhalten, interaktive Komponenten anzuzeigen, autorisierte Änderungen zu synchronisieren, Mitwirkende zu verwalten, geteilte Links aufzulösen und den Dienst zu schützen.", "Wir machen private Reiseinhalte nicht öffentlich. Das Veröffentlichen oder Einladen einer anderen Person erfordert eine ausdrückliche Handlung."],
@@ -149,13 +159,19 @@ export function LegalPage({ kind }) {
           <p className="site-kicker">{copy.kicker}</p>
           <h1>{title}</h1>
           <p>{isPrivacy ? copy.privacyIntro : copy.termsIntro}</p>
-          <time dateTime="2026-08-27">{copy.updated}</time>
+          <time dateTime="2026-09-01">{copy.updated}</time>
         </header>
         <div className="legal-content">
-          {sections.map(([sectionTitle, ...paragraphs]) => (
+          {sections.map(([sectionTitle, ...paragraphs], sectionIndex) => (
             <section key={sectionTitle}>
               <h2>{sectionTitle}</h2>
               {paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+              {isPrivacy && sectionIndex === 3 ? (
+                <p>{copy.mapsPrivacy} <a href="https://policies.google.com/privacy" rel="noreferrer" target="_blank">Google Privacy Policy ↗</a></p>
+              ) : null}
+              {!isPrivacy && sectionIndex === 2 ? (
+                <p>{copy.mapsTerms} <a href="https://cloud.google.com/maps-platform/terms" rel="noreferrer" target="_blank">Google Maps Platform Terms of Service ↗</a></p>
+              ) : null}
             </section>
           ))}
         </div>

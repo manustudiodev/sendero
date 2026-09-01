@@ -96,6 +96,13 @@ export const environmentVariables = Object.freeze([
     recommendedIn: ["preview", "production"],
   },
   {
+    name: "GOOGLE_PLACES_API_KEY",
+    kind: "secret",
+    description: "Server-only, API-restricted key for Places API (New) destination autocomplete.",
+    requiredIn: [],
+    recommendedIn: ["preview", "production"],
+  },
+  {
     name: "AUTH0_ISSUER",
     kind: "url",
     description: "Auth0 tenant issuer, including its trailing slash.",

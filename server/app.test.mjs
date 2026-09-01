@@ -17,6 +17,7 @@ test("reports whether Convex storage is configured", async () => {
     webAuthentication: "not_configured",
     publicSharing: "not_configured",
     mapsEmbed: "not_configured",
+    placesAutocomplete: "not_configured",
     webMcpPlanning: "disabled",
   });
 
@@ -33,6 +34,12 @@ test("reports whether Convex storage is configured", async () => {
 
   const mapsConfigured = createApp({ mapsEmbedApiKey: "test-key" });
   assert.equal((await (await mapsConfigured.request("/health")).json()).mapsEmbed, "configured");
+
+  const placesConfigured = createApp({ placesApiKey: "test-key" });
+  assert.equal(
+    (await (await placesConfigured.request("/health")).json()).placesAutocomplete,
+    "configured",
+  );
 
   const planningConfigured = createApp({ planningEnabled: true });
   assert.equal((await (await planningConfigured.request("/health")).json()).webMcpPlanning, "enabled");

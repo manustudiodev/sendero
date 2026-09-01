@@ -158,6 +158,8 @@ export function createApp({
   publicShareSecret = process.env.SENDERO_SHARE_SECRET,
   invitePepper = process.env.SENDERO_INVITE_TOKEN_PEPPER,
   mapsEmbedApiKey = process.env.GOOGLE_MAPS_EMBED_API_KEY,
+  placesApiKey = process.env.GOOGLE_PLACES_API_KEY,
+  placesFetch = globalThis.fetch,
   webAuth,
   logger = console,
   app = new Hono(),
@@ -206,6 +208,8 @@ export function createApp({
     logger,
     persistenceFactory,
     planningEnabled,
+    placesApiKey,
+    placesFetch,
     publicShareSecret,
     publicWebUrl: resolvedPublicWebUrl,
     webAuth: resolvedWebAuth,
@@ -272,6 +276,9 @@ export function createApp({
           ? "configured"
           : "not_configured",
       mapsEmbed: typeof mapsEmbedApiKey === "string" && mapsEmbedApiKey.trim()
+        ? "configured"
+        : "not_configured",
+      placesAutocomplete: typeof placesApiKey === "string" && placesApiKey.trim()
         ? "configured"
         : "not_configured",
       webMcpPlanning: planningEnabled ? "enabled" : "disabled",

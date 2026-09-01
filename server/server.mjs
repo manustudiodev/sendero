@@ -606,6 +606,12 @@ export const tripBriefSchema = z.object({
     .string()
     .describe("Trip destination as stated by the user, ideally city and country; for example, Santiago de Chile.")
     .optional(),
+  destinationPlaceId: z
+    .string()
+    .min(1)
+    .max(255)
+    .describe("Canonical Google Maps place ID selected by the user for the destination.")
+    .optional(),
   startDate: isoDate.describe("Arrival or first itinerary date in YYYY-MM-DD format when known.").optional(),
   endDate: isoDate.describe("Departure or final itinerary date in YYYY-MM-DD format when known.").optional(),
   lodging: tripBriefLodgingSchema.describe("Known or provisional lodging context; an exact address is not required.").optional(),

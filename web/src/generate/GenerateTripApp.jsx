@@ -7,8 +7,13 @@ import {
 } from "../account/web-client.js";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
 import { hrefForLocale, useUiLocale } from "../i18n/LanguageSelector.jsx";
-import { t } from "../i18n/index.js";
+import { formatDate, t } from "../i18n/index.js";
 import { createItineraryGenerationFacade } from "./generation-client.js";
+import { DestinationCombobox } from "./DestinationCombobox.jsx";
+import {
+  CHATGPT_SITE_TOOLS_GUIDE_URL,
+  createItineraryHandoffPrompt,
+} from "./handoff-prompt.js";
 import { registerItineraryGenerationTools } from "./webmcp.js";
 import {
   BudgetFields,
@@ -22,39 +27,94 @@ import {
 } from "../profile/TripProfileFields.jsx";
 
 const generateStyles = `
-.generate-layout { display: grid; grid-template-columns: minmax(280px, 390px) minmax(0, 1fr); gap: 22px; align-items: start; }
-.generate-card { border: 1px solid var(--web-line); border-radius: 20px; padding: 22px; background: var(--web-surface); }
-.generate-card h2 { margin: 0; font-size: 21px; letter-spacing: -.025em; }
+.generate-flow { display: grid; gap: 22px; }
+.generate-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.generate-progress li { display: grid; min-width: 0; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 10px; border: 1px solid var(--web-line); border-radius: 14px; padding: 10px 12px; background: color-mix(in srgb, var(--web-surface) 82%, transparent); color: var(--web-muted); }
+.generate-progress li.is-active { border-color: var(--web-forest); background: var(--web-surface); color: var(--web-ink); }
+.generate-progress li.is-complete { color: var(--web-forest); }
+.generate-step-number { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--web-soft); font-size: 13px; font-weight: 760; }
+.generate-progress li.is-active .generate-step-number, .generate-progress li.is-complete .generate-step-number { background: var(--web-grass); color: var(--web-forest); }
+.generate-step-label { overflow: hidden; font-size: 14px; font-weight: 690; text-overflow: ellipsis; white-space: nowrap; }
+.generate-card { width: 100%; min-width: 0; border: 1px solid var(--web-line); border-radius: 20px; padding: clamp(20px, 3vw, 34px); background: var(--web-surface); }
+.generate-card h2 { margin: 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.035em; }
 .generate-card > p { margin: 8px 0 0; color: var(--web-muted); }
-.generate-form { display: grid; gap: 15px; margin-top: 22px; }
+.generate-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 18px; margin-top: 26px; }
 .generate-field { display: grid; gap: 6px; }
+.generate-field-wide, .generate-form > .profile-editor, .generate-form > .budget-editor, .generate-form-actions { grid-column: 1 / -1; }
 .generate-field > span, .generate-legend { font-size: 14px; font-weight: 690; }
 .generate-field input, .generate-field select, .generate-field textarea { width: 100%; border: 1px solid var(--web-line); border-radius: 10px; padding: 10px 12px; background: var(--web-surface); color: var(--web-ink); }
 .generate-field textarea { min-height: 84px; resize: vertical; font: inherit; }
-.generate-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.generate-options { display: flex; flex-wrap: wrap; gap: 8px 12px; border: 0; margin: 0; padding: 0; }
+.generate-destination-field > label { font-size: 14px; font-weight: 690; }
+.generate-combobox { position: relative; }
+.generate-combobox > input { padding-right: 42px; }
+.generate-combobox > input[aria-invalid="true"]:not(:focus) { border-color: var(--web-line); }
+.generate-combobox > input[aria-invalid="false"] { border-color: color-mix(in srgb, var(--web-forest) 68%, var(--web-line)); }
+.generate-destination-check { position: absolute; top: 50%; right: 14px; color: var(--web-forest); font-weight: 800; transform: translateY(-50%); }
+.generate-destination-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; left: 0; overflow: hidden; border: 1px solid var(--web-line); border-radius: 12px; background: var(--web-surface); box-shadow: 0 16px 38px rgba(0, 56, 52, .16); }
+.generate-destination-panel ul { margin: 0; padding: 6px; list-style: none; }
+.generate-destination-panel li { display: grid; gap: 2px; border-radius: 8px; padding: 10px 11px; cursor: pointer; }
+.generate-destination-panel li:hover, .generate-destination-panel li.is-active { background: var(--web-soft); }
+.generate-destination-panel li strong { font-size: 14px; }
+.generate-destination-panel li span { color: var(--web-muted); font-size: 13px; }
+.generate-destination-message { margin: 0; padding: 14px 16px; color: var(--web-muted); font-size: 14px; }
+.generate-destination-message.is-error { color: var(--web-danger); }
+.generate-destination-attribution { margin: 0; border-top: 1px solid var(--web-line); padding: 6px 11px; color: var(--web-muted); font-size: 11px; font-weight: 680; text-align: right; }
+.generate-destination-status { min-height: 18px; margin: 0; color: var(--web-muted); font-size: 12px; }
+.generate-destination-status.is-error { color: var(--web-danger); }
+.generate-row { display: grid; grid-template-columns: 1fr 1fr; grid-column: 1 / -1; gap: 18px; }
+.generate-options { display: flex; flex-wrap: wrap; grid-column: 1 / -1; gap: 8px 12px; border: 0; margin: 0; padding: 0; }
 .generate-option { display: inline-flex; align-items: center; gap: 6px; color: var(--web-muted); }
+.generate-form > .generate-option { grid-column: 1 / -1; }
 .generate-option input { width: 18px; height: 18px; accent-color: var(--web-forest); }
 .generate-status { display: grid; gap: 12px; margin-bottom: 18px; }
 .generate-notice { border-radius: 14px; padding: 13px 15px; background: var(--web-soft); color: var(--web-muted); }
 .generate-notice strong { color: var(--web-ink); }
 .generate-notice.is-ready { background: rgba(162, 212, 94, .2); }
 .generate-notice.is-error { color: var(--web-danger); }
+.generate-form-actions, .generate-handoff-actions, .generate-receipt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.generate-receipt { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--web-line); padding-bottom: 20px; }
+.generate-receipt p { margin: 6px 0 0; color: var(--web-muted); }
+.generate-handoff { display: grid; gap: 24px; }
+.generate-handoff-header { display: grid; max-width: 780px; gap: 8px; }
+.generate-handoff-header p { margin: 0; color: var(--web-muted); }
+.generate-connection { display: flex; align-items: flex-start; gap: 10px; border-radius: 14px; padding: 13px 15px; background: var(--web-soft); color: var(--web-muted); }
+.generate-connection.is-ready { background: rgba(162, 212, 94, .2); color: var(--web-ink); }
+.generate-connection-dot { width: 9px; height: 9px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: var(--web-muted); }
+.generate-connection.is-ready .generate-connection-dot { background: var(--web-forest); }
+.generate-handoff-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 20px; align-items: start; }
+.generate-prompt { display: grid; gap: 10px; }
+.generate-prompt label { font-size: 14px; font-weight: 720; }
+.generate-prompt textarea { width: 100%; min-height: 330px; border: 1px solid var(--web-line); border-radius: 14px; padding: 15px; background: var(--web-soft); color: var(--web-ink); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
+.generate-prompt textarea:focus { background: var(--web-surface); }
+.generate-handoff-guide { display: grid; gap: 18px; border: 1px solid var(--web-line); border-radius: 16px; padding: 20px; }
+.generate-handoff-guide h3 { margin: 0; font-size: 18px; }
+.generate-handoff-guide p { margin: 6px 0 0; color: var(--web-muted); }
+.generate-handoff-guide ol { margin: 0; padding-left: 21px; color: var(--web-muted); }
+.generate-handoff-guide li + li { margin-top: 9px; }
+.generate-secondary-path { border-top: 1px solid var(--web-line); padding-top: 18px; }
+.generate-secondary-path a:not(.web-button), .generate-extension-link { color: var(--web-forest); font-weight: 680; }
+.generate-copy-status { min-height: 21px; margin: 0; color: var(--web-muted); font-size: 13px; }
 .generate-draft-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
 .generate-preview { min-width: 0; overflow: hidden; }
 .generate-preview .itinerary-viewer { border-radius: 18px; }
-.generate-empty { display: grid; min-height: 360px; align-content: center; justify-items: start; }
-.generate-empty h2 { font-size: clamp(24px, 4vw, 36px); }
 .generate-steps { margin: 18px 0 0; padding-left: 20px; color: var(--web-muted); }
 .generate-steps li + li { margin-top: 8px; }
-.generate-protocol { word-break: break-all; font-size: 12px; color: var(--web-muted); }
-@media (max-width: 860px) { .generate-layout { grid-template-columns: 1fr; } }
-@media (max-width: 520px) { .generate-row { grid-template-columns: 1fr; } .generate-card { padding: 17px; } }
+@media (max-width: 860px) { .generate-handoff-grid { grid-template-columns: 1fr; } }
+@media (max-width: 680px) {
+  .generate-progress { grid-template-columns: 1fr; }
+  .generate-step-label { white-space: normal; }
+  .generate-form { grid-template-columns: 1fr; }
+  .generate-form > *, .generate-field-wide, .generate-form > .profile-editor, .generate-form > .budget-editor, .generate-form-actions { grid-column: 1; }
+  .generate-row { grid-template-columns: 1fr; grid-column: 1; }
+  .generate-receipt { align-items: stretch; flex-direction: column; }
+}
+@media (max-width: 520px) { .generate-card { padding: 17px; } .generate-handoff-actions .web-button, .generate-form-actions .web-button { width: 100%; } }
 `;
 
 const initialBrief = {
   locale: "es",
   destination: "",
+  destinationPlaceId: "",
   startDate: "",
   endDate: "",
   travellers: { adults: 1, children: 0 },
@@ -65,6 +125,54 @@ const initialBrief = {
   budget: budgetDraftFromValue(),
   profile: tripProfileDraftFromBrief(),
   notes: "",
+};
+
+const DESTINATION_COPY = {
+  en: {
+    remaining: (count) => `Type ${count} more ${count === 1 ? "letter" : "letters"} to search.`,
+    loading: "Searching cities and countries…",
+    empty: "No matching city or country found.",
+    error: "Destination search is unavailable. Try again in a moment.",
+    choose: "Choose a city or country from the suggestions.",
+    selected: "Destination selected.",
+    selectionRequired: "Choose the destination from the suggested cities or countries.",
+  },
+  es: {
+    remaining: (count) => `Escribe ${count} ${count === 1 ? "letra más" : "letras más"} para buscar.`,
+    loading: "Buscando ciudades y países…",
+    empty: "No encontramos una ciudad o país que coincida.",
+    error: "La búsqueda de destinos no está disponible. Intenta de nuevo en un momento.",
+    choose: "Elige una ciudad o país de las sugerencias.",
+    selected: "Destino seleccionado.",
+    selectionRequired: "Elige el destino entre las ciudades o países sugeridos.",
+  },
+  pt: {
+    remaining: (count) => `Digite mais ${count} ${count === 1 ? "letra" : "letras"} para buscar.`,
+    loading: "Buscando cidades e países…",
+    empty: "Nenhuma cidade ou país correspondente foi encontrado.",
+    error: "A busca de destinos não está disponível. Tente novamente em instantes.",
+    choose: "Escolha uma cidade ou país nas sugestões.",
+    selected: "Destino selecionado.",
+    selectionRequired: "Escolha o destino entre as cidades ou países sugeridos.",
+  },
+  fr: {
+    remaining: (count) => `Saisissez encore ${count} ${count === 1 ? "lettre" : "lettres"} pour lancer la recherche.`,
+    loading: "Recherche de villes et de pays…",
+    empty: "Aucune ville ni aucun pays ne correspond.",
+    error: "La recherche de destinations est indisponible. Réessayez dans un instant.",
+    choose: "Choisissez une ville ou un pays parmi les suggestions.",
+    selected: "Destination sélectionnée.",
+    selectionRequired: "Choisissez la destination parmi les villes ou pays suggérés.",
+  },
+  de: {
+    remaining: (count) => `Noch ${count} ${count === 1 ? "Buchstabe" : "Buchstaben"} eingeben, um zu suchen.`,
+    loading: "Städte und Länder werden gesucht…",
+    empty: "Keine passende Stadt und kein passendes Land gefunden.",
+    error: "Die Zielsuche ist derzeit nicht verfügbar. Versuche es gleich noch einmal.",
+    choose: "Wähle eine Stadt oder ein Land aus den Vorschlägen aus.",
+    selected: "Reiseziel ausgewählt.",
+    selectionRequired: "Wähle das Reiseziel aus den vorgeschlagenen Städten oder Ländern aus.",
+  },
 };
 
 const COPY = {
@@ -220,6 +328,169 @@ const COPY = {
   },
 };
 
+const FLOW_COPY = {
+  en: {
+    description: "Tell us about the trip. Sendero prepares the handoff, ChatGPT creates the itinerary, and Sendero validates it before anything is saved.",
+    progressLabel: "Itinerary creation progress",
+    progress: ["Trip details", "Continue in ChatGPT", "Review and save"],
+    contextTitle: "Tell us about your trip",
+    contextDetail: "Complete the essentials and add as much or as little optional detail as you want.",
+    prepare: "Create ChatGPT prompt",
+    invalidDates: "The departure date must be the same as or later than the arrival date.",
+    invalidDayTimes: "For a one-day trip, the departure time must be later than the arrival time.",
+    licenceRequired: "Choose another transport option or confirm that at least one traveller has a valid driving licence.",
+    receiptTitle: "Trip details ready",
+    receiptDetail: ({ destination, startDate, endDate }) => `${destination} · ${startDate}–${endDate}`,
+    editBrief: "Edit details",
+    handoffEyebrow: "Step 2 · Continue in ChatGPT",
+    handoffTitle: "Your prompt is ready",
+    handoffDetail: "No itinerary has been generated or validated yet. Copy this prompt and send it to ChatGPT to continue.",
+    promptLabel: "Prompt to paste in ChatGPT",
+    copyPrompt: "Copy prompt",
+    copied: "Prompt copied. Now paste it into ChatGPT.",
+    copyError: "We couldn't copy it automatically. Select the prompt and copy it manually.",
+    connected: "Sendero site tools are available in this browser. Keep this page open so ChatGPT can return the validated draft here.",
+    notConnected: "Sendero site tools are not available in this browser. For the integrated flow, open Sendero in the ChatGPT desktop app's built-in browser; otherwise use the prompt with the connected Sendero plugin.",
+    recommended: "Integrated flow",
+    sideChatTitle: "Continue in the ChatGPT desktop app",
+    sideChatDetail: "Open Sendero in ChatGPT's built-in browser so ChatGPT can discover the site's tools and return the validated draft here.",
+    sideChatSteps: ["Copy the prompt on this page.", "From the ChatGPT desktop toolbar, open the built-in browser, visit this Sendero page, and sign in.", "Paste and send the prompt in your conversation. Keep the Sendero page open while ChatGPT creates and validates the itinerary."],
+    extensionGuide: "Learn how ChatGPT site tools work",
+    alternativeTitle: "Or use ChatGPT web or Chrome",
+    alternativeDetail: "Open ChatGPT in another tab or with the Chrome extension or sidebar, paste the same prompt, and use the connected Sendero plugin. Site tools are not available in Chrome.",
+    waiting: "After ChatGPT returns a validated draft, Sendero will show the preview as step 3. Nothing is saved without your approval.",
+    previewEyebrow: "Step 3 · Review in Sendero",
+  },
+  es: {
+    description: "Cuéntanos sobre el viaje. Sendero prepara el traspaso, ChatGPT crea el itinerario y Sendero lo valida antes de guardar nada.",
+    progressLabel: "Progreso de creación del itinerario",
+    progress: ["Datos del viaje", "Continuar en ChatGPT", "Revisar y guardar"],
+    contextTitle: "Cuéntanos sobre tu viaje",
+    contextDetail: "Completa lo esencial y añade tantos detalles opcionales como quieras.",
+    prepare: "Crear prompt para ChatGPT",
+    invalidDates: "La fecha de salida debe ser igual o posterior a la fecha de llegada.",
+    invalidDayTimes: "En un viaje de un día, la hora de salida debe ser posterior a la hora de llegada.",
+    licenceRequired: "Elige otro transporte o confirma que al menos una persona tiene una licencia de conducir válida.",
+    receiptTitle: "Datos del viaje listos",
+    receiptDetail: ({ destination, startDate, endDate }) => `${destination} · ${startDate}–${endDate}`,
+    editBrief: "Editar datos",
+    handoffEyebrow: "Paso 2 · Continuar en ChatGPT",
+    handoffTitle: "Tu prompt está listo",
+    handoffDetail: "Todavía no se generó ni validó ningún itinerario. Copia este prompt y envíalo a ChatGPT para continuar.",
+    promptLabel: "Prompt para pegar en ChatGPT",
+    copyPrompt: "Copiar prompt",
+    copied: "Prompt copiado. Ahora pégalo en ChatGPT.",
+    copyError: "No pudimos copiarlo automáticamente. Selecciona el prompt y cópialo manualmente.",
+    connected: "Las herramientas de Sendero están disponibles en este navegador. Mantén esta página abierta para que ChatGPT pueda devolver aquí el borrador validado.",
+    notConnected: "Las herramientas de sitio de Sendero no están disponibles en este navegador. Para el flujo integrado, abre Sendero en el navegador incorporado de la app de escritorio de ChatGPT; si no, usa el prompt con el plugin conectado de Sendero.",
+    recommended: "Flujo integrado",
+    sideChatTitle: "Continúa en la app de escritorio de ChatGPT",
+    sideChatDetail: "Abre Sendero en el navegador incorporado de ChatGPT para que pueda descubrir las herramientas del sitio y devolver aquí el borrador validado.",
+    sideChatSteps: ["Copia el prompt de esta página.", "Desde la barra de la app de escritorio de ChatGPT, abre el navegador incorporado, visita esta página de Sendero e inicia sesión.", "Pega y envía el prompt en tu conversación. Mantén abierta la página de Sendero mientras ChatGPT crea y valida el itinerario."],
+    extensionGuide: "Cómo funcionan las herramientas de sitio de ChatGPT",
+    alternativeTitle: "O usa ChatGPT web o Chrome",
+    alternativeDetail: "Abre ChatGPT en otra pestaña o con la extensión o barra lateral de Chrome, pega el mismo prompt y utiliza el plugin conectado de Sendero. Las herramientas de sitio no están disponibles en Chrome.",
+    waiting: "Cuando ChatGPT devuelva un borrador validado, Sendero mostrará el preview como paso 3. Nada se guarda sin tu aprobación.",
+    previewEyebrow: "Paso 3 · Revisar en Sendero",
+  },
+  pt: {
+    description: "Conte-nos sobre a viagem. O Sendero prepara a passagem, o ChatGPT cria o roteiro e o Sendero o valida antes de salvar qualquer coisa.",
+    progressLabel: "Progresso da criação do roteiro",
+    progress: ["Dados da viagem", "Continuar no ChatGPT", "Revisar e salvar"],
+    contextTitle: "Conte-nos sobre sua viagem",
+    contextDetail: "Preencha o essencial e acrescente quantos detalhes opcionais quiser.",
+    prepare: "Criar prompt para o ChatGPT",
+    invalidDates: "A data de partida deve ser igual ou posterior à data de chegada.",
+    invalidDayTimes: "Em uma viagem de um dia, o horário de partida deve ser posterior ao de chegada.",
+    licenceRequired: "Escolha outro transporte ou confirme que pelo menos uma pessoa tem carteira de motorista válida.",
+    receiptTitle: "Dados da viagem prontos",
+    receiptDetail: ({ destination, startDate, endDate }) => `${destination} · ${startDate}–${endDate}`,
+    editBrief: "Editar dados",
+    handoffEyebrow: "Etapa 2 · Continuar no ChatGPT",
+    handoffTitle: "Seu prompt está pronto",
+    handoffDetail: "Nenhum roteiro foi gerado ou validado ainda. Copie este prompt e envie-o ao ChatGPT para continuar.",
+    promptLabel: "Prompt para colar no ChatGPT",
+    copyPrompt: "Copiar prompt",
+    copied: "Prompt copiado. Agora cole-o no ChatGPT.",
+    copyError: "Não foi possível copiá-lo automaticamente. Selecione o prompt e copie-o manualmente.",
+    connected: "As ferramentas do Sendero estão disponíveis neste navegador. Mantenha esta página aberta para que o ChatGPT possa devolver o rascunho validado aqui.",
+    notConnected: "As ferramentas de site do Sendero não estão disponíveis neste navegador. Para o fluxo integrado, abra o Sendero no navegador incorporado do app para desktop do ChatGPT; caso contrário, use o prompt com o plugin conectado do Sendero.",
+    recommended: "Fluxo integrado",
+    sideChatTitle: "Continue no app para desktop do ChatGPT",
+    sideChatDetail: "Abra o Sendero no navegador incorporado do ChatGPT para que ele descubra as ferramentas do site e devolva aqui o rascunho validado.",
+    sideChatSteps: ["Copie o prompt desta página.", "Na barra do app para desktop do ChatGPT, abra o navegador incorporado, visite esta página do Sendero e entre na sua conta.", "Cole e envie o prompt na conversa. Mantenha a página do Sendero aberta enquanto o ChatGPT cria e valida o roteiro."],
+    extensionGuide: "Como funcionam as ferramentas de site do ChatGPT",
+    alternativeTitle: "Ou use o ChatGPT web ou Chrome",
+    alternativeDetail: "Abra o ChatGPT em outra aba ou com a extensão ou barra lateral do Chrome, cole o mesmo prompt e use o plugin conectado do Sendero. As ferramentas de site não estão disponíveis no Chrome.",
+    waiting: "Quando o ChatGPT devolver um rascunho validado, o Sendero mostrará a prévia como etapa 3. Nada é salvo sem sua aprovação.",
+    previewEyebrow: "Etapa 3 · Revisar no Sendero",
+  },
+  fr: {
+    description: "Parlez-nous du voyage. Sendero prépare le relais, ChatGPT crée l’itinéraire et Sendero le valide avant tout enregistrement.",
+    progressLabel: "Progression de la création de l’itinéraire",
+    progress: ["Détails du voyage", "Continuer dans ChatGPT", "Vérifier et enregistrer"],
+    contextTitle: "Parlez-nous de votre voyage",
+    contextDetail: "Renseignez l’essentiel et ajoutez autant de détails facultatifs que vous le souhaitez.",
+    prepare: "Créer le prompt pour ChatGPT",
+    invalidDates: "La date de départ doit être identique ou postérieure à la date d’arrivée.",
+    invalidDayTimes: "Pour un voyage d’une journée, l’heure de départ doit être postérieure à l’heure d’arrivée.",
+    licenceRequired: "Choisissez un autre transport ou confirmez qu’au moins une personne possède un permis de conduire valide.",
+    receiptTitle: "Détails du voyage prêts",
+    receiptDetail: ({ destination, startDate, endDate }) => `${destination} · ${startDate}–${endDate}`,
+    editBrief: "Modifier les détails",
+    handoffEyebrow: "Étape 2 · Continuer dans ChatGPT",
+    handoffTitle: "Votre prompt est prêt",
+    handoffDetail: "Aucun itinéraire n’a encore été généré ni validé. Copiez ce prompt et envoyez-le à ChatGPT pour continuer.",
+    promptLabel: "Prompt à coller dans ChatGPT",
+    copyPrompt: "Copier le prompt",
+    copied: "Prompt copié. Collez-le maintenant dans ChatGPT.",
+    copyError: "Impossible de le copier automatiquement. Sélectionnez le prompt et copiez-le manuellement.",
+    connected: "Les outils Sendero sont disponibles dans ce navigateur. Gardez cette page ouverte afin que ChatGPT puisse y renvoyer le brouillon validé.",
+    notConnected: "Les outils de site Sendero ne sont pas disponibles dans ce navigateur. Pour le parcours intégré, ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT ; sinon, utilisez le prompt avec le plugin Sendero connecté.",
+    recommended: "Parcours intégré",
+    sideChatTitle: "Continuez dans l’application de bureau ChatGPT",
+    sideChatDetail: "Ouvrez Sendero dans le navigateur intégré de ChatGPT afin qu’il découvre les outils du site et renvoie ici le brouillon validé.",
+    sideChatSteps: ["Copiez le prompt de cette page.", "Dans la barre de l’application de bureau ChatGPT, ouvrez le navigateur intégré, consultez cette page Sendero et connectez-vous.", "Collez et envoyez le prompt dans votre conversation. Gardez la page Sendero ouverte pendant la création et la validation de l’itinéraire."],
+    extensionGuide: "Comprendre les outils de site ChatGPT",
+    alternativeTitle: "Ou utilisez ChatGPT web ou Chrome",
+    alternativeDetail: "Ouvrez ChatGPT dans un autre onglet ou avec l’extension ou la barre latérale Chrome, collez le même prompt et utilisez le plugin Sendero connecté. Les outils de site ne sont pas disponibles dans Chrome.",
+    waiting: "Lorsque ChatGPT renverra un brouillon validé, Sendero affichera l’aperçu à l’étape 3. Rien n’est enregistré sans votre accord.",
+    previewEyebrow: "Étape 3 · Vérifier dans Sendero",
+  },
+  de: {
+    description: "Erzähle uns von der Reise. Sendero bereitet die Übergabe vor, ChatGPT erstellt den Reiseplan und Sendero prüft ihn, bevor etwas gespeichert wird.",
+    progressLabel: "Fortschritt der Reiseplanerstellung",
+    progress: ["Reisedaten", "In ChatGPT fortfahren", "Prüfen und speichern"],
+    contextTitle: "Erzähle uns von deiner Reise",
+    contextDetail: "Vervollständige das Wesentliche und ergänze beliebig viele optionale Details.",
+    prepare: "Prompt für ChatGPT erstellen",
+    invalidDates: "Das Abreisedatum muss am oder nach dem Anreisedatum liegen.",
+    invalidDayTimes: "Bei einer eintägigen Reise muss die Abreisezeit nach der Ankunftszeit liegen.",
+    licenceRequired: "Wähle ein anderes Verkehrsmittel oder bestätige, dass mindestens eine Person einen gültigen Führerschein hat.",
+    receiptTitle: "Reisedaten bereit",
+    receiptDetail: ({ destination, startDate, endDate }) => `${destination} · ${startDate}–${endDate}`,
+    editBrief: "Daten bearbeiten",
+    handoffEyebrow: "Schritt 2 · In ChatGPT fortfahren",
+    handoffTitle: "Dein Prompt ist bereit",
+    handoffDetail: "Es wurde noch kein Reiseplan erstellt oder validiert. Kopiere diesen Prompt und sende ihn an ChatGPT, um fortzufahren.",
+    promptLabel: "Prompt zum Einfügen in ChatGPT",
+    copyPrompt: "Prompt kopieren",
+    copied: "Prompt kopiert. Füge ihn jetzt in ChatGPT ein.",
+    copyError: "Der Prompt konnte nicht automatisch kopiert werden. Markiere ihn und kopiere ihn manuell.",
+    connected: "Die Sendero-Tools sind in diesem Browser verfügbar. Lass diese Seite geöffnet, damit ChatGPT den validierten Entwurf hier zurückgeben kann.",
+    notConnected: "Die Sendero-Website-Tools sind in diesem Browser nicht verfügbar. Öffne Sendero für den integrierten Ablauf im eingebauten Browser der ChatGPT-Desktop-App; andernfalls verwende den Prompt mit dem verbundenen Sendero-Plugin.",
+    recommended: "Integrierter Ablauf",
+    sideChatTitle: "In der ChatGPT-Desktop-App fortfahren",
+    sideChatDetail: "Öffne Sendero im eingebauten Browser von ChatGPT, damit die Website-Tools erkannt werden und der validierte Entwurf hierher zurückkehrt.",
+    sideChatSteps: ["Kopiere den Prompt auf dieser Seite.", "Öffne über die Leiste der ChatGPT-Desktop-App den eingebauten Browser, rufe diese Sendero-Seite auf und melde dich an.", "Füge den Prompt in deine Unterhaltung ein und sende ihn. Lass die Sendero-Seite geöffnet, während ChatGPT den Reiseplan erstellt und validiert."],
+    extensionGuide: "So funktionieren Website-Tools in ChatGPT",
+    alternativeTitle: "Oder ChatGPT Web beziehungsweise Chrome verwenden",
+    alternativeDetail: "Öffne ChatGPT in einem anderen Tab oder mit der Chrome-Erweiterung beziehungsweise Seitenleiste, füge denselben Prompt ein und verwende das verbundene Sendero-Plugin. Website-Tools sind in Chrome nicht verfügbar.",
+    waiting: "Sobald ChatGPT einen validierten Entwurf zurückgibt, zeigt Sendero die Vorschau als Schritt 3. Ohne deine Zustimmung wird nichts gespeichert.",
+    previewEyebrow: "Schritt 3 · In Sendero prüfen",
+  },
+};
+
 function profileCopy(locale) {
   return {
     title: t(locale, "profile.title"), optional: t(locale, "profile.optional"), description: t(locale, "profile.description"),
@@ -245,6 +516,9 @@ function compactBrief(brief) {
   return {
     locale: clean(brief.locale) || "es",
     ...(clean(brief.destination) ? { destination: clean(brief.destination) } : {}),
+    ...(clean(brief.destination) && clean(brief.destinationPlaceId)
+      ? { destinationPlaceId: clean(brief.destinationPlaceId) }
+      : {}),
     ...(clean(brief.startDate) ? { startDate: clean(brief.startDate) } : {}),
     ...(clean(brief.endDate) ? { endDate: clean(brief.endDate) } : {}),
     travellers: {
@@ -270,7 +544,7 @@ function chatGptUrl() {
   return document.querySelector('meta[name="sendero-chatgpt-url"]')?.content || "https://chatgpt.com/";
 }
 
-function BriefForm({ brief, busy, copy, onChange, onSubmit }) {
+function BriefForm({ brief, busy, copy, csrfToken, locale, onChange, onSubmit }) {
   const toggleMode = (mode) => {
     const modes = brief.transport.modes.includes(mode)
       ? brief.transport.modes.filter((value) => value !== mode)
@@ -279,10 +553,19 @@ function BriefForm({ brief, busy, copy, onChange, onSubmit }) {
   };
   return (
     <form className="generate-form" onSubmit={onSubmit}>
-      <label className="generate-field">
-        <span>{copy.destination}</span>
-        <input autoComplete="off" onChange={(event) => onChange({ ...brief, destination: event.target.value })} placeholder={copy.destinationPlaceholder} required value={brief.destination} />
-      </label>
+      <DestinationCombobox
+        copy={copy.destinationSearch}
+        csrfToken={csrfToken}
+        label={copy.destination}
+        locale={locale}
+        onChange={({ label, placeId }) => onChange({
+          ...brief,
+          destination: label,
+          destinationPlaceId: placeId,
+        })}
+        placeholder={copy.destinationPlaceholder}
+        value={{ label: brief.destination, placeId: brief.destinationPlaceId }}
+      />
       <div className="generate-row">
         <label className="generate-field"><span>{copy.arrival}</span><input onChange={(event) => onChange({ ...brief, startDate: event.target.value })} required type="date" value={brief.startDate} /></label>
         <label className="generate-field"><span>{copy.departure}</span><input onChange={(event) => onChange({ ...brief, endDate: event.target.value })} required type="date" value={brief.endDate} /></label>
@@ -305,18 +588,145 @@ function BriefForm({ brief, busy, copy, onChange, onSubmit }) {
       <BudgetFields copy={copy.budget} onChange={(budget) => onChange({ ...brief, budget })} value={brief.budget} />
       <label className="generate-field"><span>{copy.interests}</span><textarea onChange={(event) => onChange({ ...brief, interests: event.target.value.split(",").map((value) => value.trim()) })} placeholder={copy.interestsPlaceholder} value={brief.interests.join(", ")} /></label>
       <label className="generate-field"><span>{copy.notes}</span><textarea onChange={(event) => onChange({ ...brief, notes: event.target.value })} placeholder={copy.notesPlaceholder} value={brief.notes} /></label>
-      <WebButton disabled={busy || brief.transport.modes.length === 0} tone="primary" type="submit">{copy.prepare}</WebButton>
+      <div className="generate-form-actions">
+        <WebButton disabled={busy || brief.transport.modes.length === 0} tone="primary" type="submit">{copy.prepare}</WebButton>
+      </div>
     </form>
+  );
+}
+
+function briefIssue(brief, copy) {
+  if (!brief.destination || !brief.destinationPlaceId) {
+    return copy.destinationSearch.selectionRequired;
+  }
+  if (brief.startDate && brief.endDate && brief.startDate > brief.endDate) {
+    return copy.invalidDates;
+  }
+  if (
+    brief.startDate
+    && brief.startDate === brief.endDate
+    && brief.profile?.arrivalTime
+    && brief.profile?.departureTime
+    && brief.profile.arrivalTime >= brief.profile.departureTime
+  ) {
+    return copy.invalidDayTimes;
+  }
+  if (brief.transport.modes.includes("car") && !brief.transport.hasLicense) {
+    return copy.licenceRequired;
+  }
+  return "";
+}
+
+async function copyText(value) {
+  if (typeof globalThis.navigator?.clipboard?.writeText === "function") {
+    await globalThis.navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand?.("copy") === true;
+  textarea.remove();
+  if (!copied) throw new Error("clipboard_unavailable");
+}
+
+function GenerationProgress({ activeStep, copy }) {
+  return (
+    <ol aria-label={copy.progressLabel} className="generate-progress">
+      {copy.progress.map((label, index) => {
+        const step = index + 1;
+        const state = step < activeStep ? "is-complete" : step === activeStep ? "is-active" : "";
+        return (
+          <li aria-current={step === activeStep ? "step" : undefined} className={state} key={label}>
+            <span aria-hidden="true" className="generate-step-number">{step < activeStep ? "✓" : step}</span>
+            <span className="generate-step-label">{label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function HandoffPanel({
+  brief,
+  copy,
+  copyState,
+  locale,
+  onCopy,
+  onEdit,
+  prompt,
+  webmcp,
+}) {
+  const startDate = formatDate(locale, brief.startDate, { dateStyle: "medium" });
+  const endDate = formatDate(locale, brief.endDate, { dateStyle: "medium" });
+  return (
+    <section aria-labelledby="generate-handoff-title" className="generate-card generate-handoff" id="generate-handoff-panel" tabIndex={-1}>
+      <div className="generate-receipt">
+        <div>
+          <strong>{copy.receiptTitle}</strong>
+          <p>{copy.receiptDetail({ destination: brief.destination, startDate, endDate })}</p>
+        </div>
+        <div className="generate-receipt-actions">
+          <WebButton onClick={onEdit}>{copy.editBrief}</WebButton>
+        </div>
+      </div>
+      <div className="generate-handoff-header">
+        <p className="web-eyebrow">{copy.handoffEyebrow}</p>
+        <h2 id="generate-handoff-title">{copy.handoffTitle}</h2>
+        <p>{copy.handoffDetail}</p>
+      </div>
+      <div className={`generate-connection ${webmcp === "available" ? "is-ready" : ""}`}>
+        <span aria-hidden="true" className="generate-connection-dot" />
+        <span>{webmcp === "available" ? copy.connected : copy.notConnected}</span>
+      </div>
+      <div className="generate-handoff-grid">
+        <div className="generate-prompt">
+          <label htmlFor="sendero-handoff-prompt">{copy.promptLabel}</label>
+          <textarea id="sendero-handoff-prompt" readOnly value={prompt} />
+          <div className="generate-handoff-actions">
+            <WebButton onClick={onCopy} tone="primary">{copy.copyPrompt}</WebButton>
+            <a className="web-button" href={chatGptUrl()} rel="noreferrer" target="_blank">{copy.openChatgpt} ↗</a>
+          </div>
+          <p aria-live="polite" className="generate-copy-status" role="status">
+            {copyState === "copied" ? copy.copied : copyState === "error" ? copy.copyError : ""}
+          </p>
+        </div>
+        <aside className="generate-handoff-guide">
+          <div>
+            <p className="web-eyebrow">{copy.recommended}</p>
+            <h3>{copy.sideChatTitle}</h3>
+            <p>{copy.sideChatDetail}</p>
+          </div>
+          <ol>{copy.sideChatSteps.map((step) => <li key={step}>{step}</li>)}</ol>
+          <a className="generate-extension-link" href={CHATGPT_SITE_TOOLS_GUIDE_URL} rel="noreferrer" target="_blank">{copy.extensionGuide} ↗</a>
+          <div className="generate-secondary-path">
+            <h3>{copy.alternativeTitle}</h3>
+            <p>{copy.alternativeDetail}</p>
+          </div>
+          <p>{copy.waiting}</p>
+        </aside>
+      </div>
+    </section>
   );
 }
 
 export function GenerateTripApp() {
   const { language, locale } = useUiLocale();
-  const copy = { ...(COPY[language] || COPY.es), profile: profileCopy(locale) };
+  const copy = {
+    ...(COPY[language] || COPY.es),
+    ...(FLOW_COPY[language] || FLOW_COPY.es),
+    destinationSearch: DESTINATION_COPY[language] || DESTINATION_COPY.es,
+    profile: profileCopy(locale),
+  };
   const [page, setPage] = useState({ kind: "loading" });
   const [brief, setBrief] = useState(() => ({ ...initialBrief, locale }));
   const [draft, setDraft] = useState(null);
-  const [protocol, setProtocol] = useState(null);
+  const [preparedBrief, setPreparedBrief] = useState(null);
+  const [copyState, setCopyState] = useState("idle");
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [webmcp, setWebmcp] = useState("checking");
@@ -364,6 +774,17 @@ export function GenerateTripApp() {
     return () => controller.abort();
   }, [load]);
   useEffect(() => { document.title = `${copy.documentTitle} · Sendero`; }, [copy.documentTitle]);
+  useEffect(() => {
+    setBrief((current) => current.locale === locale ? current : { ...current, locale });
+    setPreparedBrief((current) => current && current.locale !== locale
+      ? { ...current, locale }
+      : current);
+    setCopyState("idle");
+  }, [locale]);
+  useEffect(() => {
+    if (!(draft?.itinerary || draft?.trip?.itinerary)) return;
+    requestAnimationFrame(() => document.getElementById("generate-preview-title")?.focus());
+  }, [draft]);
 
   useEffect(() => {
     if (page.kind !== "ready") return undefined;
@@ -388,22 +809,34 @@ export function GenerateTripApp() {
     };
   }, [applyDraft, page]);
 
-  async function prepare(event) {
+  function prepare(event) {
     event.preventDefault();
-    if (!facadeRef.current) return;
-    setBusy(true);
     setNotice(null);
-    try {
-      const result = await facadeRef.current.getProtocol({ brief: compactBrief(brief) });
-      setProtocol(result);
-      setNotice(result.brief.ready
-        ? { kind: "ready", text: copy.protocolReady }
-        : { kind: "error", text: copy.criticalMissing(result.brief.criticalFields.join(", ")) });
-    } catch (error) {
-      setNotice({ kind: "error", text: error.message || copy.prepareError });
-    } finally {
-      setBusy(false);
+    const issue = briefIssue(brief, copy);
+    if (issue) {
+      setNotice({ kind: "error", text: issue });
+      return;
     }
+    setPreparedBrief(compactBrief(brief));
+    setCopyState("idle");
+    requestAnimationFrame(() => document.getElementById("generate-handoff-panel")?.focus());
+  }
+
+  async function copyPrompt() {
+    if (!preparedBrief) return;
+    try {
+      await copyText(createItineraryHandoffPrompt(preparedBrief, language));
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  }
+
+  function editBrief() {
+    setPreparedBrief(null);
+    setCopyState("idle");
+    setNotice(null);
+    requestAnimationFrame(() => document.getElementById("generate-context-title")?.focus());
   }
 
   async function saveDraft() {
@@ -440,6 +873,10 @@ export function GenerateTripApp() {
 
   const itinerary = draft?.itinerary || draft?.trip?.itinerary;
   const savedTrip = draft?.status === "saved" ? draft.trip : null;
+  const handoffPrompt = preparedBrief
+    ? createItineraryHandoffPrompt(preparedBrief, language)
+    : "";
+  const activeStep = itinerary ? 3 : preparedBrief ? 2 : 1;
   return (
     <WebPageFrame csrfToken={page.session.csrfToken} user={page.session.user}>
       <style>{generateStyles}</style>
@@ -448,42 +885,44 @@ export function GenerateTripApp() {
         <h1>{copy.title}</h1>
         <p>{copy.description}</p>
       </header>
-      <div className="generate-status" aria-live="polite">
-        <div className={`generate-notice ${webmcp === "available" ? "is-ready" : ""}`}>
-          <strong>{webmcp === "available" ? copy.webmcpConnected : copy.webmcpBrowser}</strong>{" "}
-          {webmcp === "available" ? copy.webmcpAvailable : copy.webmcpUnavailable}
-        </div>
-        {notice ? <div className={`generate-notice is-${notice.kind}`}>{notice.text}</div> : null}
-      </div>
-      <div className="generate-layout">
-        <section className="generate-card">
-          <h2>{copy.contextTitle}</h2>
-          <p>{copy.contextDetail}</p>
-          <BriefForm brief={brief} busy={busy} copy={copy} onChange={setBrief} onSubmit={prepare} />
-          {protocol ? <p className="generate-protocol">{copy.protocol} {protocol.protocol.version} · {protocol.protocol.hash}</p> : null}
-        </section>
-        <section className="generate-card generate-preview">
-          {itinerary ? (
-            <>
-              <h2>{draft.status === "saved" ? copy.savedTitle : copy.draftTitle}</h2>
-              <p>{draft.status === "saved" ? copy.savedDetail : copy.draftDetail}</p>
-              {draft.warnings?.length ? <ul className="generate-steps">{draft.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
-              <div className="generate-draft-actions">
-                {draft.status === "valid" ? <WebButton disabled={busy} onClick={saveDraft} tone="primary">{copy.save}</WebButton> : null}
-                {draft.status === "valid" ? <WebButton disabled={busy} onClick={discardDraft}>{copy.discard}</WebButton> : null}
-                {savedTrip?.webId ? <a className="web-button web-button-primary" href={hrefForLocale(`/app/trips/${encodeURIComponent(savedTrip.webId)}`, locale)}>{copy.open}</a> : null}
-              </div>
-              <ItineraryViewer itinerary={itinerary} uiLocale={locale} variant="web" />
-            </>
-          ) : (
-            <div className="generate-empty">
-              <p className="web-eyebrow">{copy.conversation}</p>
-              <h2>{copy.emptyPreviewTitle}</h2>
-              <ol className="generate-steps">{copy.emptySteps.map((step) => <li key={step}>{step}</li>)}</ol>
-              <div className="web-actions"><a className="web-button web-button-primary" href={chatGptUrl()} rel="noreferrer" target="_blank">{copy.openChatgpt} ↗</a><a className="web-button" href={hrefForLocale("/app", locale)}>{copy.viewTrips}</a></div>
+      <div className="generate-flow">
+        <GenerationProgress activeStep={activeStep} copy={copy} />
+        {notice ? (
+          <div aria-live="assertive" className={`generate-notice is-${notice.kind}`} role="alert">{notice.text}</div>
+        ) : null}
+        {activeStep === 1 ? (
+          <section aria-labelledby="generate-context-title" className="generate-card">
+            <h2 id="generate-context-title" tabIndex={-1}>{copy.contextTitle}</h2>
+            <p>{copy.contextDetail}</p>
+            <BriefForm brief={brief} busy={busy} copy={copy} csrfToken={page.session.csrfToken} locale={locale} onChange={setBrief} onSubmit={prepare} />
+          </section>
+        ) : null}
+        {activeStep === 2 ? (
+          <HandoffPanel
+            brief={preparedBrief}
+            copy={copy}
+            copyState={copyState}
+            locale={locale}
+            onCopy={copyPrompt}
+            onEdit={editBrief}
+            prompt={handoffPrompt}
+            webmcp={webmcp}
+          />
+        ) : null}
+        {activeStep === 3 ? (
+          <section aria-labelledby="generate-preview-title" className="generate-card generate-preview">
+            <p className="web-eyebrow">{copy.previewEyebrow}</p>
+            <h2 id="generate-preview-title" tabIndex={-1}>{draft.status === "saved" ? copy.savedTitle : copy.draftTitle}</h2>
+            <p>{draft.status === "saved" ? copy.savedDetail : copy.draftDetail}</p>
+            {draft.warnings?.length ? <ul className="generate-steps">{draft.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+            <div className="generate-draft-actions">
+              {draft.status === "valid" ? <WebButton disabled={busy} onClick={saveDraft} tone="primary">{copy.save}</WebButton> : null}
+              {draft.status === "valid" ? <WebButton disabled={busy} onClick={discardDraft}>{copy.discard}</WebButton> : null}
+              {savedTrip?.webId ? <a className="web-button web-button-primary" href={hrefForLocale(`/app/trips/${encodeURIComponent(savedTrip.webId)}`, locale)}>{copy.open}</a> : null}
             </div>
-          )}
-        </section>
+            <ItineraryViewer itinerary={itinerary} uiLocale={locale} variant="web" />
+          </section>
+        ) : null}
       </div>
     </WebPageFrame>
   );

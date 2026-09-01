@@ -8,7 +8,9 @@ function agesText(value) {
 function parsedAges(value) {
   return String(value || "")
     .split(/[,;]+/)
-    .map((age) => Number(age.trim()))
+    .map((age) => age.trim())
+    .filter(Boolean)
+    .map(Number)
     .filter((age) => Number.isInteger(age));
 }
 
