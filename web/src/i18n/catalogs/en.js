@@ -133,7 +133,7 @@ const en = {
   "budget.description": "Set a spending style and, if useful, a monetary limit.",
   "budget.comfort": "Spending style",
   "budget.comfort.flexible": "Flexible", "budget.comfort.low": "Economy", "budget.comfort.medium": "Comfort", "budget.comfort.high": "Premium",
-  "budget.amount": "Limit", "budget.optional": "(optional)", "budget.currency": "Currency",
+  "budget.amount": "Limit", "budget.amountExample": "e.g.", "budget.optional": "(optional)", "budget.currency": "Currency", "budget.currencyPlaceholder": "Choose a currency",
   "budget.scope": "Limit applies", "budget.scope.total": "Whole trip", "budget.scope.per_person": "Per person", "budget.scope.per_day": "Per day",
   "budget.flexibility": "How firm is it?", "budget.flexibility.strict": "Hard cap", "budget.flexibility.target": "Target", "budget.flexibility.flexible": "Reference only",
   "budget.includes": "Count these categories",

@@ -147,8 +147,10 @@ export function TripIntakeApp() {
     comfort: t(locale, "budget.comfort"),
     comforts: Object.fromEntries(["flexible", "low", "medium", "high"].map((value) => [value, t(locale, `budget.comfort.${value}`)])),
     amount: t(locale, "budget.amount"),
+    amountExample: t(locale, "budget.amountExample"),
     optional: t(locale, "budget.optional"),
     currency: t(locale, "budget.currency"),
+    currencyPlaceholder: t(locale, "budget.currencyPlaceholder"),
     scope: t(locale, "budget.scope"),
     scopes: Object.fromEntries(["total", "per_person", "per_day"].map((value) => [value, t(locale, `budget.scope.${value}`)])),
     flexibility: t(locale, "budget.flexibility"),
@@ -455,7 +457,7 @@ export function TripIntakeApp() {
             {draft.transportModes.includes("car") ? <label className="check-row field-wide"><input checked={draft.hasLicense} onChange={(event) => update("hasLicense", event.target.checked)} type="checkbox" />{t(locale, "intake.license")}</label> : null}
             <div className="field-wide"><SegmentedControl label={t(locale, "intake.pace")} onChange={(value) => update("pace", value)} options={[{ value: "relaxed", label: t(locale, "intake.pace.relaxed") }, { value: "balanced", label: t(locale, "intake.pace.balanced") }, { value: "intense", label: t(locale, "intake.pace.intense") }]} value={draft.pace} /></div>
             <TripProfileFields adultsCount={draft.adults} childrenCount={draft.children} copy={profileCopy} onChange={(value) => update("profile", value)} value={draft.profile} />
-            <BudgetFields copy={budgetCopy} onChange={(value) => update("budget", value)} value={draft.budget} />
+            <BudgetFields copy={budgetCopy} locale={locale} onChange={(value) => update("budget", value)} value={draft.budget} />
             <Field className="field-wide" hint={t(locale, "intake.interestsHint")} label={t(locale, "intake.interests")}><textarea onChange={(event) => update("interests", event.target.value)} placeholder={t(locale, "intake.interestsPlaceholder")} value={draft.interests} /></Field>
           </div>
           {status.message ? <InlineNotice tone={status.state === "error" ? "error" : "neutral"}>{status.message}</InlineNotice> : null}

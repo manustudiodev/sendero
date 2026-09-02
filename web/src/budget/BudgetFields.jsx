@@ -1,3 +1,10 @@
+import {
+  currencyOptionLabel,
+  formatLocalizedAmountInput,
+  normalizeLocalizedAmountInput,
+  supportedCurrencies,
+} from "./budget-format.js";
+
 const DEFAULT_INCLUDES = ["activities", "food", "local_transport"];
 const COMFORTS = ["flexible", "low", "medium", "high"];
 const SCOPES = ["total", "per_person", "per_day"];
@@ -41,8 +48,12 @@ export function budgetValueFromDraft(draft) {
   };
 }
 
-export function BudgetFields({ copy, onChange, value }) {
-  const monetary = value.amount.trim().length > 0;
+export function BudgetFields({ copy, locale = "en", onChange, value }) {
+  const numericAmount = Number(value.amount);
+  const monetary = Number.isFinite(numericAmount) && numericAmount > 0;
+  const currencies = value.currency && !supportedCurrencies.includes(value.currency)
+    ? [value.currency, ...supportedCurrencies]
+    : supportedCurrencies;
 
   function update(field, nextValue) {
     onChange({ ...value, [field]: nextValue });
@@ -56,10 +67,12 @@ export function BudgetFields({ copy, onChange, value }) {
   }
 
   function updateAmount(amount) {
+    const nextAmount = normalizeLocalizedAmountInput(amount, locale);
+    const nextNumericAmount = Number(nextAmount);
     onChange({
       ...value,
-      amount,
-      ...(!monetary && amount.trim() && value.flexibility === "flexible"
+      amount: nextAmount,
+      ...(!monetary && Number.isFinite(nextNumericAmount) && nextNumericAmount > 0 && value.flexibility === "flexible"
         ? { flexibility: "target" }
         : {}),
     });
@@ -78,11 +91,24 @@ export function BudgetFields({ copy, onChange, value }) {
         </label>
         <label className="budget-field">
           <span>{copy.amount} <small>{copy.optional}</small></span>
-          <input inputMode="decimal" min="0" onChange={(event) => updateAmount(event.target.value)} placeholder="1200" step="0.01" type="number" value={value.amount} />
+          <input
+            autoComplete="off"
+            inputMode="decimal"
+            onBlur={() => {
+              if (value.amount.endsWith(".")) update("amount", value.amount.slice(0, -1));
+            }}
+            onChange={(event) => updateAmount(event.target.value)}
+            placeholder={`${copy.amountExample} ${formatLocalizedAmountInput("1200.00", locale)}`}
+            type="text"
+            value={formatLocalizedAmountInput(value.amount, locale)}
+          />
         </label>
         <label className="budget-field">
           <span>{copy.currency}</span>
-          <input autoCapitalize="characters" maxLength="3" minLength={monetary ? 3 : undefined} onChange={(event) => update("currency", event.target.value.toUpperCase())} pattern="[A-Za-z]{3}" placeholder="USD" required={monetary} value={value.currency} />
+          <select className={value.currency ? undefined : "is-placeholder"} onChange={(event) => update("currency", event.target.value)} required={monetary} value={value.currency}>
+            <option value="">{copy.currencyPlaceholder}</option>
+            {currencies.map((currency) => <option key={currency} value={currency}>{currencyOptionLabel(currency, locale)}</option>)}
+          </select>
         </label>
         {monetary ? (
           <>

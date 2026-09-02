@@ -20,7 +20,10 @@ export const authenticatedPageStyles = `
 html, body, #root { min-height: 100%; margin: 0; }
 body { background: var(--web-bg); color: var(--web-ink); font: 15px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .web-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
+input::placeholder, textarea::placeholder { color: var(--web-muted); opacity: .68; }
+select.is-placeholder { color: var(--web-muted); }
+select.is-placeholder option { color: var(--web-ink); }
 a { color: inherit; }
 :focus-visible { outline: 3px solid rgba(0, 102, 94, .32); outline-offset: 3px; }
 .web-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 22px 0 52px; }

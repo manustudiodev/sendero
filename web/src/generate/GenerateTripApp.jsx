@@ -44,6 +44,19 @@ const generateStyles = `
 .generate-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 18px; margin-top: 26px; }
 .generate-field { display: grid; gap: 6px; }
 .generate-field-wide, .generate-form > .profile-editor, .generate-form > .budget-editor, .generate-form-actions { grid-column: 1 / -1; }
+.generate-form > .profile-editor, .generate-form > .budget-editor {
+  --ink: var(--web-ink);
+  --muted: var(--web-muted);
+  --line: var(--web-line);
+  --line-strong: var(--web-line);
+  --soft: var(--web-soft);
+  --surface: var(--web-surface);
+  --surface-hover: var(--web-soft);
+  --focus-border: var(--web-forest);
+  --field-ring: color-mix(in srgb, var(--web-forest) 18%, transparent);
+  --sendero-forest: var(--web-forest);
+  color: var(--web-ink);
+}
 .generate-field > span, .generate-legend { font-size: 14px; font-weight: 690; }
 .generate-field input, .generate-field select, .generate-field textarea { width: 100%; border: 1px solid var(--web-line); border-radius: 10px; padding: 10px 12px; background: var(--web-surface); color: var(--web-ink); }
 .generate-field textarea { min-height: 84px; resize: vertical; font: inherit; }
@@ -90,8 +103,6 @@ const generateStyles = `
 .generate-handoff-guide p { margin: 6px 0 0; color: var(--web-muted); }
 .generate-handoff-guide ol { margin: 0; padding-left: 21px; color: var(--web-muted); }
 .generate-handoff-guide li + li { margin-top: 9px; }
-.generate-secondary-path { border-top: 1px solid var(--web-line); padding-top: 18px; }
-.generate-secondary-path h3 { font-size: 16px; }
 .generate-browser-note { border-radius: 10px; padding: 10px 12px; background: var(--web-surface); color: var(--web-muted); font-size: 13px; }
 .generate-copy-status { min-height: 21px; margin: 0; color: var(--web-muted); font-size: 13px; }
 .generate-live-status { display: grid; grid-template-columns: 13px minmax(0, 1fr); align-items: start; gap: 11px; border: 1px solid var(--web-line); border-radius: 14px; padding: 14px 16px; background: var(--web-soft); }
@@ -256,7 +267,7 @@ const COPY = {
     interests: "Interests", interestsPlaceholder: "Architecture, local food, music…", notes: "Notes and constraints", notesPlaceholder: "Fixed plans, accessibility, things to avoid…",
     budget: {
       title: "Budget", description: "Set a spending style and, if useful, a monetary limit.", comfort: "Spending style", comforts: { flexible: "Flexible", low: "Economy", medium: "Mid-range", high: "Premium" },
-      amount: "Limit", optional: "Optional", currency: "Currency", scope: "Applied to", scopes: { total: "Whole trip", per_person: "Per person", per_day: "Per day" },
+      amount: "Limit", amountExample: "e.g.", optional: "Optional", currency: "Currency", currencyPlaceholder: "Choose a currency", scope: "Applied to", scopes: { total: "Whole trip", per_person: "Per person", per_day: "Per day" },
       flexibility: "How firm is it?", flexibilities: { strict: "Hard cap", target: "Target", flexible: "Reference" }, includes: "Counts toward the limit",
       categories: { activities: "Activities", food: "Food", local_transport: "Local transport", lodging: "Lodging", long_distance_transport: "Travel to destination" },
       note: "Lodging and travel to the destination count only when selected. Sendero uses price ranges, not false precision.",
@@ -265,13 +276,13 @@ const COPY = {
     criticalMissing: (fields) => `Critical details are missing: ${fields}.`, prepareError: "We couldn't prepare the trip.", saved: "The trip was saved in Sendero.",
     saveError: "We couldn't save the trip.", discarded: "The temporary draft was discarded.", discardError: "We couldn't discard the draft.",
     loading: "Preparing the planner…", signIn: "Sign in", signedOutDetail: "Your Sendero session protects the drafts and trips ChatGPT creates from this page.", signedOutTitle: "Sign in to plan",
-    back: "Back to your trips", unavailableDetail: "This capability is not enabled in this environment yet. The Sendero plugin remains available in ChatGPT.", unavailableTitle: "Web generation unavailable",
+    back: "Back to your trips", unavailableDetail: "This capability is not enabled in this environment yet. Open Sendero in the ChatGPT desktop app's integrated browser to use the WebMCP flow.", unavailableTitle: "Web generation unavailable",
     retry: "Try again", errorDetail: "No trip was changed or saved.", errorTitle: "We couldn't open the planner", eyebrow: "Conversational planning", title: "Create a trip",
     description: "Sendero provides the rules, validates the result, and saves it. ChatGPT researches and builds the itinerary in the active conversation.",
     draftReady: "Temporary draft ready", draftExpired: "This draft is no longer available.", save: "Save in Sendero", discard: "Discard draft", open: "Open saved trip",
     conversation: "Conversation + Sendero", emptyTitle: "Your itinerary will appear here", emptyDetail: "Complete the brief and ask ChatGPT to generate it. Sendero validates the result before it can be saved.",
     steps: ["Complete the trip essentials.", "Continue the research and generation in ChatGPT.", "Review and save the validated draft in Sendero."],
-    webmcpConnected: "WebMCP connected.", webmcpBrowser: "Browser mode.", webmcpAvailable: "ChatGPT can use the generation tools while this page remains open.", webmcpUnavailable: "You can prepare the brief here and open ChatGPT; automatic generation from this page requires a WebMCP-compatible client.",
+    webmcpConnected: "WebMCP connected.", webmcpBrowser: "Integrated browser mode.", webmcpAvailable: "ChatGPT can use the generation tools while this page remains open in its integrated browser.", webmcpUnavailable: "Open Sendero in the ChatGPT desktop app's integrated browser to enable the WebMCP generation flow.",
     contextTitle: "Trip context", contextDetail: "Complete the essentials. ChatGPT can enrich this brief with what you already discussed.", protocol: "Protocol",
     savedTitle: "Saved trip", draftTitle: "Validated draft", savedDetail: "This is the authoritative Sendero version.", draftDetail: "It is not part of your trips yet. Review the warnings before saving it.",
     emptyPreviewTitle: "Your itinerary will appear here after validation.", emptySteps: ["Prepare the brief.", "Ask ChatGPT to create the itinerary with Sendero.", "Review the draft and save it explicitly."],
@@ -286,7 +297,7 @@ const COPY = {
     interests: "Intereses", interestsPlaceholder: "Arquitectura, comida local, música…", notes: "Notas y restricciones", notesPlaceholder: "Planes fijos, accesibilidad, cosas que evitar…",
     budget: {
       title: "Presupuesto", description: "Define el estilo de gasto y, si sirve, un límite monetario.", comfort: "Estilo de gasto", comforts: { flexible: "Flexible", low: "Económico", medium: "Medio", high: "Premium" },
-      amount: "Límite", optional: "Opcional", currency: "Moneda", scope: "Se aplica a", scopes: { total: "Todo el viaje", per_person: "Por persona", per_day: "Por día" },
+      amount: "Límite", amountExample: "ej.", optional: "Opcional", currency: "Moneda", currencyPlaceholder: "Selecciona una moneda", scope: "Se aplica a", scopes: { total: "Todo el viaje", per_person: "Por persona", per_day: "Por día" },
       flexibility: "¿Qué tan firme es?", flexibilities: { strict: "Tope estricto", target: "Objetivo", flexible: "Referencia" }, includes: "Cuenta dentro del límite",
       categories: { activities: "Actividades", food: "Comidas", local_transport: "Transporte local", lodging: "Alojamiento", long_distance_transport: "Viaje al destino" },
       note: "Alojamiento y viaje al destino cuentan solo si los seleccionas. Sendero usa rangos, no falsa precisión.",
@@ -295,13 +306,13 @@ const COPY = {
     criticalMissing: (fields) => `Faltan datos críticos: ${fields}.`, prepareError: "No pudimos preparar el viaje.", saved: "El viaje quedó guardado en Sendero.",
     saveError: "No pudimos guardar el viaje.", discarded: "El borrador temporal fue descartado.", discardError: "No pudimos descartar el borrador.",
     loading: "Preparando el planificador…", signIn: "Iniciar sesión", signedOutDetail: "Tu sesión de Sendero protege los borradores y viajes que ChatGPT cree desde esta página.", signedOutTitle: "Inicia sesión para planificar",
-    back: "Volver a tus viajes", unavailableDetail: "Esta capacidad todavía no está activada en este ambiente. El plugin de Sendero continúa disponible en ChatGPT.", unavailableTitle: "Generación web no disponible",
+    back: "Volver a tus viajes", unavailableDetail: "Esta capacidad todavía no está activada en este ambiente. Abre Sendero en el navegador integrado de la app de escritorio de ChatGPT para usar el flujo WebMCP.", unavailableTitle: "Generación web no disponible",
     retry: "Intentar de nuevo", errorDetail: "No se modificó ni guardó ningún viaje.", errorTitle: "No pudimos abrir el planificador", eyebrow: "Planificación conversacional", title: "Crear un viaje",
     description: "Sendero aporta las reglas, valida el resultado y lo guarda. ChatGPT investiga y construye el itinerario en la conversación activa.",
     draftReady: "Borrador temporal listo", draftExpired: "Este borrador ya no está disponible.", save: "Guardar en Sendero", discard: "Descartar borrador", open: "Abrir viaje guardado",
     conversation: "Conversación + Sendero", emptyTitle: "Tu itinerario aparecerá aquí", emptyDetail: "Completa el brief y pídele a ChatGPT que lo genere. Sendero valida el resultado antes de permitir guardarlo.",
     steps: ["Completa lo esencial del viaje.", "Continúa la investigación y generación en ChatGPT.", "Revisa y guarda el borrador validado en Sendero."],
-    webmcpConnected: "WebMCP conectado.", webmcpBrowser: "Modo navegador.", webmcpAvailable: "ChatGPT tiene disponibles las herramientas de generación mientras esta página permanezca abierta.", webmcpUnavailable: "Puedes preparar el brief aquí y abrir ChatGPT; la generación automática desde la página requiere un cliente compatible con WebMCP.",
+    webmcpConnected: "WebMCP conectado.", webmcpBrowser: "Modo navegador integrado.", webmcpAvailable: "ChatGPT tiene disponibles las herramientas de generación mientras esta página permanezca abierta en su navegador integrado.", webmcpUnavailable: "Abre Sendero en el navegador integrado de la app de escritorio de ChatGPT para habilitar el flujo de generación WebMCP.",
     contextTitle: "Contexto del viaje", contextDetail: "Completa lo esencial. ChatGPT puede enriquecer este brief con lo que ya hablaron.", protocol: "Protocolo",
     savedTitle: "Viaje guardado", draftTitle: "Borrador validado", savedDetail: "Esta es la versión autoritativa de Sendero.", draftDetail: "Todavía no forma parte de tus viajes. Revisa las advertencias antes de guardarlo.",
     emptyPreviewTitle: "Tu itinerario aparecerá aquí después de validarse.", emptySteps: ["Prepara el brief.", "Pide a ChatGPT que cree el itinerario con Sendero.", "Revisa el borrador y guárdalo explícitamente."],
@@ -316,7 +327,7 @@ const COPY = {
     interests: "Interesses", interestsPlaceholder: "Arquitetura, comida local, música…", notes: "Observações e restrições", notesPlaceholder: "Planos fixos, acessibilidade, coisas a evitar…",
     budget: {
       title: "Orçamento", description: "Defina o estilo de gasto e, se for útil, um limite monetário.", comfort: "Estilo de gasto", comforts: { flexible: "Flexível", low: "Econômico", medium: "Médio", high: "Premium" },
-      amount: "Limite", optional: "Opcional", currency: "Moeda", scope: "Aplicado a", scopes: { total: "Viagem inteira", per_person: "Por pessoa", per_day: "Por dia" },
+      amount: "Limite", amountExample: "ex.", optional: "Opcional", currency: "Moeda", currencyPlaceholder: "Selecione uma moeda", scope: "Aplicado a", scopes: { total: "Viagem inteira", per_person: "Por pessoa", per_day: "Por dia" },
       flexibility: "Quão rígido é?", flexibilities: { strict: "Teto rígido", target: "Meta", flexible: "Referência" }, includes: "Conta no limite",
       categories: { activities: "Atividades", food: "Alimentação", local_transport: "Transporte local", lodging: "Hospedagem", long_distance_transport: "Viagem até o destino" },
       note: "Hospedagem e viagem até o destino contam somente quando selecionadas. O Sendero usa faixas, não falsa precisão.",
@@ -325,13 +336,13 @@ const COPY = {
     criticalMissing: (fields) => `Faltam dados críticos: ${fields}.`, prepareError: "Não foi possível preparar a viagem.", saved: "A viagem foi salva no Sendero.",
     saveError: "Não foi possível salvar a viagem.", discarded: "O rascunho temporário foi descartado.", discardError: "Não foi possível descartar o rascunho.",
     loading: "Preparando o planejador…", signIn: "Entrar", signedOutDetail: "Sua sessão do Sendero protege os rascunhos e viagens que o ChatGPT criar nesta página.", signedOutTitle: "Entre para planejar",
-    back: "Voltar às suas viagens", unavailableDetail: "Esta capacidade ainda não está ativa neste ambiente. O plugin do Sendero continua disponível no ChatGPT.", unavailableTitle: "Geração web indisponível",
+    back: "Voltar às suas viagens", unavailableDetail: "Esta capacidade ainda não está ativa neste ambiente. Abra o Sendero no navegador integrado do app ChatGPT para desktop para usar o fluxo WebMCP.", unavailableTitle: "Geração web indisponível",
     retry: "Tentar novamente", errorDetail: "Nenhuma viagem foi alterada ou salva.", errorTitle: "Não foi possível abrir o planejador", eyebrow: "Planejamento conversacional", title: "Criar uma viagem",
     description: "O Sendero fornece as regras, valida o resultado e o salva. O ChatGPT pesquisa e constrói o roteiro na conversa ativa.",
     draftReady: "Rascunho temporário pronto", draftExpired: "Este rascunho não está mais disponível.", save: "Salvar no Sendero", discard: "Descartar rascunho", open: "Abrir viagem salva",
     conversation: "Conversa + Sendero", emptyTitle: "Seu roteiro aparecerá aqui", emptyDetail: "Complete o brief e peça ao ChatGPT para gerá-lo. O Sendero valida o resultado antes de permitir salvá-lo.",
     steps: ["Complete o essencial da viagem.", "Continue a pesquisa e geração no ChatGPT.", "Revise e salve o rascunho validado no Sendero."],
-    webmcpConnected: "WebMCP conectado.", webmcpBrowser: "Modo navegador.", webmcpAvailable: "O ChatGPT pode usar as ferramentas de geração enquanto esta página permanecer aberta.", webmcpUnavailable: "Você pode preparar o brief aqui e abrir o ChatGPT; a geração automática nesta página exige um cliente compatível com WebMCP.",
+    webmcpConnected: "WebMCP conectado.", webmcpBrowser: "Modo de navegador integrado.", webmcpAvailable: "O ChatGPT pode usar as ferramentas de geração enquanto esta página permanecer aberta no navegador integrado.", webmcpUnavailable: "Abra o Sendero no navegador integrado do app ChatGPT para desktop para ativar o fluxo de geração WebMCP.",
     contextTitle: "Contexto da viagem", contextDetail: "Complete o essencial. O ChatGPT pode enriquecer este brief com o que vocês já conversaram.", protocol: "Protocolo",
     savedTitle: "Viagem salva", draftTitle: "Rascunho validado", savedDetail: "Esta é a versão oficial do Sendero.", draftDetail: "Ainda não faz parte das suas viagens. Revise os avisos antes de salvá-lo.",
     emptyPreviewTitle: "Seu roteiro aparecerá aqui depois de ser validado.", emptySteps: ["Prepare o brief.", "Peça ao ChatGPT para criar o roteiro com o Sendero.", "Revise o rascunho e salve-o explicitamente."],
@@ -346,7 +357,7 @@ const COPY = {
     interests: "Centres d’intérêt", interestsPlaceholder: "Architecture, cuisine locale, musique…", notes: "Notes et contraintes", notesPlaceholder: "Plans fixes, accessibilité, choses à éviter…",
     budget: {
       title: "Budget", description: "Définissez le niveau de dépenses et, si utile, une limite monétaire.", comfort: "Niveau de dépenses", comforts: { flexible: "Flexible", low: "Économique", medium: "Intermédiaire", high: "Premium" },
-      amount: "Limite", optional: "Facultatif", currency: "Devise", scope: "S’applique à", scopes: { total: "Tout le voyage", per_person: "Par personne", per_day: "Par jour" },
+      amount: "Limite", amountExample: "p. ex.", optional: "Facultatif", currency: "Devise", currencyPlaceholder: "Choisissez une devise", scope: "S’applique à", scopes: { total: "Tout le voyage", per_person: "Par personne", per_day: "Par jour" },
       flexibility: "Quel degré de fermeté ?", flexibilities: { strict: "Plafond strict", target: "Objectif", flexible: "Référence" }, includes: "Pris en compte dans la limite",
       categories: { activities: "Activités", food: "Repas", local_transport: "Transports locaux", lodging: "Hébergement", long_distance_transport: "Trajet vers la destination" },
       note: "L’hébergement et le trajet vers la destination ne comptent que s’ils sont sélectionnés. Sendero utilise des fourchettes, sans fausse précision.",
@@ -355,13 +366,13 @@ const COPY = {
     criticalMissing: (fields) => `Informations essentielles manquantes : ${fields}.`, prepareError: "Impossible de préparer le voyage.", saved: "Le voyage a été enregistré dans Sendero.",
     saveError: "Impossible d’enregistrer le voyage.", discarded: "Le brouillon temporaire a été supprimé.", discardError: "Impossible de supprimer le brouillon.",
     loading: "Préparation du planificateur…", signIn: "Se connecter", signedOutDetail: "Votre session Sendero protège les brouillons et voyages créés par ChatGPT depuis cette page.", signedOutTitle: "Connectez-vous pour planifier",
-    back: "Retour à vos voyages", unavailableDetail: "Cette fonctionnalité n’est pas encore activée dans cet environnement. Le plugin Sendero reste disponible dans ChatGPT.", unavailableTitle: "Génération web indisponible",
+    back: "Retour à vos voyages", unavailableDetail: "Cette fonctionnalité n’est pas encore activée dans cet environnement. Ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT pour utiliser le parcours WebMCP.", unavailableTitle: "Génération web indisponible",
     retry: "Réessayer", errorDetail: "Aucun voyage n’a été modifié ni enregistré.", errorTitle: "Impossible d’ouvrir le planificateur", eyebrow: "Planification conversationnelle", title: "Créer un voyage",
     description: "Sendero fournit les règles, valide le résultat et l’enregistre. ChatGPT effectue les recherches et construit l’itinéraire dans la conversation active.",
     draftReady: "Brouillon temporaire prêt", draftExpired: "Ce brouillon n’est plus disponible.", save: "Enregistrer dans Sendero", discard: "Supprimer le brouillon", open: "Ouvrir le voyage enregistré",
     conversation: "Conversation + Sendero", emptyTitle: "Votre itinéraire apparaîtra ici", emptyDetail: "Complétez le brief et demandez à ChatGPT de le générer. Sendero valide le résultat avant qu’il puisse être enregistré.",
     steps: ["Complétez l’essentiel du voyage.", "Poursuivez la recherche et la génération dans ChatGPT.", "Vérifiez et enregistrez le brouillon validé dans Sendero."],
-    webmcpConnected: "WebMCP connecté.", webmcpBrowser: "Mode navigateur.", webmcpAvailable: "ChatGPT peut utiliser les outils de génération tant que cette page reste ouverte.", webmcpUnavailable: "Vous pouvez préparer le brief ici et ouvrir ChatGPT ; la génération automatique depuis cette page nécessite un client compatible avec WebMCP.",
+    webmcpConnected: "WebMCP connecté.", webmcpBrowser: "Mode navigateur intégré.", webmcpAvailable: "ChatGPT peut utiliser les outils de génération tant que cette page reste ouverte dans son navigateur intégré.", webmcpUnavailable: "Ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT pour activer le parcours de génération WebMCP.",
     contextTitle: "Contexte du voyage", contextDetail: "Complétez l’essentiel. ChatGPT peut enrichir ce brief avec les éléments déjà abordés.", protocol: "Protocole",
     savedTitle: "Voyage enregistré", draftTitle: "Brouillon validé", savedDetail: "Il s’agit de la version de référence dans Sendero.", draftDetail: "Il ne fait pas encore partie de vos voyages. Vérifiez les avertissements avant de l’enregistrer.",
     emptyPreviewTitle: "Votre itinéraire apparaîtra ici après validation.", emptySteps: ["Préparez le brief.", "Demandez à ChatGPT de créer l’itinéraire avec Sendero.", "Vérifiez le brouillon et enregistrez-le explicitement."],
@@ -376,7 +387,7 @@ const COPY = {
     interests: "Interessen", interestsPlaceholder: "Architektur, lokale Küche, Musik…", notes: "Hinweise und Einschränkungen", notesPlaceholder: "Feste Pläne, Barrierefreiheit, zu vermeidende Dinge…",
     budget: {
       title: "Budget", description: "Lege den Ausgabenstil und bei Bedarf eine Geldgrenze fest.", comfort: "Ausgabenstil", comforts: { flexible: "Flexibel", low: "Günstig", medium: "Mittel", high: "Premium" },
-      amount: "Grenze", optional: "Optional", currency: "Währung", scope: "Gilt für", scopes: { total: "Gesamte Reise", per_person: "Pro Person", per_day: "Pro Tag" },
+      amount: "Grenze", amountExample: "z. B.", optional: "Optional", currency: "Währung", currencyPlaceholder: "Währung auswählen", scope: "Gilt für", scopes: { total: "Gesamte Reise", per_person: "Pro Person", per_day: "Pro Tag" },
       flexibility: "Wie verbindlich?", flexibilities: { strict: "Feste Obergrenze", target: "Ziel", flexible: "Richtwert" }, includes: "Wird auf die Grenze angerechnet",
       categories: { activities: "Aktivitäten", food: "Verpflegung", local_transport: "Nahverkehr", lodging: "Unterkunft", long_distance_transport: "Anreise zum Ziel" },
       note: "Unterkunft und Anreise zählen nur, wenn sie ausgewählt sind. Sendero arbeitet mit Spannen statt mit Scheingenauigkeit.",
@@ -385,13 +396,13 @@ const COPY = {
     criticalMissing: (fields) => `Wesentliche Angaben fehlen: ${fields}.`, prepareError: "Die Reise konnte nicht vorbereitet werden.", saved: "Die Reise wurde in Sendero gespeichert.",
     saveError: "Die Reise konnte nicht gespeichert werden.", discarded: "Der temporäre Entwurf wurde verworfen.", discardError: "Der Entwurf konnte nicht verworfen werden.",
     loading: "Planer wird vorbereitet…", signIn: "Anmelden", signedOutDetail: "Deine Sendero-Sitzung schützt die Entwürfe und Reisen, die ChatGPT von dieser Seite aus erstellt.", signedOutTitle: "Zum Planen anmelden",
-    back: "Zurück zu deinen Reisen", unavailableDetail: "Diese Funktion ist in dieser Umgebung noch nicht aktiviert. Das Sendero-Plugin bleibt in ChatGPT verfügbar.", unavailableTitle: "Web-Generierung nicht verfügbar",
+    back: "Zurück zu deinen Reisen", unavailableDetail: "Diese Funktion ist in dieser Umgebung noch nicht aktiviert. Öffne Sendero im integrierten Browser der ChatGPT-Desktop-App, um den WebMCP-Ablauf zu verwenden.", unavailableTitle: "Web-Generierung nicht verfügbar",
     retry: "Erneut versuchen", errorDetail: "Es wurde keine Reise geändert oder gespeichert.", errorTitle: "Der Planer konnte nicht geöffnet werden", eyebrow: "Reiseplanung im Gespräch", title: "Reise erstellen",
     description: "Sendero stellt die Regeln bereit, prüft das Ergebnis und speichert es. ChatGPT recherchiert und erstellt den Reiseplan in der aktiven Unterhaltung.",
     draftReady: "Temporärer Entwurf bereit", draftExpired: "Dieser Entwurf ist nicht mehr verfügbar.", save: "In Sendero speichern", discard: "Entwurf verwerfen", open: "Gespeicherte Reise öffnen",
     conversation: "Unterhaltung + Sendero", emptyTitle: "Dein Reiseplan erscheint hier", emptyDetail: "Vervollständige die Angaben und bitte ChatGPT, ihn zu erstellen. Sendero prüft das Ergebnis, bevor es gespeichert werden kann.",
     steps: ["Vervollständige das Wichtigste zur Reise.", "Setze Recherche und Erstellung in ChatGPT fort.", "Prüfe den validierten Entwurf und speichere ihn in Sendero."],
-    webmcpConnected: "WebMCP verbunden.", webmcpBrowser: "Browsermodus.", webmcpAvailable: "ChatGPT kann die Generierungswerkzeuge verwenden, solange diese Seite geöffnet bleibt.", webmcpUnavailable: "Du kannst die Angaben hier vorbereiten und ChatGPT öffnen; die automatische Generierung von dieser Seite benötigt einen WebMCP-kompatiblen Client.",
+    webmcpConnected: "WebMCP verbunden.", webmcpBrowser: "Integrierter Browsermodus.", webmcpAvailable: "ChatGPT kann die Generierungswerkzeuge verwenden, solange diese Seite im integrierten Browser geöffnet bleibt.", webmcpUnavailable: "Öffne Sendero im integrierten Browser der ChatGPT-Desktop-App, um den WebMCP-Generierungsablauf zu aktivieren.",
     contextTitle: "Reisekontext", contextDetail: "Vervollständige das Wichtigste. ChatGPT kann diese Angaben mit bereits Besprochenem ergänzen.", protocol: "Protokoll",
     savedTitle: "Gespeicherte Reise", draftTitle: "Validierter Entwurf", savedDetail: "Dies ist die maßgebliche Sendero-Version.", draftDetail: "Der Entwurf gehört noch nicht zu deinen Reisen. Prüfe vor dem Speichern die Warnungen.",
     emptyPreviewTitle: "Dein Reiseplan erscheint hier nach der Validierung.", emptySteps: ["Bereite die Angaben vor.", "Bitte ChatGPT, den Reiseplan mit Sendero zu erstellen.", "Prüfe den Entwurf und speichere ihn ausdrücklich."],
@@ -416,30 +427,28 @@ const FLOW_COPY = {
     editBrief: "Edit details",
     handoffEyebrow: "Step 2 · Continue in ChatGPT",
     handoffTitle: "Your prompt is ready",
-    handoffDetail: "Keep Sendero open and use ChatGPT from this browser. The web and desktop apps remain available as an alternative.",
+    handoffDetail: "This integrated flow runs in the ChatGPT desktop app's built-in browser. Keep Sendero open so ChatGPT can use this page's WebMCP tools.",
     promptLabel: "Prompt to paste in ChatGPT",
     copyPrompt: "Copy prompt",
-    copied: "Prompt copied. Open ChatGPT from your browser and paste it there.",
+    copied: "Prompt copied. Paste it into this ChatGPT conversation without closing Sendero.",
     copyError: "We couldn't copy it automatically. Select the prompt and copy it manually.",
-    recommended: "Recommended",
-    sideChatTitle: "Use ChatGPT in this browser",
-    sideChatDetail: "Open the ChatGPT extension or side panel in the browser you are already using. Keep Sendero visible so ChatGPT can use its page tools.",
-    sideChatSteps: ["Copy the prompt on this page.", "Open ChatGPT from this browser's extension or side panel.", "Paste and send the prompt. Keep Sendero open while ChatGPT creates and validates the itinerary with the page tools."],
-    browserNote: "If this browser does not have a ChatGPT extension or side panel, use either option below.",
-    alternativeTitle: "Other option · ChatGPT web or desktop",
-    alternativeDetail: "Paste the same prompt into ChatGPT web or the desktop app with the Sendero plugin connected. This may take you away from this page, so it is the secondary route.",
+    recommended: "Required",
+    sideChatTitle: "Continue in ChatGPT's integrated browser",
+    sideChatDetail: "Keep this Sendero page open in the ChatGPT desktop app. The active conversation can discover and use the WebMCP tools exposed by this page.",
+    sideChatSteps: ["Keep this Sendero page open in ChatGPT's integrated browser.", "Copy the prompt on this page.", "Paste and send it in this ChatGPT conversation. Sendero will show progress and open the validated draft here."],
+    browserNote: "The ChatGPT Chrome extension, ChatGPT web, and external browsers do not provide this integrated WebMCP flow.",
     waiting: "ChatGPT will create the itinerary with Sendero. Nothing is saved without your explicit approval.",
     generationStatus: {
       connecting: { title: "Connecting this page to ChatGPT", detail: "Sendero is checking whether this browser exposes its page tools." },
       ready: { title: "This page is ready", detail: "When ChatGPT starts with Sendero, progress and the validated draft will appear here automatically." },
-      waiting: { title: "Waiting for ChatGPT", detail: "The prompt is copied. Paste and send it in this browser; Sendero will update when ChatGPT uses the page tools." },
+      waiting: { title: "Waiting for ChatGPT", detail: "The prompt is copied. Send it in this ChatGPT conversation while keeping the integrated browser open." },
       generating: { title: "ChatGPT started the itinerary", detail: "Sendero received the start of the page workflow. Keep this page open while ChatGPT researches and builds the plan." },
       working: { title: "ChatGPT is working with Sendero", detail: "This page received an itinerary operation and will update when an authoritative result is available." },
       validating: { title: "Sendero is validating the itinerary", detail: "The completed plan is being checked before the review step becomes available." },
       saving: { title: "Sendero is saving the approved trip", detail: "Wait for the saved trip and its version to appear here." },
       draft_ready: { title: "Validated draft received", detail: "Sendero is opening the review step." },
       saved: { title: "Trip saved", detail: "The authoritative saved trip is now available in Sendero." },
-      unavailable: { title: "This page is not connected to ChatGPT", detail: "This browser is not exposing Sendero's page tools. A plugin-only flow cannot update this step automatically or prove a save in this Sendero session." },
+      unavailable: { title: "Open Sendero in ChatGPT's integrated browser", detail: "This browser is not exposing Sendero's WebMCP tools. Chrome, the ChatGPT extension, and ChatGPT web cannot update this step or prove a save in this Sendero session." },
       error: { title: "The Sendero operation did not finish", detail: "No success is assumed. Retry from ChatGPT or keep the prompt and try again." },
     },
     previewEyebrow: "Step 3 · Review in Sendero",
@@ -459,30 +468,28 @@ const FLOW_COPY = {
     editBrief: "Editar datos",
     handoffEyebrow: "Paso 2 · Continuar en ChatGPT",
     handoffTitle: "Tu prompt está listo",
-    handoffDetail: "Mantén Sendero abierto y usa ChatGPT desde este navegador. La web y la app de escritorio quedan como alternativa.",
+    handoffDetail: "Este flujo integrado funciona en el navegador interno de la app de escritorio de ChatGPT. Mantén Sendero abierto para que ChatGPT use las herramientas WebMCP de esta página.",
     promptLabel: "Prompt para pegar en ChatGPT",
     copyPrompt: "Copiar prompt",
-    copied: "Prompt copiado. Abre ChatGPT desde tu navegador y pégalo allí.",
+    copied: "Prompt copiado. Pégalo en esta conversación de ChatGPT sin cerrar Sendero.",
     copyError: "No pudimos copiarlo automáticamente. Selecciona el prompt y cópialo manualmente.",
-    recommended: "Recomendado",
-    sideChatTitle: "Usa ChatGPT en este navegador",
-    sideChatDetail: "Abre la extensión o barra lateral de ChatGPT en el navegador que ya estás usando. Mantén Sendero visible para que ChatGPT pueda usar sus herramientas de página.",
-    sideChatSteps: ["Copia el prompt de esta página.", "Abre ChatGPT desde la extensión o barra lateral de este navegador.", "Pega y envía el prompt. Mantén Sendero abierto mientras ChatGPT crea y valida el itinerario con las herramientas de la página."],
-    browserNote: "Si este navegador no tiene una extensión o barra lateral de ChatGPT, usa una de las alternativas de abajo.",
-    alternativeTitle: "Otra opción · ChatGPT web o escritorio",
-    alternativeDetail: "Pega el mismo prompt en ChatGPT web o en la app de escritorio con el plugin de Sendero conectado. Como puede sacarte de esta página, queda como camino secundario.",
+    recommended: "Requerido",
+    sideChatTitle: "Continúa en el navegador integrado de ChatGPT",
+    sideChatDetail: "Mantén esta página de Sendero abierta en la app de escritorio de ChatGPT. La conversación activa puede descubrir y usar las herramientas WebMCP expuestas por esta página.",
+    sideChatSteps: ["Mantén esta página de Sendero abierta en el navegador integrado de ChatGPT.", "Copia el prompt de esta página.", "Pégalo y envíalo en esta conversación de ChatGPT. Sendero mostrará el progreso y abrirá aquí el borrador validado."],
+    browserNote: "La extensión de ChatGPT para Chrome, ChatGPT web y los navegadores externos no ofrecen este flujo WebMCP integrado.",
     waiting: "ChatGPT creará el itinerario con Sendero. Nada se guarda sin tu aprobación explícita.",
     generationStatus: {
       connecting: { title: "Conectando esta página con ChatGPT", detail: "Sendero está comprobando si este navegador expone sus herramientas de página." },
       ready: { title: "Esta página está lista", detail: "Cuando ChatGPT empiece a trabajar con Sendero, el progreso y el borrador validado aparecerán aquí automáticamente." },
-      waiting: { title: "Esperando a ChatGPT", detail: "El prompt está copiado. Pégalo y envíalo en este navegador; Sendero se actualizará cuando ChatGPT use las herramientas de la página." },
+      waiting: { title: "Esperando a ChatGPT", detail: "El prompt está copiado. Envíalo en esta conversación de ChatGPT y mantén abierto el navegador integrado." },
       generating: { title: "ChatGPT empezó a crear el itinerario", detail: "Sendero recibió el inicio del flujo de la página. Mantenla abierta mientras ChatGPT investiga y arma el plan." },
       working: { title: "ChatGPT está trabajando con Sendero", detail: "Esta página recibió una operación del itinerario y se actualizará cuando exista un resultado autoritativo." },
       validating: { title: "Sendero está validando el itinerario", detail: "El plan completo se está comprobando antes de habilitar el paso de revisión." },
       saving: { title: "Sendero está guardando el viaje aprobado", detail: "Espera a que el viaje guardado y su versión aparezcan aquí." },
       draft_ready: { title: "Borrador validado recibido", detail: "Sendero está abriendo el paso de revisión." },
       saved: { title: "Viaje guardado", detail: "La versión autoritativa ya está disponible en Sendero." },
-      unavailable: { title: "Esta página no está conectada con ChatGPT", detail: "El navegador no está exponiendo las herramientas de página de Sendero. Un flujo solo con el plugin no puede actualizar este paso automáticamente ni comprobar un guardado en esta sesión de Sendero." },
+      unavailable: { title: "Abre Sendero en el navegador integrado de ChatGPT", detail: "Este navegador no expone las herramientas WebMCP de Sendero. Chrome, la extensión de ChatGPT y ChatGPT web no pueden actualizar este paso ni comprobar el guardado en esta sesión de Sendero." },
       error: { title: "La operación de Sendero no terminó", detail: "No asumimos que salió bien. Reintenta desde ChatGPT o conserva el prompt y vuelve a probar." },
     },
     previewEyebrow: "Paso 3 · Revisar en Sendero",
@@ -502,30 +509,28 @@ const FLOW_COPY = {
     editBrief: "Editar dados",
     handoffEyebrow: "Etapa 2 · Continuar no ChatGPT",
     handoffTitle: "Seu prompt está pronto",
-    handoffDetail: "Mantenha o Sendero aberto e use o ChatGPT neste navegador. A web e o app para desktop ficam como alternativa.",
+    handoffDetail: "Este fluxo integrado funciona no navegador interno do app ChatGPT para desktop. Mantenha o Sendero aberto para que o ChatGPT use as ferramentas WebMCP desta página.",
     promptLabel: "Prompt para colar no ChatGPT",
     copyPrompt: "Copiar prompt",
-    copied: "Prompt copiado. Abra o ChatGPT no navegador e cole-o lá.",
+    copied: "Prompt copiado. Cole-o nesta conversa do ChatGPT sem fechar o Sendero.",
     copyError: "Não foi possível copiá-lo automaticamente. Selecione o prompt e copie-o manualmente.",
-    recommended: "Recomendado",
-    sideChatTitle: "Use o ChatGPT neste navegador",
-    sideChatDetail: "Abra a extensão ou barra lateral do ChatGPT no navegador que você já está usando. Mantenha o Sendero visível para que o ChatGPT possa usar as ferramentas da página.",
-    sideChatSteps: ["Copie o prompt desta página.", "Abra o ChatGPT pela extensão ou barra lateral deste navegador.", "Cole e envie o prompt. Mantenha o Sendero aberto enquanto o ChatGPT cria e valida o roteiro com as ferramentas da página."],
-    browserNote: "Se este navegador não tiver uma extensão ou barra lateral do ChatGPT, use uma das alternativas abaixo.",
-    alternativeTitle: "Outra opção · ChatGPT web ou desktop",
-    alternativeDetail: "Cole o mesmo prompt no ChatGPT web ou no app para desktop com o plugin do Sendero conectado. Como isso pode tirar você desta página, é o caminho secundário.",
+    recommended: "Obrigatório",
+    sideChatTitle: "Continue no navegador integrado do ChatGPT",
+    sideChatDetail: "Mantenha esta página do Sendero aberta no app ChatGPT para desktop. A conversa ativa pode descobrir e usar as ferramentas WebMCP expostas por esta página.",
+    sideChatSteps: ["Mantenha esta página do Sendero aberta no navegador integrado do ChatGPT.", "Copie o prompt desta página.", "Cole e envie-o nesta conversa do ChatGPT. O Sendero mostrará o progresso e abrirá aqui o rascunho validado."],
+    browserNote: "A extensão do ChatGPT para Chrome, o ChatGPT web e navegadores externos não oferecem este fluxo WebMCP integrado.",
     waiting: "O ChatGPT criará o roteiro com o Sendero. Nada é salvo sem sua aprovação explícita.",
     generationStatus: {
       connecting: { title: "Conectando esta página ao ChatGPT", detail: "O Sendero está verificando se este navegador disponibiliza suas ferramentas de página." },
       ready: { title: "Esta página está pronta", detail: "Quando o ChatGPT começar a trabalhar com o Sendero, o progresso e o rascunho validado aparecerão aqui automaticamente." },
-      waiting: { title: "Aguardando o ChatGPT", detail: "O prompt foi copiado. Cole e envie neste navegador; o Sendero será atualizado quando o ChatGPT usar as ferramentas da página." },
+      waiting: { title: "Aguardando o ChatGPT", detail: "O prompt foi copiado. Envie-o nesta conversa do ChatGPT e mantenha o navegador integrado aberto." },
       generating: { title: "O ChatGPT começou a criar o roteiro", detail: "O Sendero recebeu o início do fluxo da página. Mantenha-a aberta enquanto o ChatGPT pesquisa e monta o plano." },
       working: { title: "O ChatGPT está trabalhando com o Sendero", detail: "Esta página recebeu uma operação do roteiro e será atualizada quando houver um resultado autoritativo." },
       validating: { title: "O Sendero está validando o roteiro", detail: "O plano completo está sendo verificado antes de liberar a etapa de revisão." },
       saving: { title: "O Sendero está salvando a viagem aprovada", detail: "Aguarde até que a viagem salva e sua versão apareçam aqui." },
       draft_ready: { title: "Rascunho validado recebido", detail: "O Sendero está abrindo a etapa de revisão." },
       saved: { title: "Viagem salva", detail: "A versão autoritativa já está disponível no Sendero." },
-      unavailable: { title: "Esta página não está conectada ao ChatGPT", detail: "O navegador não está disponibilizando as ferramentas de página do Sendero. Um fluxo apenas pelo plugin não pode atualizar esta etapa automaticamente nem comprovar um salvamento nesta sessão do Sendero." },
+      unavailable: { title: "Abra o Sendero no navegador integrado do ChatGPT", detail: "Este navegador não disponibiliza as ferramentas WebMCP do Sendero. Chrome, a extensão do ChatGPT e o ChatGPT web não podem atualizar esta etapa nem comprovar o salvamento nesta sessão do Sendero." },
       error: { title: "A operação do Sendero não terminou", detail: "Não presumimos sucesso. Tente novamente no ChatGPT ou mantenha o prompt e repita." },
     },
     previewEyebrow: "Etapa 3 · Revisar no Sendero",
@@ -545,30 +550,28 @@ const FLOW_COPY = {
     editBrief: "Modifier les détails",
     handoffEyebrow: "Étape 2 · Continuer dans ChatGPT",
     handoffTitle: "Votre prompt est prêt",
-    handoffDetail: "Gardez Sendero ouvert et utilisez ChatGPT depuis ce navigateur. Le web et l’application de bureau restent des alternatives.",
+    handoffDetail: "Ce parcours intégré fonctionne dans le navigateur interne de l’application de bureau ChatGPT. Gardez Sendero ouvert pour que ChatGPT utilise les outils WebMCP de cette page.",
     promptLabel: "Prompt à coller dans ChatGPT",
     copyPrompt: "Copier le prompt",
-    copied: "Prompt copié. Ouvrez ChatGPT dans votre navigateur et collez-le.",
+    copied: "Prompt copié. Collez-le dans cette conversation ChatGPT sans fermer Sendero.",
     copyError: "Impossible de le copier automatiquement. Sélectionnez le prompt et copiez-le manuellement.",
-    recommended: "Recommandé",
-    sideChatTitle: "Utilisez ChatGPT dans ce navigateur",
-    sideChatDetail: "Ouvrez l’extension ou la barre latérale ChatGPT du navigateur que vous utilisez déjà. Gardez Sendero visible afin que ChatGPT puisse utiliser les outils de la page.",
-    sideChatSteps: ["Copiez le prompt de cette page.", "Ouvrez ChatGPT depuis l’extension ou la barre latérale de ce navigateur.", "Collez et envoyez le prompt. Gardez Sendero ouvert pendant que ChatGPT crée et valide l’itinéraire avec les outils de la page."],
-    browserNote: "Si ce navigateur ne dispose pas d’une extension ou d’une barre latérale ChatGPT, utilisez l’une des alternatives ci-dessous.",
-    alternativeTitle: "Autre option · ChatGPT web ou bureau",
-    alternativeDetail: "Collez le même prompt dans ChatGPT web ou l’application de bureau avec le plugin Sendero connecté. Comme cela peut vous faire quitter cette page, ce parcours reste secondaire.",
+    recommended: "Obligatoire",
+    sideChatTitle: "Continuez dans le navigateur intégré de ChatGPT",
+    sideChatDetail: "Gardez cette page Sendero ouverte dans l’application de bureau ChatGPT. La conversation active peut découvrir et utiliser les outils WebMCP exposés par cette page.",
+    sideChatSteps: ["Gardez cette page Sendero ouverte dans le navigateur intégré de ChatGPT.", "Copiez le prompt de cette page.", "Collez-le et envoyez-le dans cette conversation ChatGPT. Sendero affichera la progression et ouvrira ici le brouillon validé."],
+    browserNote: "L’extension ChatGPT pour Chrome, ChatGPT web et les navigateurs externes ne proposent pas ce parcours WebMCP intégré.",
     waiting: "ChatGPT créera l’itinéraire avec Sendero. Rien n’est enregistré sans votre approbation explicite.",
     generationStatus: {
       connecting: { title: "Connexion de cette page à ChatGPT", detail: "Sendero vérifie si ce navigateur expose ses outils de page." },
       ready: { title: "Cette page est prête", detail: "Lorsque ChatGPT commencera à travailler avec Sendero, la progression et le brouillon validé apparaîtront ici automatiquement." },
-      waiting: { title: "En attente de ChatGPT", detail: "Le prompt est copié. Collez-le et envoyez-le dans ce navigateur ; Sendero se mettra à jour lorsque ChatGPT utilisera les outils de la page." },
+      waiting: { title: "En attente de ChatGPT", detail: "Le prompt est copié. Envoyez-le dans cette conversation ChatGPT et gardez le navigateur intégré ouvert." },
       generating: { title: "ChatGPT a commencé l’itinéraire", detail: "Sendero a reçu le début du parcours de la page. Gardez-la ouverte pendant la recherche et la création du plan." },
       working: { title: "ChatGPT travaille avec Sendero", detail: "Cette page a reçu une opération d’itinéraire et se mettra à jour lorsqu’un résultat de référence sera disponible." },
       validating: { title: "Sendero valide l’itinéraire", detail: "Le plan complet est vérifié avant d’ouvrir l’étape de révision." },
       saving: { title: "Sendero enregistre le voyage approuvé", detail: "Attendez que le voyage enregistré et sa version apparaissent ici." },
       draft_ready: { title: "Brouillon validé reçu", detail: "Sendero ouvre l’étape de révision." },
       saved: { title: "Voyage enregistré", detail: "La version de référence est maintenant disponible dans Sendero." },
-      unavailable: { title: "Cette page n’est pas connectée à ChatGPT", detail: "Le navigateur n’expose pas les outils de page de Sendero. Un parcours utilisant uniquement le plugin ne peut pas actualiser cette étape automatiquement ni confirmer un enregistrement dans cette session Sendero." },
+      unavailable: { title: "Ouvrez Sendero dans le navigateur intégré de ChatGPT", detail: "Ce navigateur n’expose pas les outils WebMCP de Sendero. Chrome, l’extension ChatGPT et ChatGPT web ne peuvent pas actualiser cette étape ni confirmer un enregistrement dans cette session Sendero." },
       error: { title: "L’opération Sendero n’a pas abouti", detail: "Aucun succès n’est supposé. Réessayez depuis ChatGPT ou conservez le prompt et recommencez." },
     },
     previewEyebrow: "Étape 3 · Vérifier dans Sendero",
@@ -588,30 +591,28 @@ const FLOW_COPY = {
     editBrief: "Daten bearbeiten",
     handoffEyebrow: "Schritt 2 · In ChatGPT fortfahren",
     handoffTitle: "Dein Prompt ist bereit",
-    handoffDetail: "Lass Sendero geöffnet und verwende ChatGPT in diesem Browser. Web- und Desktop-App bleiben als Alternative verfügbar.",
+    handoffDetail: "Dieser integrierte Ablauf funktioniert im internen Browser der ChatGPT-Desktop-App. Lass Sendero geöffnet, damit ChatGPT die WebMCP-Werkzeuge dieser Seite verwenden kann.",
     promptLabel: "Prompt zum Einfügen in ChatGPT",
     copyPrompt: "Prompt kopieren",
-    copied: "Prompt kopiert. Öffne ChatGPT im Browser und füge ihn dort ein.",
+    copied: "Prompt kopiert. Füge ihn in diese ChatGPT-Unterhaltung ein, ohne Sendero zu schließen.",
     copyError: "Der Prompt konnte nicht automatisch kopiert werden. Markiere ihn und kopiere ihn manuell.",
-    recommended: "Empfohlen",
-    sideChatTitle: "ChatGPT in diesem Browser verwenden",
-    sideChatDetail: "Öffne die ChatGPT-Erweiterung oder Seitenleiste in dem Browser, den du bereits verwendest. Lass Sendero sichtbar, damit ChatGPT die Seitentools verwenden kann.",
-    sideChatSteps: ["Kopiere den Prompt auf dieser Seite.", "Öffne ChatGPT über die Erweiterung oder Seitenleiste dieses Browsers.", "Füge den Prompt ein und sende ihn. Lass Sendero geöffnet, während ChatGPT den Reiseplan mit den Seitentools erstellt und validiert."],
-    browserNote: "Falls dieser Browser keine ChatGPT-Erweiterung oder Seitenleiste hat, verwende eine der folgenden Alternativen.",
-    alternativeTitle: "Andere Option · ChatGPT Web oder Desktop",
-    alternativeDetail: "Füge denselben Prompt in ChatGPT Web oder der Desktop-App mit verbundenem Sendero-Plugin ein. Da du dadurch diese Seite verlassen könntest, ist dies der sekundäre Weg.",
+    recommended: "Erforderlich",
+    sideChatTitle: "Im integrierten Browser von ChatGPT fortfahren",
+    sideChatDetail: "Lass diese Sendero-Seite in der ChatGPT-Desktop-App geöffnet. Die aktive Unterhaltung kann die von dieser Seite bereitgestellten WebMCP-Werkzeuge erkennen und verwenden.",
+    sideChatSteps: ["Lass diese Sendero-Seite im integrierten Browser von ChatGPT geöffnet.", "Kopiere den Prompt auf dieser Seite.", "Füge ihn in diese ChatGPT-Unterhaltung ein und sende ihn. Sendero zeigt den Fortschritt und öffnet hier den validierten Entwurf."],
+    browserNote: "Die ChatGPT-Erweiterung für Chrome, ChatGPT Web und externe Browser bieten diesen integrierten WebMCP-Ablauf nicht.",
     waiting: "ChatGPT erstellt den Reiseplan mit Sendero. Ohne deine ausdrückliche Zustimmung wird nichts gespeichert.",
     generationStatus: {
       connecting: { title: "Diese Seite wird mit ChatGPT verbunden", detail: "Sendero prüft, ob dieser Browser seine Seitentools bereitstellt." },
       ready: { title: "Diese Seite ist bereit", detail: "Sobald ChatGPT mit Sendero beginnt, erscheinen Fortschritt und validierter Entwurf automatisch hier." },
-      waiting: { title: "Warten auf ChatGPT", detail: "Der Prompt wurde kopiert. Füge ihn in diesem Browser ein und sende ihn; Sendero aktualisiert sich, sobald ChatGPT die Seitentools verwendet." },
+      waiting: { title: "Warten auf ChatGPT", detail: "Der Prompt wurde kopiert. Sende ihn in dieser ChatGPT-Unterhaltung und lass den integrierten Browser geöffnet." },
       generating: { title: "ChatGPT hat mit dem Reiseplan begonnen", detail: "Sendero hat den Start des Seitenablaufs empfangen. Lass die Seite während Recherche und Planung geöffnet." },
       working: { title: "ChatGPT arbeitet mit Sendero", detail: "Diese Seite hat einen Reisevorgang empfangen und wird bei einem maßgeblichen Ergebnis aktualisiert." },
       validating: { title: "Sendero prüft den Reiseplan", detail: "Der vollständige Plan wird geprüft, bevor der Überprüfungsschritt verfügbar wird." },
       saving: { title: "Sendero speichert die bestätigte Reise", detail: "Warte, bis die gespeicherte Reise und ihre Version hier erscheinen." },
       draft_ready: { title: "Validierter Entwurf empfangen", detail: "Sendero öffnet den Überprüfungsschritt." },
       saved: { title: "Reise gespeichert", detail: "Die maßgebliche Version ist jetzt in Sendero verfügbar." },
-      unavailable: { title: "Diese Seite ist nicht mit ChatGPT verbunden", detail: "Der Browser stellt Senderos Seitentools nicht bereit. Ein reiner Plugin-Ablauf kann diesen Schritt nicht automatisch aktualisieren oder einen Speichervorgang in dieser Sendero-Sitzung bestätigen." },
+      unavailable: { title: "Öffne Sendero im integrierten Browser von ChatGPT", detail: "Dieser Browser stellt Senderos WebMCP-Werkzeuge nicht bereit. Chrome, die ChatGPT-Erweiterung und ChatGPT Web können diesen Schritt nicht aktualisieren oder einen Speichervorgang in dieser Sendero-Sitzung bestätigen." },
       error: { title: "Der Sendero-Vorgang wurde nicht abgeschlossen", detail: "Wir nehmen keinen Erfolg an. Versuche es in ChatGPT erneut oder behalte den Prompt und wiederhole den Vorgang." },
     },
     previewEyebrow: "Schritt 3 · In Sendero prüfen",
@@ -751,10 +752,11 @@ function BriefForm({ brief, busy, copy, csrfToken, locale, onChange, onSubmit })
           label: brief.lodging.address || brief.lodging.area,
           placeId: brief.lodging.addressPlaceId || brief.lodging.areaPlaceId,
         }}
+        wide
       />
       <label className="generate-field"><span>{copy.pace}</span><select onChange={(event) => onChange({ ...brief, pace: event.target.value })} value={brief.pace}>{Object.entries(copy.paces).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <TripProfileFields adultsCount={brief.travellers.adults} childrenCount={brief.travellers.children} copy={copy.profile} onChange={(profile) => onChange({ ...brief, profile })} value={brief.profile} />
-      <BudgetFields copy={copy.budget} onChange={(budget) => onChange({ ...brief, budget })} value={brief.budget} />
+      <BudgetFields copy={copy.budget} locale={locale} onChange={(budget) => onChange({ ...brief, budget })} value={brief.budget} />
       <label className="generate-field"><span>{copy.interests}</span><textarea onChange={(event) => {
         const interestsInput = event.target.value;
         onChange({
@@ -891,10 +893,6 @@ function HandoffPanel({
           </div>
           <ol>{copy.sideChatSteps.map((step) => <li key={step}>{step}</li>)}</ol>
           <p className="generate-browser-note">{copy.browserNote}</p>
-          <div className="generate-secondary-path">
-            <h3>{copy.alternativeTitle}</h3>
-            <p>{copy.alternativeDetail}</p>
-          </div>
           <p>{copy.waiting}</p>
         </aside>
         <div className="generate-prompt">

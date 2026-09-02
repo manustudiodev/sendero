@@ -76,7 +76,7 @@ const pt = {
   "budget.description": "Defina um estilo de gasto e, se for útil, um limite monetário.",
   "budget.comfort": "Estilo de gasto",
   "budget.comfort.flexible": "Flexível", "budget.comfort.low": "Econômico", "budget.comfort.medium": "Confortável", "budget.comfort.high": "Premium",
-  "budget.amount": "Limite", "budget.optional": "(opcional)", "budget.currency": "Moeda",
+  "budget.amount": "Limite", "budget.amountExample": "ex.", "budget.optional": "(opcional)", "budget.currency": "Moeda", "budget.currencyPlaceholder": "Selecione uma moeda",
   "budget.scope": "O limite vale", "budget.scope.total": "Para toda a viagem", "budget.scope.per_person": "Por pessoa", "budget.scope.per_day": "Por dia",
   "budget.flexibility": "Quão rígido é?", "budget.flexibility.strict": "Teto rígido", "budget.flexibility.target": "Meta", "budget.flexibility.flexible": "Apenas referência",
   "budget.includes": "Contar estas categorias",

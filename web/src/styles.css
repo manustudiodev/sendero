@@ -188,6 +188,9 @@ html.widget-document .app-shell {
   background: transparent;
 }
 button, input, textarea { font: inherit; }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: .68; }
+select.is-placeholder { color: var(--muted); }
+select.is-placeholder option { color: var(--ink); }
 button { color: inherit; }
 small { font-size: inherit; }
 a { color: inherit; }

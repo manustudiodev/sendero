@@ -133,7 +133,7 @@ const fr = {
   "budget.description": "Définissez un style de dépense et, si utile, un plafond monétaire.",
   "budget.comfort": "Style de dépense",
   "budget.comfort.flexible": "Flexible", "budget.comfort.low": "Économique", "budget.comfort.medium": "Confort", "budget.comfort.high": "Premium",
-  "budget.amount": "Plafond", "budget.optional": "(facultatif)", "budget.currency": "Devise",
+  "budget.amount": "Plafond", "budget.amountExample": "p. ex.", "budget.optional": "(facultatif)", "budget.currency": "Devise", "budget.currencyPlaceholder": "Choisissez une devise",
   "budget.scope": "Le plafond s’applique", "budget.scope.total": "À tout le voyage", "budget.scope.per_person": "Par personne", "budget.scope.per_day": "Par jour",
   "budget.flexibility": "À quel point est-il ferme ?", "budget.flexibility.strict": "Plafond strict", "budget.flexibility.target": "Objectif", "budget.flexibility.flexible": "Simple référence",
   "budget.includes": "Compter ces catégories",

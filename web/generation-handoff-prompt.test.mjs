@@ -39,15 +39,18 @@ test("localizes the handoff instructions and falls back to English", () => {
   assert.match(createItineraryHandoffPrompt(brief, "unknown"), /Create a complete travel itinerary/);
 });
 
-test("keeps the browser extension path primary without a ChatGPT exit button or capability banner", async () => {
+test("keeps the ChatGPT integrated browser as the only WebMCP handoff path", async () => {
   const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
-  assert.match(source, /Usa ChatGPT en este navegador/);
-  assert.match(source, /Otra opción · ChatGPT web o escritorio/);
-  assert.match(source, /herramientas de la página/);
-  assert.match(source, /con el plugin de Sendero conectado/);
+  assert.match(source, /Continúa en el navegador integrado de ChatGPT/);
+  assert.match(source, /navegador interno de la app de escritorio de ChatGPT/);
+  assert.match(source, /herramientas WebMCP de esta página/);
+  assert.match(source, /La extensión de ChatGPT para Chrome, ChatGPT web y los navegadores externos no ofrecen este flujo WebMCP integrado/);
   assert.match(source, /generationStatusFromEvent/);
   assert.match(source, /hrefForLocale\("\/app", locale\)/);
-  assert.match(source, /Esta página no está conectada con ChatGPT/);
+  assert.match(source, /Abre Sendero en el navegador integrado de ChatGPT/);
+  assert.doesNotMatch(source, /Otra opción · ChatGPT web o escritorio/);
+  assert.doesNotMatch(source, /con el plugin de Sendero conectado/);
+  assert.doesNotMatch(source, /generate-secondary-path/);
   assert.doesNotMatch(source, /Utiliza el plugin conectado de Sendero y empieza a crear el itinerario directamente/);
   assert.doesNotMatch(source, /No describas qué herramientas o integración vas a usar ni narres tu proceso/);
   assert.equal((source.match(/name="lodging-address-search"/g) || []).length, 1);
