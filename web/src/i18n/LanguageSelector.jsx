@@ -16,6 +16,8 @@ const LABELS = {
   de: { aria: "Sprache", names: { en: "Englisch", es: "Spanisch", pt: "Portugiesisch", fr: "Französisch", de: "Deutsch" } },
 };
 
+const FLAGS = { en: "🇺🇸", es: "🇪🇸", pt: "🇧🇷", fr: "🇫🇷", de: "🇩🇪" };
+
 const UiLocaleContext = createContext(null);
 
 function useUiLocaleState() {
@@ -61,7 +63,7 @@ export function useUiLocale() {
   return context;
 }
 
-export function LanguageSelector({ className = "", locale, onChange }) {
+export function LanguageSelector({ className = "", locale, onChange, showFlags = false }) {
   const language = uiLanguage(locale);
   const copy = LABELS[language] || LABELS.es;
   return (
@@ -69,7 +71,7 @@ export function LanguageSelector({ className = "", locale, onChange }) {
       <span className="visually-hidden web-sr-only">{copy.aria}</span>
       <select aria-label={copy.aria} onChange={(event) => onChange(event.target.value)} value={language}>
         {SUPPORTED_UI_LANGUAGES.map((option) => (
-          <option key={option} value={option}>{copy.names[option]}</option>
+          <option key={option} value={option}>{showFlags ? `${FLAGS[option]} ` : ""}{copy.names[option]}</option>
         ))}
       </select>
     </label>

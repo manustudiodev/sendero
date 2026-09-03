@@ -60,30 +60,6 @@ function reached(beat, target) {
   return beatOrder.indexOf(beat) >= beatOrder.indexOf(target);
 }
 
-function chatGptUrl() {
-  return document.querySelector('meta[name="sendero-chatgpt-url"]')?.content || "https://chatgpt.com/";
-}
-
-function chatGptCtaCopy(cta, copy) {
-  try {
-    const target = new URL(cta);
-    const isSenderoTarget = target.pathname !== "/" || target.search || target.hash;
-    if (isSenderoTarget) {
-      return {
-        header: copy.ctaHeader,
-        footer: copy.ctaFooterSendero,
-      };
-    }
-  } catch {
-    // Invalid configuration falls back to truthful, generic ChatGPT copy.
-  }
-  return { header: copy.ctaHeader, footer: copy.ctaFooterGeneric };
-}
-
-function ArrowIcon() {
-  return <span aria-hidden="true">↗</span>;
-}
-
 function SendIcon() {
   return (
     <svg aria-hidden="true" fill="none" focusable="false" viewBox="0 0 24 24">
@@ -92,7 +68,11 @@ function SendIcon() {
   );
 }
 
-function SiteHeader({ copy, cta, ctaCopy, locale, onLocaleChange }) {
+function signInHref(locale) {
+  return `/auth/login?${new URLSearchParams({ returnTo: hrefForLocale("/app", locale) }).toString()}`;
+}
+
+function SiteHeader({ copy, locale }) {
   return (
     <header className="site-header landing-header">
       <a aria-label={copy.home} className="site-brand" href={hrefForLocale("/", locale)}>
@@ -100,11 +80,7 @@ function SiteHeader({ copy, cta, ctaCopy, locale, onLocaleChange }) {
         <span>Sendero</span>
       </a>
       <div className="site-header-actions">
-        <LanguageSelector className="site-language-selector" locale={locale} onChange={onLocaleChange} />
-        <a className="site-text-link" href={hrefForLocale("/app", locale)}>{copy.myTrips}</a>
-        <a aria-label={ctaCopy.header} className="site-button site-button-small" href={cta} rel="noreferrer noopener" target="_blank">
-          <span className="landing-cta-prefix">{copy.ctaPrefix}</span><span>ChatGPT</span> <ArrowIcon />
-        </a>
+        <a className="site-text-link" href={signInHref(locale)}>{copy.signIn}</a>
       </div>
     </header>
   );
@@ -133,7 +109,7 @@ function HeroComposer({ copy, docked, onSubmit }) {
   );
 }
 
-function Hero({ copy, composerDocked, onDemoSubmit }) {
+function Hero({ copy, composerDocked, locale, onDemoSubmit }) {
   return (
     <section aria-labelledby="landing-title" className="landing-hero">
       <div aria-hidden="true" className="landing-hero-route">
@@ -151,6 +127,9 @@ function Hero({ copy, composerDocked, onDemoSubmit }) {
         <div className="landing-composer-carrier" data-composer-carrier>
           <HeroComposer copy={copy} docked={composerDocked} onSubmit={onDemoSubmit} />
         </div>
+        <a className="site-button site-button-primary landing-hero-cta" href={hrefForLocale("/app/new", locale)}>
+          {copy.createTrip} <span aria-hidden="true">→</span>
+        </a>
       </div>
       <a aria-label={copy.scrollAria} className="landing-scroll-cue" data-composer-cue href="#crear">
         <span>{copy.scroll}</span><span aria-hidden="true">↓</span>
@@ -509,19 +488,24 @@ function FrequentlyAskedQuestions({ copy }) {
   );
 }
 
-function SiteFooter({ copy, cta, ctaCopy, locale }) {
+function SiteFooter({ copy, locale, onLocaleChange }) {
   return (
     <>
       <section aria-labelledby="final-cta-title" className="site-final-cta landing-final-cta" data-story-reveal>
         <p className="site-kicker">{copy.finalKicker}</p>
         <h2 id="final-cta-title">{copy.finalTitle}</h2>
         <p>{copy.finalBody}</p>
-        <a className="site-button site-button-primary" href={cta} rel="noreferrer noopener" target="_blank">{ctaCopy.footer} <ArrowIcon /></a>
+        <a className="site-button site-button-primary" href={hrefForLocale("/app/new", locale)}>{copy.createTrip} <span aria-hidden="true">→</span></a>
       </section>
       <footer className="site-footer landing-footer">
         <a aria-label={copy.home} className="site-brand" href={hrefForLocale("/", locale)}><BrandMark /><span>Sendero</span></a>
         <p>{copy.tagline}</p>
-        <nav aria-label={copy.footerNav}><a href={hrefForLocale("/app", locale)}>{copy.myTrips}</a><a href={hrefForLocale("/privacy", locale)}>{copy.privacy}</a><a href={hrefForLocale("/terms", locale)}>{copy.terms}</a></nav>
+        <nav aria-label={copy.footerNav}>
+          <a href={signInHref(locale)}>{copy.signIn}</a>
+          <a href={hrefForLocale("/privacy", locale)}>{copy.privacy}</a>
+          <a href={hrefForLocale("/terms", locale)}>{copy.terms}</a>
+          <LanguageSelector className="landing-footer-language-selector" locale={locale} onChange={onLocaleChange} showFlags />
+        </nav>
       </footer>
     </>
   );
@@ -542,8 +526,6 @@ export function LandingApp() {
   const [createBeat, setCreateBeat] = useState("hidden");
   const [shareScene, setShareScene] = useState(0);
   const [composerDocked, setComposerDocked] = useState(false);
-  const cta = chatGptUrl();
-  const ctaCopy = chatGptCtaCopy(cta, copy);
   const itinerary = useMemo(() => ({ ...landingShowcaseItinerary, locale }), [locale]);
   const adjustedItinerary = useMemo(() => ({ ...adjustedShowcaseItinerary, locale }), [locale]);
   const publicItinerary = useMemo(() => sanitizePublicSnapshot(itinerary), [itinerary]);
@@ -585,9 +567,9 @@ export function LandingApp() {
   return (
     <div className="landing-page" ref={rootRef}>
       <a className="site-skip-link" href="#contenido">{copy.skip}</a>
-      <SiteHeader copy={copy} cta={cta} ctaCopy={ctaCopy} locale={locale} onLocaleChange={selectLocale} />
+      <SiteHeader copy={copy} locale={locale} />
       <main id="contenido">
-        <Hero copy={copy} composerDocked={composerDocked} onDemoSubmit={startDemo} />
+        <Hero copy={copy} composerDocked={composerDocked} locale={locale} onDemoSubmit={startDemo} />
         <StorySection activeScene={createScene} copy={copy} id="crear" showHeading={false} steps={copy.createSteps}>
           <CreateStage activeView={createViewForBeat(createBeat)} adjustedItinerary={adjustedItinerary} beat={createBeat} copy={copy} itinerary={itinerary} locale={locale} scene={createScene} />
         </StorySection>
@@ -596,7 +578,7 @@ export function LandingApp() {
         </StorySection>
         <PrivacySection copy={copy} />
         <FrequentlyAskedQuestions copy={copy} />
-        <SiteFooter copy={copy} cta={cta} ctaCopy={ctaCopy} locale={locale} />
+        <SiteFooter copy={copy} locale={locale} onLocaleChange={selectLocale} />
       </main>
     </div>
   );

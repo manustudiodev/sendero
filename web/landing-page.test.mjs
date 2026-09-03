@@ -71,8 +71,9 @@ test("build exports the landing and legal documents with public metadata", async
   assert.match(pages.landingPageHtml, /Tu viaje empieza con una frase\./);
   assert.match(pages.landingPageHtml, /Saltar al contenido/);
   assert.match(pages.landingPageHtml, /sendero_locale/);
-  assert.match(pages.landingPageHtml, /Mis viajes/);
-  assert.match(pages.landingPageHtml, /Abrir en ChatGPT/);
+  assert.match(pages.landingPageHtml, /Ingresar/);
+  assert.match(pages.landingPageHtml, /Crear un itinerario/);
+  assert.doesNotMatch(pages.landingPageHtml, /Abrir en ChatGPT/);
   assert.match(pages.landingPageHtml, /Your trip starts with one sentence\./);
   assert.match(pages.landingPageHtml, /Sua viagem come.{0,8}a com uma frase\./);
   assert.match(pages.landingPageHtml, /Votre voyage commence par une phrase\./);
@@ -147,6 +148,12 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   ]);
 
   assert.doesNotMatch(landingSource, /className="site-nav"/);
+  assert.doesNotMatch(landingSource, /chatGptUrl|chatGptCtaCopy|target="_blank"/);
+  assert.match(landingSource, /function signInHref\(locale\)[\s\S]{0,180}?\/auth\/login/);
+  assert.equal([...landingSource.matchAll(/href=\{signInHref\(locale\)\}/g)].length, 2, "header and footer sign-in links must open authentication directly");
+  assert.match(landingSource, /href={hrefForLocale\("\/app\/new", locale\)\}[\s\S]*?\{copy\.createTrip\}/);
+  assert.equal([...landingSource.matchAll(/<LanguageSelector\b/g)].length, 1, "the landing must render the language selector only in the footer");
+  assert.match(landingSource, /className="landing-footer-language-selector"[\s\S]{0,160}?showFlags/);
   assert.doesNotMatch(landingSource, /landing-hero-links|landing-composer-meta|landing-signals/);
   assert.match(landingSource, /<label className="visually-hidden" htmlFor="sendero-demo-prompt">\{copy\.composerLabel\}<\/label>/);
   assert.equal([...landingSource.matchAll(/<textarea\b/g)].length, 1, "the landing must render a single real textarea");

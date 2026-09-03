@@ -78,8 +78,7 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
-.landing-header .site-text-link,
-.landing-header .site-button-small { white-space: nowrap; }
+.landing-header .site-text-link { white-space: nowrap; }
 
 .landing-hero {
   position: relative;
@@ -120,8 +119,9 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
   text-wrap: pretty;
 }
 
-.landing-hero-demo { position: relative; display: grid; width: min(860px, 100%); min-height: 104px; justify-items: center; }
+.landing-hero-demo { position: relative; display: grid; width: min(860px, 100%); min-height: 104px; justify-items: center; gap: 20px; }
 .landing-composer-carrier { position: relative; z-index: 35; width: 100%; height: 104px; }
+.landing-hero-cta { position: relative; z-index: 34; min-width: min(260px, 100%); justify-content: center; }
 .landing-composer-shell {
   position: absolute;
   bottom: 0;
@@ -673,8 +673,6 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
   .landing-header { gap: 10px; }
   .landing-header .site-brand { gap: 7px; }
   .landing-header .site-header-actions { gap: 9px; }
-  .landing-header .site-button-small { font-size: 14px; }
-  .landing-header .site-button-small::before { content: none; }
   .landing-hero { gap: 38px; }
   .landing-hero-demo { min-height: 146px; }
   .landing-composer { min-height: 72px; }
@@ -702,7 +700,6 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
   .landing-header .site-brand { gap: 6px; font-size: 14px; }
   .landing-header .site-header-actions { gap: 7px; }
   .landing-header .site-text-link { font-size: 13px; }
-  .landing-header .site-button-small { padding-inline: 8px; font-size: 13px; }
 }
 
 @media (max-width: 360px) {
@@ -711,7 +708,6 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
   .landing-header .site-brand .brand-mark { width: 26px; height: 26px; border-radius: 8px; }
   .landing-header .site-header-actions { gap: 6px; }
   .landing-header .site-text-link { font-size: 12px; }
-  .landing-header .site-button-small { min-height: 36px; padding-inline: 8px; font-size: 12px; }
 }
 
 @media (max-width: 300px) {
@@ -724,7 +720,6 @@ html[data-intro="leaving"] #sendero-intro { opacity: 0; visibility: hidden; tran
   .landing-header .site-brand .brand-mark { width: 24px; height: 24px; }
   .landing-header .site-text-link { font-size: 10px; }
   .landing-header .site-header-actions { gap: 4px; }
-  .landing-header .site-button-small { min-height: 34px; gap: 4px; padding-inline: 5px; font-size: 10px; }
 }
 
 @media (prefers-color-scheme: dark) {
