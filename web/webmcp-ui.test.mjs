@@ -9,6 +9,9 @@ test("presents every registered creation command in every supported language", (
     assert.equal(model.state, "connected");
     assert.deepEqual(model.tools.map(({ name }) => name), ITINERARY_GENERATION_TOOL_NAMES);
     assert.equal(model.tools.every(({ description }) => typeof description === "string" && description.length > 20), true);
+    assert.equal(typeof model.dialogTitle, "string");
+    assert.equal(model.dialogTitle.length > 4, true);
+    assert.equal(typeof model.close, "string");
   }
 });
 

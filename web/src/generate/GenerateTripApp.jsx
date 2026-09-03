@@ -122,26 +122,32 @@ const generateStyles = `
 .generate-live-status.is-generating .generate-live-status-dot, .generate-live-status.is-validating .generate-live-status-dot, .generate-live-status.is-saving .generate-live-status-dot, .generate-live-status.is-working .generate-live-status-dot { border-color: var(--web-grass); animation: web-pulse 1.1s ease-in-out infinite alternate; background: var(--web-grass); }
 .generate-live-status.is-unavailable, .generate-live-status.is-error { border-color: color-mix(in srgb, var(--web-danger) 45%, var(--web-line)); }
 .generate-live-status.is-unavailable .generate-live-status-dot, .generate-live-status.is-error .generate-live-status-dot { border-color: var(--web-danger); }
-.generate-webmcp { width: min(760px, 100%); margin-top: 24px; overflow: hidden; border: 1px solid var(--web-line); border-radius: 14px; background: color-mix(in srgb, var(--web-surface) 86%, transparent); }
-.generate-webmcp summary { display: grid; min-height: 58px; grid-template-columns: 12px minmax(0, 1fr) auto 18px; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; list-style: none; }
-.generate-webmcp summary::-webkit-details-marker { display: none; }
+.generate-webmcp { display: inline-flex; width: fit-content; max-width: 100%; min-height: 40px; align-items: center; gap: 9px; margin-top: 20px; border: 1px solid var(--web-line); border-radius: 999px; padding: 7px 11px; background: color-mix(in srgb, var(--web-surface) 88%, transparent); color: var(--web-ink); cursor: pointer; font: inherit; text-align: left; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.generate-webmcp:hover { border-color: color-mix(in srgb, var(--web-forest) 38%, var(--web-line)); background: var(--web-surface); transform: translateY(-1px); }
 .generate-webmcp-status-dot { width: 10px; height: 10px; border: 2px solid var(--web-forest); border-radius: 50%; }
 .generate-webmcp.is-connected .generate-webmcp-status-dot { background: var(--web-grass); }
 .generate-webmcp.is-checking .generate-webmcp-status-dot { background: var(--web-grass); animation: web-pulse 1.1s ease-in-out infinite alternate; }
 .generate-webmcp.is-unavailable .generate-webmcp-status-dot, .generate-webmcp.is-error .generate-webmcp-status-dot { border-color: var(--web-danger); }
-.generate-webmcp-summary-copy { display: grid; min-width: 0; }
-.generate-webmcp-summary-copy strong { color: var(--web-ink); font-size: 14px; }
-.generate-webmcp-summary-copy small { overflow: hidden; color: var(--web-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.generate-webmcp-count { border-radius: 999px; padding: 3px 9px; background: var(--web-soft); color: var(--web-forest); font-size: 12px; font-weight: 680; white-space: nowrap; }
-.generate-webmcp-chevron { color: var(--web-muted); font-size: 18px; line-height: 1; transform: rotate(0); }
-.generate-webmcp[open] .generate-webmcp-chevron { transform: rotate(180deg); }
-.generate-webmcp-body { border-top: 1px solid var(--web-line); padding: 16px 18px 18px; }
-.generate-webmcp-body > p { margin: 0; color: var(--web-muted); }
-.generate-webmcp-body h2 { margin: 18px 0 10px; font-size: 14px; letter-spacing: 0; }
+.generate-webmcp-copy { display: flex; min-width: 0; align-items: baseline; gap: 7px; }
+.generate-webmcp-copy strong { color: var(--web-ink); font-size: 13px; }
+.generate-webmcp-copy small { overflow: hidden; color: var(--web-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.generate-webmcp-count { color: var(--web-forest); font-size: 12px; font-weight: 680; white-space: nowrap; }
+.generate-webmcp-info { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 50%; background: var(--web-soft); color: var(--web-forest); font-size: 11px; font-weight: 800; }
+.generate-webmcp-modal { width: min(680px, calc(100% - 28px)); max-height: min(760px, calc(100dvh - 40px)); overflow: auto; border: 1px solid var(--web-line); border-radius: 18px; padding: 0; background: var(--web-surface); box-shadow: 0 24px 80px rgba(0, 36, 33, .24); color: var(--web-ink); }
+.generate-webmcp-modal::backdrop { background: rgba(0, 31, 29, .46); backdrop-filter: blur(3px); }
+.generate-webmcp-modal[open] { animation: webmcp-modal-in 180ms cubic-bezier(.16, 1, .3, 1); }
+.generate-webmcp-modal-inner { padding: 22px; }
+.generate-webmcp-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.generate-webmcp-modal-header h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+.generate-webmcp-modal-close { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid var(--web-line); border-radius: 50%; background: var(--web-surface); color: var(--web-muted); cursor: pointer; font: inherit; font-size: 20px; line-height: 1; }
+.generate-webmcp-modal-close:hover { border-color: var(--web-forest); color: var(--web-ink); }
+.generate-webmcp-modal-detail { margin: 10px 0 20px; color: var(--web-muted); }
+.generate-webmcp-modal h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 0; }
 .generate-webmcp-tools { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .generate-webmcp-tools li { display: grid; gap: 4px; border-radius: 10px; padding: 11px 12px; background: var(--web-soft); }
 .generate-webmcp-tools code { overflow-wrap: anywhere; color: var(--web-forest); font-size: 12px; font-weight: 720; }
 .generate-webmcp-tools span { color: var(--web-muted); font-size: 13px; }
+@keyframes webmcp-modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .generate-draft-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
 .generate-preview { min-width: 0; overflow: hidden; }
 .generate-preview .itinerary-viewer { border-radius: 18px; }
@@ -157,8 +163,8 @@ const generateStyles = `
   .generate-receipt { align-items: stretch; flex-direction: column; }
 }
 @media (max-width: 520px) { .generate-card { padding: 17px; } .generate-handoff-actions .web-button, .generate-form-actions .web-button { width: 100%; } }
-@media (max-width: 520px) { .generate-webmcp summary { grid-template-columns: 12px minmax(0, 1fr) 18px; } .generate-webmcp-count { display: none; } }
-@media (prefers-reduced-motion: reduce) { .generate-webmcp.is-checking .generate-webmcp-status-dot { animation: none; } }
+@media (max-width: 520px) { .generate-webmcp-copy small, .generate-webmcp-count { display: none; } .generate-webmcp-modal-inner { padding: 18px; } }
+@media (prefers-reduced-motion: reduce) { .generate-webmcp, .generate-webmcp-modal[open], .generate-webmcp.is-checking .generate-webmcp-status-dot { animation: none; transition: none; } }
 `;
 
 const initialBrief = {
@@ -893,30 +899,69 @@ function GenerationLiveStatus({ copy, promptCopied, status }) {
 
 function WebMcpIndicator({ language, status }) {
   const model = webMcpIndicatorModel(language, status);
+  const dialogRef = useRef(null);
+  const triggerRef = useRef(null);
+  function closeDialog() {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (typeof dialog.close === "function") dialog.close();
+    else {
+      dialog.removeAttribute("open");
+      triggerRef.current?.focus();
+    }
+  }
+  function openDialog() {
+    const dialog = dialogRef.current;
+    if (!dialog || dialog.open) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
   return (
-    <details className={`generate-webmcp is-${model.state}`} data-webmcp-indicator>
-      <summary>
+    <>
+      <button
+        aria-controls="generate-webmcp-dialog"
+        aria-haspopup="dialog"
+        aria-label={`${model.label}: ${model.status}. ${model.count}`}
+        className={`generate-webmcp is-${model.state}`}
+        data-webmcp-indicator
+        onClick={openDialog}
+        ref={triggerRef}
+        type="button"
+      >
         <span aria-hidden="true" className="generate-webmcp-status-dot" />
-        <span className="generate-webmcp-summary-copy">
+        <span className="generate-webmcp-copy">
           <strong>{model.label}</strong>
           <small aria-live="polite" role="status">{model.status}</small>
         </span>
         <span className="generate-webmcp-count">{model.count}</span>
-        <span aria-hidden="true" className="generate-webmcp-chevron">⌄</span>
-      </summary>
-      <div className="generate-webmcp-body">
-        <p>{model.detail}</p>
-        <h2>{model.commands}</h2>
-        <ul className="generate-webmcp-tools">
-          {model.tools.map((tool) => (
-            <li key={tool.name}>
-              <code>{tool.name}</code>
-              <span>{tool.description}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </details>
+        <span aria-hidden="true" className="generate-webmcp-info">i</span>
+      </button>
+      <dialog
+        aria-labelledby="generate-webmcp-dialog-title"
+        className="generate-webmcp-modal"
+        id="generate-webmcp-dialog"
+        onClick={(event) => { if (event.target === event.currentTarget) closeDialog(); }}
+        onClose={() => triggerRef.current?.focus()}
+        ref={dialogRef}
+      >
+        <div className="generate-webmcp-modal-inner">
+          <div className="generate-webmcp-modal-header">
+            <h2 id="generate-webmcp-dialog-title">{model.dialogTitle}</h2>
+            <button aria-label={model.close} className="generate-webmcp-modal-close" onClick={closeDialog} type="button">×</button>
+          </div>
+          <p className="generate-webmcp-modal-detail">{model.detail}</p>
+          <h3>{model.commands}</h3>
+          <ul className="generate-webmcp-tools">
+            {model.tools.map((tool) => (
+              <li key={tool.name}>
+                <code>{tool.name}</code>
+                <span>{tool.description}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </dialog>
+    </>
   );
 }
 

@@ -2,9 +2,11 @@ import { ITINERARY_GENERATION_TOOL_NAMES } from "./webmcp.js";
 
 const COPY = Object.freeze({
   en: {
+    close: "Close",
     commands: "Available commands",
     count: (value) => `${value} commands`,
     detail: "These are the page tools ChatGPT can use while Sendero remains open in its integrated browser.",
+    dialogTitle: "WebMCP commands",
     states: {
       checking: "Checking this browser",
       connected: "Connected and available",
@@ -20,9 +22,11 @@ const COPY = Object.freeze({
     },
   },
   es: {
+    close: "Cerrar",
     commands: "Comandos disponibles",
     count: (value) => `${value} comandos`,
     detail: "Estas son las herramientas que ChatGPT puede usar mientras Sendero permanezca abierto en su navegador integrado.",
+    dialogTitle: "Comandos WebMCP",
     states: {
       checking: "Comprobando este navegador",
       connected: "Conectado y disponible",
@@ -38,9 +42,11 @@ const COPY = Object.freeze({
     },
   },
   pt: {
+    close: "Fechar",
     commands: "Comandos disponíveis",
     count: (value) => `${value} comandos`,
     detail: "Estas são as ferramentas que o ChatGPT pode usar enquanto o Sendero permanecer aberto no navegador integrado.",
+    dialogTitle: "Comandos WebMCP",
     states: {
       checking: "Verificando este navegador",
       connected: "Conectado e disponível",
@@ -56,9 +62,11 @@ const COPY = Object.freeze({
     },
   },
   fr: {
+    close: "Fermer",
     commands: "Commandes disponibles",
     count: (value) => `${value} commandes`,
     detail: "Voici les outils que ChatGPT peut utiliser tant que Sendero reste ouvert dans son navigateur intégré.",
+    dialogTitle: "Commandes WebMCP",
     states: {
       checking: "Vérification de ce navigateur",
       connected: "Connecté et disponible",
@@ -74,9 +82,11 @@ const COPY = Object.freeze({
     },
   },
   de: {
+    close: "Schließen",
     commands: "Verfügbare Befehle",
     count: (value) => `${value} Befehle`,
     detail: "Diese Werkzeuge kann ChatGPT verwenden, solange Sendero im integrierten Browser geöffnet bleibt.",
+    dialogTitle: "WebMCP-Befehle",
     states: {
       checking: "Dieser Browser wird geprüft",
       connected: "Verbunden und verfügbar",
@@ -108,9 +118,11 @@ export function webMcpIndicatorModel(language = "es", status = {}) {
     description: copy.tools[name],
   }));
   return {
+    close: copy.close,
     commands: copy.commands,
     count: copy.count(tools.length),
     detail: copy.detail,
+    dialogTitle: copy.dialogTitle,
     label: "WebMCP",
     state,
     status: copy.states[state],

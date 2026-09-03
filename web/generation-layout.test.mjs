@@ -15,13 +15,18 @@ test("places lodging search on a full row while pace keeps one column", async ()
   assert.doesNotMatch(source, /<label className="generate-field generate-field-wide"><span>\{copy\.pace\}<\/span>/);
 });
 
-test("keeps authentication in the top bar and exposes the WebMCP command disclosure in the former action area", async () => {
+test("keeps authentication in the top bar and opens WebMCP commands from a compact modal trigger", async () => {
   const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
 
   assert.match(source, /signIn: "Ingresar"/);
   assert.match(source, /const topbarAction = page\.session\.authenticated/);
   assert.match(source, /<WebPageFrame[\s\S]{0,180}?topbarAction=\{topbarAction\}/);
-  assert.match(source, /<details className=\{`generate-webmcp is-\$\{model\.state\}`\} data-webmcp-indicator>/);
+  assert.match(source, /aria-haspopup="dialog"/);
+  assert.match(source, /aria-label=\{`\$\{model\.label\}: \$\{model\.status\}\. \$\{model\.count\}`\}/);
+  assert.match(source, /<dialog[\s\S]{0,220}?aria-labelledby="generate-webmcp-dialog-title"/);
+  assert.match(source, /dialog\.showModal\(\)/);
+  assert.match(source, /onClose=\{\(\) => triggerRef\.current\?\.focus\(\)\}/);
+  assert.doesNotMatch(source, /<details className=\{`generate-webmcp/);
   assert.match(source, /<WebMcpIndicator language=\{language\} status=\{generationStatus\} \/>/);
   assert.doesNotMatch(source, /<div className="web-actions">[\s\S]{0,250}?copy\.signIn/);
 });
