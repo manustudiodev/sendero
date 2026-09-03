@@ -125,6 +125,21 @@ test("negotiates localized public routes and serves canonical landing and legal 
   }
 });
 
+test("redirects localized application URLs to their query-localized canonical routes", async () => {
+  const app = createApp();
+  const cases = [
+    ["/es/app", "/app?lang=es"],
+    ["/fr/app/new?draft=browser_123", "/app/new?draft=browser_123&lang=fr"],
+    ["/de/app/trips/trip%20one", "/app/trips/trip%20one?lang=de"],
+  ];
+
+  for (const [path, expectedLocation] of cases) {
+    const response = await app.request(path, { redirect: "manual" });
+    assert.equal(response.status, 307);
+    assert.equal(response.headers.get("location"), expectedLocation);
+  }
+});
+
 test("serves a cacheable Sendero favicon", async () => {
   const app = createApp();
   const response = await app.request("/favicon.ico");

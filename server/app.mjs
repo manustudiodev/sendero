@@ -232,6 +232,11 @@ export function createApp({
     context.header("Vary", "Accept-Language, Cookie");
     return context.redirect(`/${uiLanguage(locale)}${suffix}`, 307);
   };
+  const redirectFromLocalizedAppPage = (path, locale) => (context) => {
+    const url = new URL(context.req.url);
+    url.searchParams.set("lang", locale);
+    return context.redirect(`${path}${url.search}`, 307);
+  };
   app.get("/", redirectToLocalizedSitePage("landing"));
   app.get("/privacy", redirectToLocalizedSitePage("privacy"));
   app.get("/terms", redirectToLocalizedSitePage("terms"));
@@ -239,6 +244,12 @@ export function createApp({
     app.get(`/${locale}`, renderSitePage(landingPageHtml, "landing", locale));
     app.get(`/${locale}/privacy`, renderSitePage(privacyPageHtml, "privacy", locale));
     app.get(`/${locale}/terms`, renderSitePage(termsPageHtml, "terms", locale));
+    app.get(`/${locale}/app`, redirectFromLocalizedAppPage("/app", locale));
+    app.get(`/${locale}/app/new`, redirectFromLocalizedAppPage("/app/new", locale));
+    app.get(`/${locale}/app/trips/:webId`, (context) => {
+      const webId = encodeURIComponent(context.req.param("webId"));
+      return redirectFromLocalizedAppPage(`/app/trips/${webId}`, locale)(context);
+    });
   }
   app.get("/favicon.ico", (context) => {
     context.header("Cache-Control", "public, max-age=86400");

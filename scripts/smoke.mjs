@@ -41,6 +41,7 @@ try {
   await expectHtml("/es", "Sendero · Planifica conversando");
   await expectHtml("/es/privacy", "Privacidad · Sendero");
   await expectHtml("/es/terms", "Términos · Sendero");
+  await expectRedirect("/es/app/new", "/app/new?lang=es");
   await expectHtml(
     "/share",
     "Viaje compartido · Sendero",
