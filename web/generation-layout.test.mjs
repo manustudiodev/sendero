@@ -26,6 +26,8 @@ test("keeps authentication in the top bar and opens WebMCP commands from a compa
   assert.match(source, /<dialog[\s\S]{0,220}?aria-labelledby="generate-webmcp-dialog-title"/);
   assert.match(source, /dialog\.showModal\(\)/);
   assert.match(source, /onClose=\{\(\) => triggerRef\.current\?\.focus\(\)\}/);
+  assert.match(source, /\.generate-webmcp-modal-header \{ position: sticky;[^}]*top: 0;/);
+  assert.match(source, /background: var\(--web-surface\);/);
   assert.doesNotMatch(source, /<details className=\{`generate-webmcp/);
   assert.match(source, /<WebMcpIndicator language=\{language\} status=\{generationStatus\} \/>/);
   assert.doesNotMatch(source, /<div className="web-actions">[\s\S]{0,250}?copy\.signIn/);
@@ -49,6 +51,16 @@ test("uses neutral sign-in copy for saving without assuming the visitor needs a 
   assert.match(source, />\{copy\.signInToSave\}<\/a>/);
   assert.doesNotMatch(source, /Crear cuenta para guardar y compartir/);
   assert.doesNotMatch(source, /createAccountToSave/);
+});
+
+test("makes transient generation notices dismissible and keeps errors assertive", async () => {
+  const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
+
+  assert.match(source, /dismissNotice: "Cerrar aviso"/);
+  assert.match(source, /role=\{notice\.kind === "error" \? "alert" : "status"\}/);
+  assert.match(source, /aria-live=\{notice\.kind === "error" \? "assertive" : "polite"\}/);
+  assert.match(source, /className="generate-notice-dismiss" onClick=\{\(\) => setNotice\(null\)\}/);
+  assert.match(source, /\.generate-notice-dismiss:hover/);
 });
 
 test("uses an interactive back step and separates automatic WebMCP generation from the manual prompt fallback", async () => {

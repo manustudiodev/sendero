@@ -97,7 +97,10 @@ button.generate-step-content:hover { background: color-mix(in srgb, var(--web-gr
 .generate-form > .generate-option { grid-column: 1 / -1; }
 .generate-option input { width: 18px; height: 18px; accent-color: var(--web-forest); }
 .generate-status { display: grid; gap: 12px; margin-bottom: 18px; }
-.generate-notice { border-radius: 14px; padding: 13px 15px; background: var(--web-soft); color: var(--web-muted); }
+.generate-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-radius: 14px; padding: 9px 11px 9px 15px; background: var(--web-soft); color: var(--web-muted); }
+.generate-notice > span { min-width: 0; }
+.generate-notice-dismiss { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border: 1px solid transparent; border-radius: 999px; padding: 0; background: transparent; color: currentColor; cursor: pointer; font-size: 20px; line-height: 1; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+.generate-notice-dismiss:hover { border-color: color-mix(in srgb, currentColor 20%, transparent); background: color-mix(in srgb, currentColor 8%, transparent); }
 .generate-notice strong { color: var(--web-ink); }
 .generate-notice.is-ready { background: rgba(162, 212, 94, .2); }
 .generate-notice.is-error { color: var(--web-danger); }
@@ -143,8 +146,8 @@ button.generate-step-content:hover { background: color-mix(in srgb, var(--web-gr
 .generate-webmcp-modal { width: min(680px, calc(100% - 28px)); max-height: min(760px, calc(100dvh - 40px)); overflow: auto; border: 1px solid var(--web-line); border-radius: 18px; padding: 0; background: var(--web-surface); box-shadow: 0 24px 80px rgba(0, 36, 33, .24); color: var(--web-ink); }
 .generate-webmcp-modal::backdrop { background: rgba(0, 31, 29, .46); backdrop-filter: blur(3px); }
 .generate-webmcp-modal[open] { animation: webmcp-modal-in 180ms cubic-bezier(.16, 1, .3, 1); }
-.generate-webmcp-modal-inner { padding: 22px; }
-.generate-webmcp-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.generate-webmcp-modal-inner { --generate-modal-padding: 22px; padding: var(--generate-modal-padding); }
+.generate-webmcp-modal-header { position: sticky; z-index: 2; top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: calc(var(--generate-modal-padding) * -1) calc(var(--generate-modal-padding) * -1) 0; border-bottom: 1px solid var(--web-line); padding: var(--generate-modal-padding) var(--generate-modal-padding) 16px; background: var(--web-surface); }
 .generate-webmcp-modal-header h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
 .generate-webmcp-modal-close { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid var(--web-line); border-radius: 50%; background: var(--web-surface); color: var(--web-muted); cursor: pointer; font: inherit; font-size: 20px; line-height: 1; }
 .generate-webmcp-modal-close:hover { border-color: var(--web-forest); color: var(--web-ink); }
@@ -171,7 +174,7 @@ button.generate-step-content:hover { background: color-mix(in srgb, var(--web-gr
   .generate-receipt { align-items: stretch; flex-direction: column; }
 }
 @media (max-width: 520px) { .generate-card { padding: 17px; } .generate-handoff-actions .web-button, .generate-form-actions .web-button { width: 100%; } }
-@media (max-width: 520px) { .generate-webmcp-copy small, .generate-webmcp-count { display: none; } .generate-webmcp-modal-inner { padding: 18px; } }
+@media (max-width: 520px) { .generate-webmcp-copy small, .generate-webmcp-count { display: none; } .generate-webmcp-modal-inner { --generate-modal-padding: 18px; } }
 @media (prefers-reduced-motion: reduce) { button.generate-step-content, .generate-webmcp, .generate-webmcp-modal[open], .generate-webmcp.is-checking .generate-webmcp-status-dot { animation: none; transition: none; } }
 `;
 
@@ -320,7 +323,7 @@ const COPY = {
     },
     prepare: "Prepare for ChatGPT", protocolReady: "The brief is complete. ChatGPT can now research and generate the itinerary with the current protocol.",
     criticalMissing: (fields) => `Critical details are missing: ${fields}.`, prepareError: "We couldn't prepare the trip.", saved: "The trip was saved in Sendero.",
-    saveError: "We couldn't save the trip.", discarded: "The local draft was discarded.", discardError: "We couldn't discard the draft.",
+    saveError: "We couldn't save the trip.", discarded: "The local draft was discarded.", discardError: "We couldn't discard the draft.", dismissNotice: "Dismiss notification",
     loading: "Preparing the planner…", signIn: "Sign in", signedOutDetail: "Your Sendero session protects the drafts and trips ChatGPT creates from this page.", signedOutTitle: "Sign in to plan",
     back: "Back to your trips", unavailableDetail: "This capability is not enabled in this environment yet. Open Sendero in the ChatGPT desktop app's integrated browser to use the WebMCP flow.", unavailableTitle: "Web generation unavailable",
     retry: "Try again", errorDetail: "No trip was changed or saved.", errorTitle: "We couldn't open the planner", eyebrow: "Conversational planning", title: "Create a trip",
@@ -351,7 +354,7 @@ const COPY = {
     },
     prepare: "Preparar para ChatGPT", protocolReady: "El brief está completo. ChatGPT ya puede investigar y generar el itinerario con el protocolo actual.",
     criticalMissing: (fields) => `Faltan datos críticos: ${fields}.`, prepareError: "No pudimos preparar el viaje.", saved: "El viaje quedó guardado en Sendero.",
-    saveError: "No pudimos guardar el viaje.", discarded: "El borrador local fue descartado.", discardError: "No pudimos descartar el borrador.",
+    saveError: "No pudimos guardar el viaje.", discarded: "El borrador local fue descartado.", discardError: "No pudimos descartar el borrador.", dismissNotice: "Cerrar aviso",
     loading: "Preparando el planificador…", signIn: "Ingresar", signedOutDetail: "Tu sesión de Sendero protege los borradores y viajes que ChatGPT cree desde esta página.", signedOutTitle: "Inicia sesión para planificar",
     back: "Volver a tus viajes", unavailableDetail: "Esta capacidad todavía no está activada en este ambiente. Abre Sendero en el navegador integrado de la app de escritorio de ChatGPT para usar el flujo WebMCP.", unavailableTitle: "Generación web no disponible",
     retry: "Intentar de nuevo", errorDetail: "No se modificó ni guardó ningún viaje.", errorTitle: "No pudimos abrir el planificador", eyebrow: "Planificación conversacional", title: "Crear un viaje",
@@ -382,7 +385,7 @@ const COPY = {
     },
     prepare: "Preparar para o ChatGPT", protocolReady: "O brief está completo. O ChatGPT já pode pesquisar e gerar o roteiro com o protocolo atual.",
     criticalMissing: (fields) => `Faltam dados críticos: ${fields}.`, prepareError: "Não foi possível preparar a viagem.", saved: "A viagem foi salva no Sendero.",
-    saveError: "Não foi possível salvar a viagem.", discarded: "O rascunho local foi descartado.", discardError: "Não foi possível descartar o rascunho.",
+    saveError: "Não foi possível salvar a viagem.", discarded: "O rascunho local foi descartado.", discardError: "Não foi possível descartar o rascunho.", dismissNotice: "Fechar aviso",
     loading: "Preparando o planejador…", signIn: "Entrar", signedOutDetail: "Sua sessão do Sendero protege os rascunhos e viagens que o ChatGPT criar nesta página.", signedOutTitle: "Entre para planejar",
     back: "Voltar às suas viagens", unavailableDetail: "Esta capacidade ainda não está ativa neste ambiente. Abra o Sendero no navegador integrado do app ChatGPT para desktop para usar o fluxo WebMCP.", unavailableTitle: "Geração web indisponível",
     retry: "Tentar novamente", errorDetail: "Nenhuma viagem foi alterada ou salva.", errorTitle: "Não foi possível abrir o planejador", eyebrow: "Planejamento conversacional", title: "Criar uma viagem",
@@ -413,7 +416,7 @@ const COPY = {
     },
     prepare: "Préparer pour ChatGPT", protocolReady: "Le brief est complet. ChatGPT peut maintenant rechercher et générer l’itinéraire avec le protocole actuel.",
     criticalMissing: (fields) => `Informations essentielles manquantes : ${fields}.`, prepareError: "Impossible de préparer le voyage.", saved: "Le voyage a été enregistré dans Sendero.",
-    saveError: "Impossible d’enregistrer le voyage.", discarded: "Le brouillon local a été supprimé.", discardError: "Impossible de supprimer le brouillon.",
+    saveError: "Impossible d’enregistrer le voyage.", discarded: "Le brouillon local a été supprimé.", discardError: "Impossible de supprimer le brouillon.", dismissNotice: "Fermer l’avis",
     loading: "Préparation du planificateur…", signIn: "Se connecter", signedOutDetail: "Votre session Sendero protège les brouillons et voyages créés par ChatGPT depuis cette page.", signedOutTitle: "Connectez-vous pour planifier",
     back: "Retour à vos voyages", unavailableDetail: "Cette fonctionnalité n’est pas encore activée dans cet environnement. Ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT pour utiliser le parcours WebMCP.", unavailableTitle: "Génération web indisponible",
     retry: "Réessayer", errorDetail: "Aucun voyage n’a été modifié ni enregistré.", errorTitle: "Impossible d’ouvrir le planificateur", eyebrow: "Planification conversationnelle", title: "Créer un voyage",
@@ -444,7 +447,7 @@ const COPY = {
     },
     prepare: "Für ChatGPT vorbereiten", protocolReady: "Die Angaben sind vollständig. ChatGPT kann den Reiseplan jetzt mit dem aktuellen Protokoll recherchieren und erstellen.",
     criticalMissing: (fields) => `Wesentliche Angaben fehlen: ${fields}.`, prepareError: "Die Reise konnte nicht vorbereitet werden.", saved: "Die Reise wurde in Sendero gespeichert.",
-    saveError: "Die Reise konnte nicht gespeichert werden.", discarded: "Der lokale Entwurf wurde verworfen.", discardError: "Der Entwurf konnte nicht verworfen werden.",
+    saveError: "Die Reise konnte nicht gespeichert werden.", discarded: "Der lokale Entwurf wurde verworfen.", discardError: "Der Entwurf konnte nicht verworfen werden.", dismissNotice: "Hinweis schließen",
     loading: "Planer wird vorbereitet…", signIn: "Anmelden", signedOutDetail: "Deine Sendero-Sitzung schützt die Entwürfe und Reisen, die ChatGPT von dieser Seite aus erstellt.", signedOutTitle: "Zum Planen anmelden",
     back: "Zurück zu deinen Reisen", unavailableDetail: "Diese Funktion ist in dieser Umgebung noch nicht aktiviert. Öffne Sendero im integrierten Browser der ChatGPT-Desktop-App, um den WebMCP-Ablauf zu verwenden.", unavailableTitle: "Web-Generierung nicht verfügbar",
     retry: "Erneut versuchen", errorDetail: "Es wurde keine Reise geändert oder gespeichert.", errorTitle: "Der Planer konnte nicht geöffnet werden", eyebrow: "Reiseplanung im Gespräch", title: "Reise erstellen",
@@ -1440,7 +1443,14 @@ export function GenerateTripApp() {
       <div className="generate-flow">
         <GenerationProgress activeStep={activeStep} copy={copy} onReturnToBrief={editBrief} />
         {notice ? (
-          <div aria-live="assertive" className={`generate-notice is-${notice.kind}`} role="alert">{notice.text}</div>
+          <div
+            aria-live={notice.kind === "error" ? "assertive" : "polite"}
+            className={`generate-notice is-${notice.kind}`}
+            role={notice.kind === "error" ? "alert" : "status"}
+          >
+            <span>{notice.text}</span>
+            <button aria-label={copy.dismissNotice} className="generate-notice-dismiss" onClick={() => setNotice(null)} type="button">×</button>
+          </div>
         ) : null}
         {activeStep === 1 ? (
           <section aria-labelledby="generate-context-title" className="generate-card">
