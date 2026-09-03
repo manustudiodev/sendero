@@ -111,7 +111,7 @@ const authenticatedPageSecurityHeaders = Object.freeze({
   "X-Robots-Tag": "noindex, nofollow, noarchive",
 });
 
-const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="18" fill="#a2d45e"/><path fill="#003834" d="M22 18h21v8H30v5h11v8H30v7h14v8H22z"/></svg>`;
+const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="18" fill="#a2d45e"/><path fill="#003834" d="M43 18H29c-7 0-12 4-12 11 0 6 5 10 12 10h6c3 0 4 1 4 3 0 3-2 4-5 4H20v8h15c8 0 13-5 13-12 0-7-5-11-12-11h-7c-2 0-3-1-3-2 0-2 1-3 3-3h14z"/></svg>`;
 
 function setPublicSecurityHeaders(context) {
   for (const [name, value] of Object.entries(publicSecurityHeaders)) {

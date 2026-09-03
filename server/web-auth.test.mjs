@@ -32,10 +32,33 @@ test("starts Auth0 Authorization Code + PKCE with a short HttpOnly flow cookie",
   assert.equal(location.searchParams.get("response_type"), "code");
   assert.equal(location.searchParams.get("code_challenge_method"), "S256");
   assert.equal(location.searchParams.get("audience"), config.audience);
+  assert.equal(location.searchParams.get("ui_locales"), "es");
   assert.match(response.headers.get("set-cookie"), /sendero_auth_flow=/);
   assert.match(response.headers.get("set-cookie"), /HttpOnly/i);
   assert.match(response.headers.get("set-cookie"), /Secure/i);
   assert.match(response.headers.get("set-cookie"), /SameSite=Lax/i);
+});
+
+test("keeps the active Sendero language in Universal Login", async () => {
+  const app = new Hono();
+  registerWebAuthRoutes(app, createWebAuth(config));
+  const localized = await app.request(
+    "https://sendero.example/auth/login?returnTo=%2Fapp%2Fnew%3Flang%3Dfr",
+    { headers: { "Accept-Language": "de-DE,de;q=0.9" } },
+  );
+  assert.equal(
+    new URL(localized.headers.get("location")).searchParams.get("ui_locales"),
+    "fr-FR",
+  );
+
+  const remembered = await app.request(
+    "https://sendero.example/auth/login?returnTo=%2Fapp",
+    { headers: { Cookie: "sendero_locale=pt" } },
+  );
+  assert.equal(
+    new URL(remembered.headers.get("location")).searchParams.get("ui_locales"),
+    "pt-BR",
+  );
 });
 
 test("forces fresh authentication for a verified-email retry and returns to the pending invitation", async () => {

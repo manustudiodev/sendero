@@ -130,7 +130,9 @@ test("serves a cacheable Sendero favicon", async () => {
   const response = await app.request("/favicon.ico");
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") || "", /image\/svg\+xml/);
-  assert.match(await response.text(), /#a2d45e/);
+  const favicon = await response.text();
+  assert.match(favicon, /#a2d45e/);
+  assert.match(favicon, /M43 18H29/);
 });
 
 test("serves authenticated web shells with private caching, no indexing, and same-origin APIs", async () => {

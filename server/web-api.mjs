@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   deriveInvitationToken,
@@ -226,6 +227,15 @@ function activePublicShare(status) {
   return status?.status === "active";
 }
 
+function sameOriginRequest(context) {
+  const origin = context.req.header("Origin");
+  try {
+    return Boolean(origin) && origin === new URL(context.req.url).origin;
+  } catch {
+    return false;
+  }
+}
+
 export function registerWebApiRoutes(app, {
   convexUrl,
   invitePepper,
@@ -289,19 +299,31 @@ export function registerWebApiRoutes(app, {
         );
   }
 
-  app.get("/api/itinerary-planning/capabilities", (context) => authenticated(
-    context,
-    async () => context.json({
-      data: {
-        enabled: planningEnabled,
-        ...(planningEnabled ? planningProtocolIdentity() : {}),
-      },
-    }),
-  ));
+  function requireSameOrigin(context) {
+    return sameOriginRequest(context)
+      ? undefined
+      : errorResponse(
+          context,
+          "invalid_origin",
+          403,
+          "Open Sendero directly and try again.",
+          false,
+        );
+  }
 
-  app.post("/api/destination-suggestions", (context) => authenticated(
-    context,
-    async () => {
+  app.get("/api/itinerary-planning/capabilities", (context) => context.json({
+    data: {
+      enabled: planningEnabled,
+      anonymousPlanning: planningEnabled,
+      persistenceRequiresAuthentication: true,
+      ...(planningEnabled ? planningProtocolIdentity() : {}),
+    },
+  }));
+
+  app.post("/api/destination-suggestions", async (context) => {
+    const invalidOrigin = requireSameOrigin(context);
+    if (invalidOrigin) return invalidOrigin;
+    try {
       const input = await readJson(context, destinationSuggestionsRequestSchema);
       return context.json({
         data: await destinationSuggestions(input, {
@@ -310,19 +332,49 @@ export function registerWebApiRoutes(app, {
           signal: context.req.raw.signal,
         }),
       });
-    },
-    { mutate: true },
-  ));
+    } catch (error) {
+      return mappedFailure(context, error, logger);
+    }
+  });
 
-  app.post("/api/itinerary-planning/protocol", (context) => authenticated(
-    context,
-    async () => {
+  app.post("/api/itinerary-planning/protocol", async (context) => {
+    const invalidOrigin = requireSameOrigin(context);
+    if (invalidOrigin) return invalidOrigin;
+    try {
       const unavailable = requirePlanningEnabled(context);
       if (unavailable) return unavailable;
       const { brief } = await readJson(context, planningProtocolRequestSchema);
       return context.json({ data: planningProtocol(brief) });
-    },
-  ));
+    } catch (error) {
+      return mappedFailure(context, error, logger);
+    }
+  });
+
+  app.post("/api/itinerary-planning/validate", async (context) => {
+    const invalidOrigin = requireSameOrigin(context);
+    if (invalidOrigin) return invalidOrigin;
+    try {
+      const unavailable = requirePlanningEnabled(context);
+      if (unavailable) return unavailable;
+      const input = await readJson(
+        context,
+        stageItineraryRequestSchema,
+        { maxBytes: MAX_ITINERARY_BODY_BYTES },
+      );
+      const prepared = validatedDraft(input);
+      return context.json({
+        data: draftSummary({
+          draftId: `browser_${randomUUID().replaceAll("-", "")}`,
+          status: "valid",
+          protocolVersion: prepared.protocolVersion,
+          warnings: prepared.warnings,
+          itinerary: prepared.itinerary,
+        }),
+      });
+    } catch (error) {
+      return mappedFailure(context, error, logger);
+    }
+  });
 
   app.post("/api/itinerary-drafts", (context) => authenticated(
     context,

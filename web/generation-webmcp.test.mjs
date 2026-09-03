@@ -17,7 +17,7 @@ function facade() {
   };
 }
 
-test("registers the five authenticated generation tools on the top-level page", async () => {
+test("registers the five anonymous-first generation tools on the top-level page", async () => {
   const registered = [];
   const reports = [];
   const controller = new AbortController();
@@ -34,7 +34,8 @@ test("registers the five authenticated generation tools on the top-level page", 
   ]);
   assert.match(registered[0].tool.description, /prefer this page workflow over remote Sendero planning tools/i);
   assert.match(registered[1].tool.description, /authoritative review handoff/i);
-  assert.match(registered[3].tool.description, /current web account/i);
+  assert.match(registered[1].tool.description, /without a Sendero account/i);
+  assert.match(registered[3].tool.description, /requires a Sendero account/i);
 });
 
 test("leaves the page usable without WebMCP and keeps failures compact", async () => {
@@ -70,25 +71,58 @@ test("reports tool lifecycle without exposing the generated itinerary", async ()
   assert.equal(reports.some((event) => "itinerary" in event), false);
 });
 
-test("uses CSRF for temporary and canonical mutations and reuses operation IDs", async () => {
+test("keeps anonymous validation in the browser cache and requires authentication only to save", async () => {
   const calls = [];
+  let cached = null;
+  let session = { authenticated: false, loginUrl: "/auth/login" };
   const generated = createItineraryGenerationFacade({
-    csrfToken: "csrf",
     getBrief: () => ({ destination: "Valencia" }),
-    getCurrentDraftId: () => "draft_1234567890123456",
+    getCachedDraft: () => cached,
+    getCurrentDraftId: () => cached?.view?.draftId,
+    getSession: () => session,
+    onDraft(view, options = {}) {
+      if (options.clear) cached = null;
+      else cached = {
+        view,
+        saveInput: Object.hasOwn(options, "saveInput")
+          ? options.saveInput
+          : cached?.saveInput || null,
+      };
+    },
     request: async (path, options = {}) => {
       calls.push({ path, ...options });
-      if (path.endsWith("/save")) return { status: "saved" };
-      return { draftId: "draft_1234567890123456", status: "valid" };
+      if (path === "/api/itinerary-planning/validate") {
+        return { draftId: "browser_12345678901234567890123456789012", status: "valid" };
+      }
+      if (path === "/api/itinerary-drafts") {
+        return { draftId: "draft_1234567890123456", status: "valid" };
+      }
+      if (path.endsWith("/save")) {
+        return { draftId: "draft_1234567890123456", status: "saved", trip: { webId: "trip_123" } };
+      }
+      throw new Error(`Unexpected request: ${path}`);
     },
   });
   const input = { itinerary: { title: "Viaje" }, protocolHash: "a".repeat(64), protocolVersion: "1.0.0" };
   await generated.stage(input);
   await generated.stage(input);
-  await generated.save({});
-  await generated.save({});
-  assert.equal(calls.every(({ method }) => method === "POST"), true);
-  assert.equal(calls.every(({ csrfToken }) => csrfToken === "csrf"), true);
+  assert.equal((await generated.getDraft({})).draftId, "browser_12345678901234567890123456789012");
+  await assert.rejects(
+    generated.save({}),
+    (error) => error.code === "authentication_required" && error.status === 401,
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls.every(({ path }) => path === "/api/itinerary-planning/validate"), true);
+  assert.equal(calls.every(({ csrfToken }) => csrfToken === undefined), true);
   assert.equal(calls[0].body.operationId, calls[1].body.operationId);
-  assert.equal(calls[2].body.operationId, calls[3].body.operationId);
+
+  session = { authenticated: true, csrfToken: "csrf" };
+  const saved = await generated.save({});
+  assert.equal(saved.trip.webId, "trip_123");
+  assert.equal(calls[2].path, "/api/itinerary-drafts");
+  assert.equal(calls[3].path, "/api/itinerary-drafts/draft_1234567890123456/save");
+  assert.equal(calls[2].csrfToken, "csrf");
+  assert.equal(calls[3].csrfToken, "csrf");
+  assert.equal(cached.view.status, "saved");
+  assert.equal(cached.saveInput, null);
 });

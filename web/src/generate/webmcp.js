@@ -72,7 +72,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
     }),
     definition({
       name: "validate_and_stage_itinerary",
-      description: "Validate one complete generated itinerary against the current Sendero protocol and create a temporary draft in the open creation page. This is the authoritative review handoff for that page and should be preferred over a remote presentation tool when available. It does not save a canonical trip. Correct blocking errors before continuing and review all warnings.",
+      description: "Validate one complete generated itinerary against the current Sendero protocol and place a local draft in this browser's persistent Sendero cache. This works without a Sendero account and is the authoritative review handoff for the open page. It does not save a canonical trip. Correct blocking errors before continuing and review all warnings.",
       inputSchema: {
         type: "object",
         properties: {
@@ -93,7 +93,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
     }),
     definition({
       name: "get_staged_itinerary",
-      description: "Read a validated temporary Sendero itinerary draft and its warnings. This does not save or modify the canonical trip library.",
+      description: "Read the validated local Sendero itinerary draft currently cached by the open page and its warnings. This does not require an account and does not save or modify the canonical trip library.",
       inputSchema: {
         type: "object",
         properties: { draftId: DRAFT_ID },
@@ -104,7 +104,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
     }),
     definition({
       name: "save_staged_itinerary",
-      description: "Explicitly save one validated temporary draft from the open creation page as an authoritative Sendero trip. Call only when the user asked to save. When this page-scoped tool is available, prefer it over remote Sendero save tools so the page and the current web account receive the same result. Report success only from the returned trip, webId, and version.",
+      description: "Explicitly save one validated local draft from the open creation page as an authoritative Sendero trip. This requires a Sendero account; when signed out, preserve the browser draft and let the page offer sign-in or account creation. Call only when the user asked to save. Report success only from the returned trip, webId, and version.",
       inputSchema: {
         type: "object",
         properties: { draftId: DRAFT_ID },
@@ -115,7 +115,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
     }),
     definition({
       name: "discard_staged_itinerary",
-      description: "Discard the selected temporary Sendero draft and remove its itinerary content. This never deletes a saved trip.",
+      description: "Discard the selected local Sendero browser draft and remove its itinerary content. This works without an account and never deletes a saved trip.",
       inputSchema: {
         type: "object",
         properties: { draftId: DRAFT_ID },

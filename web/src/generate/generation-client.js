@@ -1,12 +1,15 @@
 import {
   createStableOperationRegistry,
   requestJson,
+  WebApiError,
 } from "../account/web-client.js";
 
 export function createItineraryGenerationFacade({
   csrfToken,
   getBrief,
+  getCachedDraft,
   getCurrentDraftId,
+  getSession,
   onDraft,
   request = requestJson,
 } = {}) {
@@ -26,6 +29,29 @@ export function createItineraryGenerationFacade({
     return draftId;
   }
 
+  function currentSession() {
+    const session = getSession?.();
+    if (session) return session;
+    return csrfToken
+      ? { authenticated: true, csrfToken }
+      : { authenticated: false };
+  }
+
+  function cachedDraft(draftId) {
+    const entry = getCachedDraft?.();
+    return entry?.view?.draftId === draftId ? entry : null;
+  }
+
+  function authenticationRequired(session) {
+    throw new WebApiError({
+      code: "authentication_required",
+      details: session?.loginUrl ? { loginUrl: session.loginUrl } : undefined,
+      message: "Create or sign in to a Sendero account to save and share this itinerary.",
+      retryable: false,
+      status: 401,
+    });
+  }
+
   return {
     async getProtocol({ brief } = {}) {
       return request("/api/itinerary-planning/protocol", {
@@ -37,51 +63,77 @@ export function createItineraryGenerationFacade({
     async stage({ brief, itinerary, protocolHash, protocolVersion }) {
       const key = JSON.stringify({ brief: currentBrief(brief), itinerary, protocolHash, protocolVersion });
       const { operationId } = operations.begin(key, undefined, "webmcp-stage");
-      const draft = await request("/api/itinerary-drafts", {
-        body: {
-          brief: currentBrief(brief),
-          itinerary,
-          operationId,
-          protocolHash,
-          protocolVersion,
-        },
-        csrfToken,
+      const saveInput = {
+        brief: currentBrief(brief),
+        itinerary,
+        operationId,
+        protocolHash,
+        protocolVersion,
+      };
+      const draft = await request("/api/itinerary-planning/validate", {
+        body: saveInput,
         method: "POST",
       });
-      onDraft?.(draft);
+      onDraft?.(draft, { saveInput });
       return draft;
     },
 
     async getDraft({ draftId } = {}) {
+      const resolvedDraftId = draftIdOrCurrent(draftId);
+      const cached = cachedDraft(resolvedDraftId);
+      if (cached) {
+        onDraft?.(cached.view, { saveInput: cached.saveInput });
+        return cached.view;
+      }
       const draft = await request(
-        `/api/itinerary-drafts/${encodeURIComponent(draftIdOrCurrent(draftId))}`,
+        `/api/itinerary-drafts/${encodeURIComponent(resolvedDraftId)}`,
       );
       onDraft?.(draft);
       return draft;
     },
 
     async save({ draftId } = {}) {
-      const resolvedDraftId = draftIdOrCurrent(draftId);
+      let resolvedDraftId = draftIdOrCurrent(draftId);
+      const session = currentSession();
+      if (!session.authenticated || !session.csrfToken) authenticationRequired(session);
+      const cached = cachedDraft(resolvedDraftId);
+      if (cached?.saveInput) {
+        const staged = await request("/api/itinerary-drafts", {
+          body: cached.saveInput,
+          csrfToken: session.csrfToken,
+          method: "POST",
+        });
+        resolvedDraftId = staged.draftId;
+        onDraft?.(staged, { saveInput: cached.saveInput });
+      }
       const { operationId } = operations.begin(`save:${resolvedDraftId}`, undefined, "webmcp-save");
       const result = await request(
         `/api/itinerary-drafts/${encodeURIComponent(resolvedDraftId)}/save`,
         {
           body: { operationId },
-          csrfToken,
+          csrfToken: session.csrfToken,
           method: "POST",
         },
       );
-      onDraft?.(result);
+      onDraft?.(result, { persist: false, saveInput: null });
       return result;
     },
 
     async discard({ draftId } = {}) {
       const resolvedDraftId = draftIdOrCurrent(draftId);
+      const cached = cachedDraft(resolvedDraftId);
+      if (cached?.saveInput) {
+        const result = { draftId: resolvedDraftId, status: "discarded" };
+        onDraft?.(result, { clear: true });
+        return result;
+      }
+      const session = currentSession();
+      if (!session.authenticated || !session.csrfToken) authenticationRequired(session);
       const result = await request(
         `/api/itinerary-drafts/${encodeURIComponent(resolvedDraftId)}`,
-        { csrfToken, method: "DELETE" },
+        { csrfToken: session.csrfToken, method: "DELETE" },
       );
-      onDraft?.(result);
+      onDraft?.(result, { clear: true });
       return result;
     },
   };

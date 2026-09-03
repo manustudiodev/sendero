@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import { EncryptJWT, createRemoteJWKSet, jwtDecrypt, jwtVerify } from "jose";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { resolveUiLocale, uiLanguage } from "../shared/ui-locale.mjs";
 
 const FLOW_COOKIE = "sendero_auth_flow";
 const PENDING_INVITATION_COOKIE = "sendero_pending_invitation";
@@ -14,6 +15,17 @@ const LOCAL_SESSION_COOKIE = "sendero_session";
 const FLOW_TTL_SECONDS = 10 * 60;
 const PENDING_INVITATION_TTL_SECONDS = 24 * 60 * 60;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const AUTH0_UI_LOCALES = Object.freeze({
+  de: "de",
+  en: "en",
+  es: "es",
+  fr: "fr-FR",
+  pt: "pt-BR",
+});
+
+function auth0UiLocale(locale) {
+  return AUTH0_UI_LOCALES[uiLanguage(locale)] || "es";
+}
 
 function normalizedIssuer(value) {
   if (!value) return undefined;
@@ -153,6 +165,13 @@ export function createWebAuth({
     const codeVerifier = base64url(randomBytes(48));
     const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
     const returnTo = safeReturnTo(context.req.query("returnTo"));
+    const returnUrl = new URL(returnTo, webOrigin);
+    const uiLocale = auth0UiLocale(resolveUiLocale({
+      acceptLanguage: context.req.header("Accept-Language") || "",
+      cookie: context.req.header("Cookie") || "",
+      pathname: returnUrl.pathname,
+      search: returnUrl.search,
+    }));
     const reauthenticate = context.req.query("reauth") === "1";
     const flow = await encryptPayload(
       { state, nonce, codeVerifier, returnTo },
@@ -176,6 +195,7 @@ export function createWebAuth({
       response_type: "code",
       scope: scopes.join(" "),
       state,
+      ui_locales: uiLocale,
     }).toString();
     if (reauthenticate) authorizationUrl.searchParams.set("prompt", "login");
     return context.redirect(authorizationUrl.href, 302);

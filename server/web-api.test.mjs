@@ -258,9 +258,10 @@ const plannedItinerary = {
   }],
 };
 
-test("returns authenticated destination suggestions and requires CSRF", async () => {
+test("returns anonymous destination suggestions and rejects cross-origin requests", async () => {
   const upstreamCalls = [];
   const { app } = fixture({
+    authenticated: false,
     placesApiKey: "server-only-test-key",
     async placesFetch(url, options) {
       upstreamCalls.push({ url, options });
@@ -285,10 +286,13 @@ test("returns authenticated destination suggestions and requires CSRF", async ()
     sessionToken: "3dfb0938-9dc6-47ea-b945-75c87f1b9830",
   };
 
-  const rejected = await app.request(jsonRequest(
-    "/api/destination-suggestions",
-    body,
-    { csrf: "wrong" },
+  const rejected = await app.request(new Request(
+    "https://sendero.example/api/destination-suggestions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+      body: JSON.stringify(body),
+    },
   ));
   assert.equal(rejected.status, 403);
   assert.equal(upstreamCalls.length, 0);
@@ -320,11 +324,17 @@ test("fails closed when destination suggestions are not configured", async () =>
   assert.equal((await response.json()).error.code, "destination_search_unavailable");
 });
 
-test("keeps itinerary planning disabled by default behind an authenticated capability", async () => {
+test("keeps anonymous itinerary planning disabled when the environment flag is off", async () => {
   const { app } = fixture();
   const capabilities = await app.request("/api/itinerary-planning/capabilities");
   assert.equal(capabilities.status, 200);
-  assert.deepEqual(await capabilities.json(), { data: { enabled: false } });
+  assert.deepEqual(await capabilities.json(), {
+    data: {
+      enabled: false,
+      anonymousPlanning: false,
+      persistenceRequiresAuthentication: true,
+    },
+  });
   const response = await app.request(jsonRequest(
     "/api/itinerary-planning/protocol",
     { brief: planningBrief },
@@ -332,6 +342,44 @@ test("keeps itinerary planning disabled by default behind an authenticated capab
   ));
   assert.equal(response.status, 404);
   assert.equal((await response.json()).error.code, "planning_unavailable");
+});
+
+test("exposes protocol and server validation anonymously without persisting a trip", async () => {
+  const { app, calls } = fixture({ authenticated: false, planningEnabled: true });
+  const capabilities = await app.request("/api/itinerary-planning/capabilities");
+  const capabilityData = (await capabilities.json()).data;
+  assert.equal(capabilityData.enabled, true);
+  assert.equal(capabilityData.anonymousPlanning, true);
+  assert.equal(capabilityData.persistenceRequiresAuthentication, true);
+
+  const protocolResponse = await app.request(jsonRequest(
+    "/api/itinerary-planning/protocol",
+    { brief: planningBrief },
+    { csrf: undefined },
+  ));
+  assert.equal(protocolResponse.status, 200);
+  const protocol = (await protocolResponse.json()).data;
+  assert.equal(protocol.brief.ready, true);
+
+  const identity = planningProtocolIdentity();
+  const validationResponse = await app.request(jsonRequest(
+    "/api/itinerary-planning/validate",
+    {
+      brief: planningBrief,
+      itinerary: plannedItinerary,
+      operationId: "sendero-stage:anonymous-test",
+      protocolHash: identity.hash,
+      protocolVersion: identity.version,
+    },
+    { csrf: undefined },
+  ));
+  assert.equal(validationResponse.status, 200);
+  const draft = (await validationResponse.json()).data;
+  assert.match(draft.draftId, /^browser_[a-f0-9]{32}$/);
+  assert.equal(draft.status, "valid");
+  assert.equal("expiresAt" in draft, false);
+  assert.equal(draft.summary.days, 1);
+  assert.equal(calls.some(([name]) => name === "stageDraft"), false);
 });
 
 test("returns the current protocol and stages only server-validated itineraries", async () => {
