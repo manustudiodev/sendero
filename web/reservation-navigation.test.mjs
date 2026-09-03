@@ -34,10 +34,16 @@ test("reservation navigation persists the exact target and focuses its authorita
 });
 
 test("reservation provider and status actions share one responsive row", async () => {
-  const styles = await readFile(stylesUrl, "utf8");
+  const [viewer, styles] = await Promise.all([
+    readFile(viewerUrl, "utf8"),
+    readFile(stylesUrl, "utf8"),
+  ]);
 
   assert.match(styles, /\.reservation-actions \{[^}]*display: flex;[^}]*flex-wrap: nowrap;[^}]*align-items: center;/);
   assert.match(styles, /\.reservation-provider-row, \.reservation-status-row \{[^}]*display: inline-flex;[^}]*flex: 0 1 auto;/);
   assert.match(styles, /\.reservation-controls \{[^}]*display: inline-flex;[^}]*width: auto;/);
+  assert.match(styles, /\.external-text-link \{[^}]*text-decoration: underline;/);
+  assert.match(viewer, /variant="text"/);
+  assert.match(viewer, /aria-pressed=\{presentation\.status === action\.status\}/);
   assert.doesNotMatch(styles, /\.reservation-provider-row, \.reservation-status-row \{[^}]*width: 100%;/);
 });

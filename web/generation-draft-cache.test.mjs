@@ -7,6 +7,7 @@ import {
   clearActiveDraft,
   hydrateActiveDraft,
   readActiveDraftCache,
+  updateActiveDraftReservationStatus,
 } from "./src/generate/draft-cache.js";
 
 function fixture() {
@@ -77,4 +78,39 @@ test("keeps browser drafts without a time limit and removes terminal or expired 
 
   clearActiveDraft(queryClient, { storage });
   assert.equal(queryClient.getQueryData(ACTIVE_DRAFT_QUERY_KEY), null);
+});
+
+test("updates reservation status in both the local preview and its eventual save payload", () => {
+  const { queryClient, storage } = fixture();
+  cacheActiveDraft(queryClient, {
+    view: {
+      draftId: "browser_12345678901234567890123456789012",
+      status: "valid",
+      itinerary: {
+        days: [{
+          date: "2027-04-10",
+          activities: [{ id: "alcazar", reservation: { status: "pending" } }],
+        }],
+      },
+    },
+    saveInput: {
+      itinerary: {
+        days: [{
+          date: "2027-04-10",
+          activities: [{ id: "alcazar", reservation: { status: "pending" } }],
+        }],
+      },
+    },
+  }, { storage });
+
+  updateActiveDraftReservationStatus(queryClient, {
+    activityId: "alcazar",
+    dayDate: "2027-04-10",
+    status: "confirmed",
+  }, { storage });
+
+  const cached = queryClient.getQueryData(ACTIVE_DRAFT_QUERY_KEY);
+  assert.equal(cached.view.itinerary.days[0].activities[0].reservation.status, "confirmed");
+  assert.equal(cached.saveInput.itinerary.days[0].activities[0].reservation.status, "confirmed");
+  assert.equal(readActiveDraftCache({ storage }).view.itinerary.days[0].activities[0].reservation.status, "confirmed");
 });

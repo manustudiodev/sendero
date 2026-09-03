@@ -55,10 +55,13 @@ function costLabel(cost, locale) {
 
 function BudgetSummary({ itinerary, locale }) {
   const summary = itineraryBudgetSummary(itinerary);
-  if (!summary) return null;
-  const estimate = summary.pricedItems
-    ? formatMoneyRange(locale, summary.currency, summary.estimatedMin, summary.estimatedMax)
-    : t(locale, "viewer.costUnknown");
+  const hasUsefulEstimate = Boolean(
+    summary
+    && summary.currency
+    && (summary.estimatedMin > 0 || summary.estimatedMax > 0),
+  );
+  if (!hasUsefulEstimate) return null;
+  const estimate = formatMoneyRange(locale, summary.currency, summary.estimatedMin, summary.estimatedMax);
   const originalLimit = summary.budget.amount
     ? formatMoneyRange(locale, summary.budget.currency, summary.budget.amount, summary.budget.amount)
     : "";
@@ -732,12 +735,12 @@ function CalendarView({
   );
 }
 
-function RouteLink({ href, label, locale, onOpenExternal }) {
+function RouteLink({ href, label, locale, onOpenExternal, variant = "button" }) {
   const safeHref = safeExternalUrl(href);
   if (!safeHref) return null;
   return (
     <a
-      className="button button-secondary route-link"
+      className={variant === "text" ? "external-text-link" : "button button-secondary route-link"}
       href={safeHref}
       onClick={onOpenExternal ? (event) => { event.preventDefault(); onOpenExternal(safeHref); } : undefined}
       referrerPolicy="no-referrer"
@@ -933,7 +936,17 @@ function ReservationActions({ entry, locale, onStatusChange, writable }) {
   const [error, setError] = useState("");
   if (!writable || !onStatusChange) return null;
   const presentation = reservationPresentation(entry, locale);
-  const actions = [presentation.nextAction];
+  const isTicket = presentation.kind === "ticket";
+  const actions = [
+    {
+      label: t(locale, isTicket ? "viewer.ticketPurchasedAction" : "viewer.reservationBookedAction"),
+      status: "confirmed",
+    },
+    {
+      label: t(locale, isTicket ? "viewer.ticketPendingAction" : "viewer.reservationPendingAction"),
+      status: "pending",
+    },
+  ];
 
   async function update(nextStatus) {
     setBusy(true);
@@ -950,7 +963,14 @@ function ReservationActions({ entry, locale, onStatusChange, writable }) {
   return (
     <div className="reservation-controls">
       {actions.map((action) => (
-        <button className="button button-secondary" disabled={busy} key={action.status} onClick={() => update(action.status)} type="button">
+        <button
+          aria-pressed={presentation.status === action.status}
+          className="button button-secondary"
+          disabled={busy || presentation.status === action.status}
+          key={action.status}
+          onClick={() => update(action.status)}
+          type="button"
+        >
           {busy ? t(locale, "viewer.updating") : action.label}
         </button>
       ))}
@@ -1028,7 +1048,7 @@ function ReservationsView({ itinerary, locale, onOpenExternal, onStatusChange, s
                 {entry.reservation.note ? <p>{entry.reservation.note}</p> : null}
                 <div className="reservation-actions">
                   <div className="reservation-provider-row">
-                    {href ? <RouteLink href={href} label={presentation.externalActionLabel} locale={locale} onOpenExternal={onOpenExternal} /> : <span className="reservation-missing-link">{t(locale, "viewer.noVerifiedLink")}</span>}
+                    {href ? <RouteLink href={href} label={presentation.externalActionLabel} locale={locale} onOpenExternal={onOpenExternal} variant="text" /> : <span className="reservation-missing-link">{t(locale, "viewer.noVerifiedLink")}</span>}
                   </div>
                   {writable && onStatusChange ? (
                     <div className="reservation-status-row">

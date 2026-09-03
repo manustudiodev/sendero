@@ -73,3 +73,41 @@ export function hydrateActiveDraft(queryClient, options) {
 export function activeDraftView(entry) {
   return validEntry(entry)?.view || null;
 }
+
+function itineraryWithReservationStatus(itinerary, { activityId, dayDate, status }) {
+  let matched = false;
+  const days = (itinerary?.days || []).map((day) => {
+    if (day.date !== dayDate) return day;
+    const activities = (day.activities || []).map((activity) => {
+      if (activity.id !== activityId || !activity.reservation) return activity;
+      matched = true;
+      return {
+        ...activity,
+        reservation: { ...activity.reservation, status },
+      };
+    });
+    return { ...day, activities };
+  });
+  if (!matched) throw new Error("reservation_not_found");
+  return { ...itinerary, days };
+}
+
+export function updateActiveDraftReservationStatus(queryClient, update, {
+  storage = browserStorage(),
+} = {}) {
+  const entry = validEntry(queryClient.getQueryData(ACTIVE_DRAFT_QUERY_KEY));
+  if (!entry) throw new Error("draft_not_found");
+  const itinerary = entry.view.itinerary || entry.view.trip?.itinerary;
+  if (!itinerary) throw new Error("itinerary_not_found");
+  const nextItinerary = itineraryWithReservationStatus(itinerary, update);
+  const view = entry.view.itinerary
+    ? { ...entry.view, itinerary: nextItinerary }
+    : { ...entry.view, trip: { ...entry.view.trip, itinerary: nextItinerary } };
+  const saveInput = entry.saveInput?.itinerary
+    ? { ...entry.saveInput, itinerary: nextItinerary }
+    : entry.saveInput;
+  return cacheActiveDraft(queryClient, { view, saveInput }, {
+    persist: Boolean(saveInput),
+    storage,
+  });
+}

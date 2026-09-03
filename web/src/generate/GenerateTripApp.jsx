@@ -16,6 +16,7 @@ import {
   activeDraftView,
   cacheActiveDraft,
   clearActiveDraft,
+  updateActiveDraftReservationStatus,
 } from "./draft-cache.js";
 import { DestinationCombobox } from "./DestinationCombobox.jsx";
 import { isLodgingAreaSuggestion } from "./destination-client.js";
@@ -1316,6 +1317,10 @@ export function GenerateTripApp() {
     setPreviewView("reservations");
   }
 
+  async function updatePreviewReservation(update) {
+    updateActiveDraftReservationStatus(queryClient, update);
+  }
+
   async function saveDraft() {
     setBusy(true);
     setNotice(null);
@@ -1412,6 +1417,7 @@ export function GenerateTripApp() {
               onCalendarDayChange={setSelectedCalendarDate}
               onCalendarMonthChange={setSelectedCalendarMonth}
               onReservationOpen={openPreviewReservation}
+              onReservationStatusChange={draft.status === "valid" ? updatePreviewReservation : undefined}
               onRouteDayChange={setSelectedRouteDate}
               onViewChange={(view) => {
                 setPreviewView(view);
@@ -1423,6 +1429,7 @@ export function GenerateTripApp() {
               selectedRouteDate={selectedRouteDate}
               uiLocale={locale}
               variant="web"
+              reservationWritable={draft.status === "valid"}
             />
           </section>
         ) : null}

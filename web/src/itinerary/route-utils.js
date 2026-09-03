@@ -110,13 +110,10 @@ function inlineMapStopsForDay(itinerary, day) {
     );
     const stop = point
       ? `${point.latitude},${point.longitude}`
-      : address
-        ? googlePlaceQuery(label || address, itinerary?.destination)
-        : "";
+      : googlePlaceQuery(label, itinerary?.destination);
 
-    // A named attraction without either coordinates or a canonical address is
-    // not precise enough for an embedded route. Returning no map is safer than
-    // drawing a plausible-looking route to the wrong place.
+    // Google Maps can resolve a recognizable place name when it is scoped to
+    // the itinerary destination. Provisional or unnamed stops remain excluded.
     if (!stop) return { complete: false, stops: [] };
 
     const key = stopKey(stop);
@@ -206,9 +203,7 @@ export function buildActivityEmbedMapUrl(apiKey, itinerary, activity, { language
   );
   const query = point
     ? `${point.latitude},${point.longitude}`
-    : normalizedText(location.address)
-      ? googlePlaceQuery(label, itinerary?.destination)
-      : "";
+    : googlePlaceQuery(label, itinerary?.destination);
   if (!query) return "";
   const params = new URLSearchParams({ key, q: query, language });
   return `https://www.google.com/maps/embed/v1/place?${params}`;

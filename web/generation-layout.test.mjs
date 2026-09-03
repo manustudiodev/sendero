@@ -85,4 +85,14 @@ test("keeps every itinerary preview view interactive and preserves its local sel
   assert.match(source, /onRouteDayChange=\{setSelectedRouteDate\}/);
   assert.match(source, /onViewChange=\{\(view\) => \{/);
   assert.match(source, /selectedReservationKey=\{selectedReservationKey\}/);
+  assert.match(source, /onReservationStatusChange=\{draft\.status === "valid" \? updatePreviewReservation : undefined\}/);
+  assert.match(source, /reservationWritable=\{draft\.status === "valid"\}/);
+});
+
+test("hides budget summaries that do not contain a useful monetary total", async () => {
+  const viewer = await readFile(new URL("./src/itinerary/ItineraryViewer.jsx", import.meta.url), "utf8");
+
+  assert.match(viewer, /const hasUsefulEstimate = Boolean\(/);
+  assert.match(viewer, /summary\.estimatedMin > 0 \|\| summary\.estimatedMax > 0/);
+  assert.match(viewer, /if \(!hasUsefulEstimate\) return null;/);
 });

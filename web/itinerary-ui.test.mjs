@@ -261,7 +261,7 @@ test("embedded directions allow a complete mix of coordinates and canonical addr
   assert.equal(url.searchParams.get("mode"), "transit");
 });
 
-test("embedded routes fail closed when a public stop has neither coordinates nor an address", () => {
+test("embedded routes resolve recognizable named places within the itinerary destination", () => {
   const itinerary = { destination: "Buenos Aires, Argentina" };
   const unusable = {
     activities: [
@@ -269,7 +269,9 @@ test("embedded routes fail closed when a public stop has neither coordinates nor
       { id: "missing", location: { name: "Lugar sin ubicación verificable" } },
     ],
   };
-  assert.equal(buildDayEmbedMapUrl("test-key", itinerary, unusable), "");
+  const url = new URL(buildDayEmbedMapUrl("test-key", itinerary, unusable));
+  assert.equal(url.pathname, "/maps/embed/v1/directions");
+  assert.equal(url.searchParams.get("destination"), "Lugar sin ubicación verificable, Buenos Aires, Argentina");
 });
 
 test("embedded routes never include confirmed lodging or provisional bases", () => {
