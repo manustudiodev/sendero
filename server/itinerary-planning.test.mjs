@@ -68,12 +68,14 @@ test("returns one versioned protocol with the canonical schema and a prepared br
     },
   });
   assert.equal(result.brief.ready, true);
-  assert.equal(result.protocol.version, "1.4.0");
+  assert.equal(result.protocol.version, "1.5.0");
   assert.match(result.protocol.hash, /^[a-f0-9]{64}$/);
   assert.match(result.protocol.instructions, /validate_and_stage_itinerary/);
   assert.match(result.protocol.instructions, /first-time visitor/);
   assert.match(result.protocol.instructions, /never a research,\s+decision, or preparation task/);
   assert.match(result.protocol.instructions, /future procession, festival, fair/);
+  assert.match(result.protocol.instructions, /balanced days 2–3/);
+  assert.match(result.protocol.instructions, /composition targets, not filler quotas/);
   assert.equal(result.protocol.itinerarySchema.type, "object");
   assert.ok(result.protocol.itinerarySchema.required.includes("days"));
   assert.equal(result.brief.brief.lodging.areaPlaceId, "area-place-1");

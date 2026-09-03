@@ -74,7 +74,13 @@ Prefer official sources for operational facts. Use reputable local sources for d
 - Give the trip a contextual title based on its interests, mood, or purpose. The destination already has its own field, so do not repeat the full place name as the title or use it as a redundant prefix.
 - Group each day by area and start from the lodging.
 - Mix well-known highlights with local and alternative experiences selected for the user's interests; do not add obscure places merely to appear original.
-- Include morning, afternoon, and evening when the trip length and pace allow it.
+- Let the requested pace set a useful daily density: normally 1–2 substantive
+  activities for a relaxed day, 2–3 for a balanced day, and 3–4 for an intense
+  day. These are composition targets, not filler quotas. Use a single activity
+  only when an arrival/departure window, long excursion, multi-hour event, or
+  intentional recovery day genuinely occupies the day and make that reason clear.
+  Keep distinct visits, meals, and experiences as separate activities instead of
+  burying several executable stops inside one oversized item.
 - Budget realistic visit, meal, transfer, rest, and queue time.
 - Respect supplied arrival/departure times, daily start/end windows, meal-time
   preferences, maximum walking-leg duration, and rest frequency. Keep arrival and

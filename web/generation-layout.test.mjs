@@ -72,3 +72,17 @@ test("keeps step three concise and places draft persistence context below the it
   assert.match(generationSource, /<ItineraryViewer[\s\S]{0,1800}?headerDetail=\{draft\.status === "saved"/);
   assert.match(viewerSource, /<HeadingTag className="itinerary-title">\{contextualTitle\}<\/HeadingTag>[\s\S]{0,140}?itinerary-header-detail/);
 });
+
+test("keeps every itinerary preview view interactive and preserves its local selection state", async () => {
+  const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
+
+  assert.match(source, /const \[previewView, setPreviewView\] = useState\("list"\)/);
+  assert.match(source, /function openPreviewReservation\(target\)/);
+  assert.match(source, /activeView=\{previewView\}/);
+  assert.match(source, /onCalendarDayChange=\{setSelectedCalendarDate\}/);
+  assert.match(source, /onCalendarMonthChange=\{setSelectedCalendarMonth\}/);
+  assert.match(source, /onReservationOpen=\{openPreviewReservation\}/);
+  assert.match(source, /onRouteDayChange=\{setSelectedRouteDate\}/);
+  assert.match(source, /onViewChange=\{\(view\) => \{/);
+  assert.match(source, /selectedReservationKey=\{selectedReservationKey\}/);
+});

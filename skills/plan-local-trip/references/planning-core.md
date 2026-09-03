@@ -1,5 +1,5 @@
 ---
-protocolVersion: 1.4.0
+protocolVersion: 1.5.0
 ---
 
 # Sendero itinerary planning protocol
@@ -56,6 +56,13 @@ research places or call a language model on your behalf.
 
 - Balance essential sights with neighbourhood life, independent culture, local
   venues, rest, and deliberately free time according to the requested pace.
+- Use pace to shape the normal number of substantive scheduled activities:
+  relaxed days usually contain 1–2, balanced days 2–3, and intense days 3–4.
+  These are composition targets, not filler quotas. An arrival or departure day,
+  a long excursion, a multi-hour event, or an intentional recovery day may contain
+  only one activity when its title and description make that reason clear. Split
+  distinct visits, meals, and experiences into separate activities instead of
+  hiding several executable stops inside one oversized item.
 - Keep every day inside the trip range and order activities chronologically.
 - Give every activity a stable ID unique within its day. Lock existing fixed plans.
 - Avoid overlaps and allow realistic travel, meals, queues, opening windows, and

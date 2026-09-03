@@ -7,6 +7,7 @@ import {
   requestJson,
 } from "../account/web-client.js";
 import { ItineraryViewer } from "../itinerary/ItineraryViewer.jsx";
+import { reservationEntryKey } from "../itinerary/presentation-utils.js";
 import { hrefForLocale, useUiLocale } from "../i18n/LanguageSelector.jsx";
 import { formatDate, t } from "../i18n/index.js";
 import { createItineraryGenerationFacade } from "./generation-client.js";
@@ -1115,6 +1116,11 @@ export function GenerateTripApp() {
   const [generationStatus, setGenerationStatus] = useState(initialGenerationStatus);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [previewView, setPreviewView] = useState("list");
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
+  const [selectedCalendarMonth, setSelectedCalendarMonth] = useState("");
+  const [selectedReservationKey, setSelectedReservationKey] = useState("");
+  const [selectedRouteDate, setSelectedRouteDate] = useState("");
   const briefRef = useRef(brief);
   const draftRef = useRef(draft);
   const pageRef = useRef(page);
@@ -1197,6 +1203,13 @@ export function GenerateTripApp() {
     if (!(draft?.itinerary || draft?.trip?.itinerary)) return;
     requestAnimationFrame(() => document.getElementById("generate-preview-title")?.focus());
   }, [draft]);
+  useEffect(() => {
+    setPreviewView("list");
+    setSelectedCalendarDate("");
+    setSelectedCalendarMonth("");
+    setSelectedReservationKey("");
+    setSelectedRouteDate("");
+  }, [draft?.draftId]);
 
   useEffect(() => {
     if (page.kind !== "ready") return undefined;
@@ -1296,6 +1309,13 @@ export function GenerateTripApp() {
     requestAnimationFrame(() => document.getElementById("generate-context-title")?.focus());
   }
 
+  function openPreviewReservation(target) {
+    setSelectedReservationKey(target
+      ? reservationEntryKey(target.dayDate, target.activityId)
+      : "");
+    setPreviewView("reservations");
+  }
+
   async function saveDraft() {
     setBusy(true);
     setNotice(null);
@@ -1374,6 +1394,7 @@ export function GenerateTripApp() {
           <section aria-labelledby="generate-preview-title" className="generate-card generate-preview">
             <p className="web-eyebrow" id="generate-preview-title" tabIndex={-1}>{copy.previewEyebrow}</p>
             <ItineraryViewer
+              activeView={previewView}
               headerActions={(
                 <div className="generate-draft-actions">
                   {draft.status === "valid" && page.session.authenticated ? <WebButton disabled={busy} onClick={saveDraft} tone="primary">{copy.save}</WebButton> : null}
@@ -1388,6 +1409,18 @@ export function GenerateTripApp() {
                   ? copy.draftDetail
                   : copy.anonymousDraftDetail}
               itinerary={itinerary}
+              onCalendarDayChange={setSelectedCalendarDate}
+              onCalendarMonthChange={setSelectedCalendarMonth}
+              onReservationOpen={openPreviewReservation}
+              onRouteDayChange={setSelectedRouteDate}
+              onViewChange={(view) => {
+                setPreviewView(view);
+                if (view !== "reservations") setSelectedReservationKey("");
+              }}
+              selectedCalendarDate={selectedCalendarDate}
+              selectedCalendarMonth={selectedCalendarMonth}
+              selectedReservationKey={selectedReservationKey}
+              selectedRouteDate={selectedRouteDate}
               uiLocale={locale}
               variant="web"
             />
