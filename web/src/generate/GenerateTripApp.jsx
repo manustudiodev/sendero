@@ -25,6 +25,7 @@ import {
   visibleGenerationStatus,
 } from "./generation-status.js";
 import { registerItineraryGenerationTools } from "./webmcp.js";
+import { webMcpIndicatorModel } from "./webmcp-ui.js";
 import {
   BudgetFields,
   budgetDraftFromValue,
@@ -121,6 +122,26 @@ const generateStyles = `
 .generate-live-status.is-generating .generate-live-status-dot, .generate-live-status.is-validating .generate-live-status-dot, .generate-live-status.is-saving .generate-live-status-dot, .generate-live-status.is-working .generate-live-status-dot { border-color: var(--web-grass); animation: web-pulse 1.1s ease-in-out infinite alternate; background: var(--web-grass); }
 .generate-live-status.is-unavailable, .generate-live-status.is-error { border-color: color-mix(in srgb, var(--web-danger) 45%, var(--web-line)); }
 .generate-live-status.is-unavailable .generate-live-status-dot, .generate-live-status.is-error .generate-live-status-dot { border-color: var(--web-danger); }
+.generate-webmcp { width: min(760px, 100%); margin-top: 24px; overflow: hidden; border: 1px solid var(--web-line); border-radius: 14px; background: color-mix(in srgb, var(--web-surface) 86%, transparent); }
+.generate-webmcp summary { display: grid; min-height: 58px; grid-template-columns: 12px minmax(0, 1fr) auto 18px; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; list-style: none; }
+.generate-webmcp summary::-webkit-details-marker { display: none; }
+.generate-webmcp-status-dot { width: 10px; height: 10px; border: 2px solid var(--web-forest); border-radius: 50%; }
+.generate-webmcp.is-connected .generate-webmcp-status-dot { background: var(--web-grass); }
+.generate-webmcp.is-checking .generate-webmcp-status-dot { background: var(--web-grass); animation: web-pulse 1.1s ease-in-out infinite alternate; }
+.generate-webmcp.is-unavailable .generate-webmcp-status-dot, .generate-webmcp.is-error .generate-webmcp-status-dot { border-color: var(--web-danger); }
+.generate-webmcp-summary-copy { display: grid; min-width: 0; }
+.generate-webmcp-summary-copy strong { color: var(--web-ink); font-size: 14px; }
+.generate-webmcp-summary-copy small { overflow: hidden; color: var(--web-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.generate-webmcp-count { border-radius: 999px; padding: 3px 9px; background: var(--web-soft); color: var(--web-forest); font-size: 12px; font-weight: 680; white-space: nowrap; }
+.generate-webmcp-chevron { color: var(--web-muted); font-size: 18px; line-height: 1; transform: rotate(0); }
+.generate-webmcp[open] .generate-webmcp-chevron { transform: rotate(180deg); }
+.generate-webmcp-body { border-top: 1px solid var(--web-line); padding: 16px 18px 18px; }
+.generate-webmcp-body > p { margin: 0; color: var(--web-muted); }
+.generate-webmcp-body h2 { margin: 18px 0 10px; font-size: 14px; letter-spacing: 0; }
+.generate-webmcp-tools { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.generate-webmcp-tools li { display: grid; gap: 4px; border-radius: 10px; padding: 11px 12px; background: var(--web-soft); }
+.generate-webmcp-tools code { overflow-wrap: anywhere; color: var(--web-forest); font-size: 12px; font-weight: 720; }
+.generate-webmcp-tools span { color: var(--web-muted); font-size: 13px; }
 .generate-draft-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
 .generate-preview { min-width: 0; overflow: hidden; }
 .generate-preview .itinerary-viewer { border-radius: 18px; }
@@ -136,6 +157,8 @@ const generateStyles = `
   .generate-receipt { align-items: stretch; flex-direction: column; }
 }
 @media (max-width: 520px) { .generate-card { padding: 17px; } .generate-handoff-actions .web-button, .generate-form-actions .web-button { width: 100%; } }
+@media (max-width: 520px) { .generate-webmcp summary { grid-template-columns: 12px minmax(0, 1fr) 18px; } .generate-webmcp-count { display: none; } }
+@media (prefers-reduced-motion: reduce) { .generate-webmcp.is-checking .generate-webmcp-status-dot { animation: none; } }
 `;
 
 const initialBrief = {
@@ -312,7 +335,7 @@ const COPY = {
     prepare: "Preparar para ChatGPT", protocolReady: "El brief está completo. ChatGPT ya puede investigar y generar el itinerario con el protocolo actual.",
     criticalMissing: (fields) => `Faltan datos críticos: ${fields}.`, prepareError: "No pudimos preparar el viaje.", saved: "El viaje quedó guardado en Sendero.",
     saveError: "No pudimos guardar el viaje.", discarded: "El borrador local fue descartado.", discardError: "No pudimos descartar el borrador.",
-    loading: "Preparando el planificador…", signIn: "Iniciar sesión", signedOutDetail: "Tu sesión de Sendero protege los borradores y viajes que ChatGPT cree desde esta página.", signedOutTitle: "Inicia sesión para planificar",
+    loading: "Preparando el planificador…", signIn: "Ingresar", signedOutDetail: "Tu sesión de Sendero protege los borradores y viajes que ChatGPT cree desde esta página.", signedOutTitle: "Inicia sesión para planificar",
     back: "Volver a tus viajes", unavailableDetail: "Esta capacidad todavía no está activada en este ambiente. Abre Sendero en el navegador integrado de la app de escritorio de ChatGPT para usar el flujo WebMCP.", unavailableTitle: "Generación web no disponible",
     retry: "Intentar de nuevo", errorDetail: "No se modificó ni guardó ningún viaje.", errorTitle: "No pudimos abrir el planificador", eyebrow: "Planificación conversacional", title: "Crear un viaje",
     description: "Sendero aporta las reglas, valida el resultado y lo guarda. ChatGPT investiga y construye el itinerario en la conversación activa.",
@@ -425,7 +448,7 @@ const FLOW_COPY = {
     progress: ["Trip details", "Continue in ChatGPT", "Review and save"],
     contextTitle: "Tell us about your trip",
     contextDetail: "Complete the essentials and add as much or as little optional detail as you want.",
-    prepare: "Create ChatGPT prompt",
+    prepare: "Generate prompt",
     invalidDates: "The departure date must be the same as or later than the arrival date.",
     invalidDayTimes: "For a one-day trip, the departure time must be later than the arrival time.",
     licenceRequired: "Choose another transport option or confirm that at least one traveller has a valid driving licence.",
@@ -466,7 +489,7 @@ const FLOW_COPY = {
     progress: ["Datos del viaje", "Continuar en ChatGPT", "Revisar y guardar"],
     contextTitle: "Cuéntanos sobre tu viaje",
     contextDetail: "Completa lo esencial y añade tantos detalles opcionales como quieras.",
-    prepare: "Crear prompt para ChatGPT",
+    prepare: "Generar prompt",
     invalidDates: "La fecha de salida debe ser igual o posterior a la fecha de llegada.",
     invalidDayTimes: "En un viaje de un día, la hora de salida debe ser posterior a la hora de llegada.",
     licenceRequired: "Elige otro transporte o confirma que al menos una persona tiene una licencia de conducir válida.",
@@ -507,7 +530,7 @@ const FLOW_COPY = {
     progress: ["Dados da viagem", "Continuar no ChatGPT", "Revisar e salvar"],
     contextTitle: "Conte-nos sobre sua viagem",
     contextDetail: "Preencha o essencial e acrescente quantos detalhes opcionais quiser.",
-    prepare: "Criar prompt para o ChatGPT",
+    prepare: "Gerar prompt",
     invalidDates: "A data de partida deve ser igual ou posterior à data de chegada.",
     invalidDayTimes: "Em uma viagem de um dia, o horário de partida deve ser posterior ao de chegada.",
     licenceRequired: "Escolha outro transporte ou confirme que pelo menos uma pessoa tem carteira de motorista válida.",
@@ -548,7 +571,7 @@ const FLOW_COPY = {
     progress: ["Détails du voyage", "Continuer dans ChatGPT", "Vérifier et enregistrer"],
     contextTitle: "Parlez-nous de votre voyage",
     contextDetail: "Renseignez l’essentiel et ajoutez autant de détails facultatifs que vous le souhaitez.",
-    prepare: "Créer le prompt pour ChatGPT",
+    prepare: "Générer le prompt",
     invalidDates: "La date de départ doit être identique ou postérieure à la date d’arrivée.",
     invalidDayTimes: "Pour un voyage d’une journée, l’heure de départ doit être postérieure à l’heure d’arrivée.",
     licenceRequired: "Choisissez un autre transport ou confirmez qu’au moins une personne possède un permis de conduire valide.",
@@ -589,7 +612,7 @@ const FLOW_COPY = {
     progress: ["Reisedaten", "In ChatGPT fortfahren", "Prüfen und speichern"],
     contextTitle: "Erzähle uns von deiner Reise",
     contextDetail: "Vervollständige das Wesentliche und ergänze beliebig viele optionale Details.",
-    prepare: "Prompt für ChatGPT erstellen",
+    prepare: "Prompt generieren",
     invalidDates: "Das Abreisedatum muss am oder nach dem Anreisedatum liegen.",
     invalidDayTimes: "Bei einer eintägigen Reise muss die Abreisezeit nach der Ankunftszeit liegen.",
     licenceRequired: "Wähle ein anderes Verkehrsmittel oder bestätige, dass mindestens eine Person einen gültigen Führerschein hat.",
@@ -868,6 +891,35 @@ function GenerationLiveStatus({ copy, promptCopied, status }) {
   );
 }
 
+function WebMcpIndicator({ language, status }) {
+  const model = webMcpIndicatorModel(language, status);
+  return (
+    <details className={`generate-webmcp is-${model.state}`} data-webmcp-indicator>
+      <summary>
+        <span aria-hidden="true" className="generate-webmcp-status-dot" />
+        <span className="generate-webmcp-summary-copy">
+          <strong>{model.label}</strong>
+          <small aria-live="polite" role="status">{model.status}</small>
+        </span>
+        <span className="generate-webmcp-count">{model.count}</span>
+        <span aria-hidden="true" className="generate-webmcp-chevron">⌄</span>
+      </summary>
+      <div className="generate-webmcp-body">
+        <p>{model.detail}</p>
+        <h2>{model.commands}</h2>
+        <ul className="generate-webmcp-tools">
+          {model.tools.map((tool) => (
+            <li key={tool.name}>
+              <code>{tool.name}</code>
+              <span>{tool.description}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
+  );
+}
+
 function HandoffPanel({
   brief,
   copy,
@@ -1137,18 +1189,17 @@ export function GenerateTripApp() {
     ? createItineraryHandoffPrompt(preparedBrief, language)
     : "";
   const activeStep = itinerary ? 3 : preparedBrief ? 2 : 1;
+  const topbarAction = page.session.authenticated
+    ? <a className="web-topbar-link" href={hrefForLocale("/app", locale)}>{copy.viewTrips}</a>
+    : <a className="web-topbar-link" href={loginUrl(page.session, currentGenerateReturnTo(locale))}>{copy.signIn}</a>;
   return (
-    <WebPageFrame csrfToken={page.session.csrfToken} user={page.session.user}>
+    <WebPageFrame csrfToken={page.session.csrfToken} topbarAction={topbarAction} user={page.session.user}>
       <style>{generateStyles}</style>
       <header className="web-heading">
         <p className="web-eyebrow">{copy.eyebrow}</p>
         <h1>{copy.title}</h1>
         <p>{copy.description}</p>
-        <div className="web-actions">
-          {page.session.authenticated
-            ? <a className="web-button" href={hrefForLocale("/app", locale)}>{copy.viewTrips}</a>
-            : <a className="web-button" href={loginUrl(page.session, currentGenerateReturnTo(locale))}>{copy.signIn}</a>}
-        </div>
+        <WebMcpIndicator language={language} status={generationStatus} />
       </header>
       <div className="generate-flow">
         <GenerationProgress activeStep={activeStep} copy={copy} />

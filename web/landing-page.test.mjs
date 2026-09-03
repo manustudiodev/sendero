@@ -166,6 +166,7 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   assert.match(landingSource, /d="M12 18V6m0 0-5 5m5-5 5 5"/);
   assert.match(landingSource, /data-composer-source/);
   assert.match(landingSource, /data-composer-carrier/);
+  assert.match(landingSource, /className="site-button site-button-primary landing-hero-cta" data-hero-cta/);
   assert.match(landingSource, /data-composer-morph/);
   assert.match(landingSource, /className="landing-composer-dock" data-composer-target/);
   assert.equal([...landingSource.matchAll(/\bdata-composer-text\b/g)].length, 1, "the real textarea must be the only animated composer text surface");
@@ -278,6 +279,7 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   assert.match(motionSource, /function composerDestination/);
   assert.match(motionSource, /root\.querySelector\("\[data-composer-target\]"\)/);
   assert.match(motionSource, /root\.querySelector\("\[data-composer-text\]"\)/);
+  assert.match(motionSource, /const heroTransitionItems = \[heroCta, composerCue\]\.filter\(Boolean\)/);
   assert.match(motionSource, /pin:\s*composerCarrier/);
   assert.match(motionSource, /scrub:\s*conditions\.mobile \? true : 0\.16/);
   assert.match(motionSource, /invalidateOnRefresh:\s*true/);
@@ -303,6 +305,7 @@ test("landing keeps one chronological chat, one passive composer, a seven-scene 
   assert.doesNotMatch(motionSource, /backgroundColor|borderRadius/);
   assert.doesNotMatch(motionSource, /dockedComposer|dockedComposerText|\[data-docked-composer/);
   assert.doesNotMatch(motionSource, /\.to\(composer,\s*\{[^}]*autoAlpha:\s*0/);
+  assert.match(motionSource, /\.to\(heroTransitionItems, \{ autoAlpha: 0, duration: 0\.18, y: -10 \}, 0\)/);
   assert.match(motionSource, /new ResizeObserver\(scheduleComposerDockSync\)/);
   assert.match(motionSource, /bridgeProgress < 0\.995/);
 });

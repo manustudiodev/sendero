@@ -101,11 +101,19 @@ test("account page covers the authenticated state machine", () => {
 
 test("authenticated page frame exposes safe logout without a persistent account-switch action", () => {
   const source = readFileSync(new URL("./src/account/PageFrame.jsx", import.meta.url), "utf8");
+  const headerStart = source.indexOf('<header className="web-topbar">');
+  const headerEnd = source.indexOf("</header>", headerStart);
+  const header = source.slice(headerStart, headerEnd);
   assert.match(source, /\/auth\/logout/);
   assert.match(source, /"X-CSRF-Token": csrfToken/);
   assert.doesNotMatch(source, /Cambiar cuenta|Switch account|copy\.changeAccount/);
   assert.match(source, /Cerrar sesión/);
   assert.match(source, /No pudimos cerrar la sesión/);
+  assert.equal((source.match(/<LanguageSelector\b/g) || []).length, 1);
+  assert.match(source, /<footer className="web-footer">[\s\S]*?<LanguageSelector[\s\S]*?showFlags \/>[\s\S]*?<\/footer>/);
+  assert.match(source, /\{topbarAction\}/);
+  assert.ok(headerStart > -1 && headerEnd > headerStart);
+  assert.doesNotMatch(header, /<LanguageSelector/);
 });
 
 test("access normalization preserves invitation state, expiration, and delivery", () => {

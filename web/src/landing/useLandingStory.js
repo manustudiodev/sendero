@@ -93,6 +93,8 @@ export function useLandingStory(rootRef, {
           const composerInput = root.querySelector("[data-composer-text]");
           const composerTarget = root.querySelector("[data-composer-target]");
           const composerCue = root.querySelector("[data-composer-cue]");
+          const heroCta = root.querySelector("[data-hero-cta]");
+          const heroTransitionItems = [heroCta, composerCue].filter(Boolean);
           const conversation = root.querySelector("[data-create-conversation]");
           const createStage = root.querySelector("[data-create-stage]");
           const createGrid = root.querySelector("#crear .landing-story-grid");
@@ -432,6 +434,7 @@ export function useLandingStory(rootRef, {
             setInteraction("planning", "answered");
             gsap.set(root.querySelectorAll("[data-story-reveal], [data-create-stage]"), { clearProps: "all" });
             gsap.set(composer, { clearProps: "all" });
+            gsap.set(heroTransitionItems, { clearProps: "all" });
             gsap.set([...sharePanels, ...shareBadges, ...shareCaptions], { clearProps: "all" });
             callbacksRef.current.onComposerDockChange?.(false);
             emitBeat("viewsListRoute");
@@ -504,7 +507,7 @@ export function useLandingStory(rootRef, {
 
             bridgeTimeline
               .to({}, { duration: 1 }, 0)
-              .to(composerCue, { autoAlpha: 0, duration: 0.18, y: -10 }, 0)
+              .to(heroTransitionItems, { autoAlpha: 0, duration: 0.18, y: -10 }, 0)
               .to(createStage, { autoAlpha: 1, duration: 0.25 }, 0.12)
               .to(composer, {
                 duration: 0.7,
@@ -603,6 +606,7 @@ export function useLandingStory(rootRef, {
             if (composerFollowFrame) window.cancelAnimationFrame(composerFollowFrame);
             callbacksRef.current.onComposerDockChange?.(false);
             gsap.set(composer, { clearProps: "all" });
+            gsap.set(heroTransitionItems, { clearProps: "all" });
             gsap.set([...sharePanels, ...shareBadges, ...shareCaptions], { clearProps: "all" });
             gsap.set(createStage, { clearProps: "all" });
             if (composerInput) composerInput.style.removeProperty("height");

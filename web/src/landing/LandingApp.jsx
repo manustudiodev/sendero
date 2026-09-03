@@ -127,7 +127,7 @@ function Hero({ copy, composerDocked, locale, onDemoSubmit }) {
         <div className="landing-composer-carrier" data-composer-carrier>
           <HeroComposer copy={copy} docked={composerDocked} onSubmit={onDemoSubmit} />
         </div>
-        <a className="site-button site-button-primary landing-hero-cta" href={hrefForLocale("/app/new", locale)}>
+        <a className="site-button site-button-primary landing-hero-cta" data-hero-cta href={hrefForLocale("/app/new", locale)}>
           {copy.createTrip} <span aria-hidden="true">→</span>
         </a>
       </div>

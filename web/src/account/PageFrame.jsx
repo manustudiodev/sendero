@@ -26,7 +26,7 @@ select.is-placeholder { color: var(--web-muted); }
 select.is-placeholder option { color: var(--web-ink); }
 a { color: inherit; }
 :focus-visible { outline: 3px solid rgba(0, 102, 94, .32); outline-offset: 3px; }
-.web-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 22px 0 52px; }
+.web-shell { display: flex; width: min(1120px, calc(100% - 32px)); min-height: 100vh; flex-direction: column; margin: 0 auto; padding: 22px 0 32px; }
 .web-topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 42px; }
 .web-topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .web-brand { display: inline-flex; align-items: center; gap: 10px; color: inherit; font-size: 17px; font-weight: 700; text-decoration: none; }
@@ -38,6 +38,9 @@ a { color: inherit; }
 .web-account-action:hover:not(:disabled) { background: var(--web-soft); }
 .web-account-action:disabled { cursor: wait; opacity: .58; }
 .web-account-error { margin: 0; color: var(--web-danger); font-size: 14px; text-align: right; }
+.web-topbar-link { display: inline-flex; min-height: 36px; align-items: center; border-radius: 9px; padding: 6px 9px; color: var(--web-forest); font-size: 14px; font-weight: 680; text-decoration: none; }
+.web-topbar-link:hover { background: var(--web-soft); }
+.web-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: auto; border-top: 1px solid var(--web-line); padding-top: 22px; }
 .web-language-selector select { min-height: 36px; border: 1px solid var(--web-line); border-radius: 9px; padding: 6px 27px 6px 9px; background: var(--web-surface); color: var(--web-forest); cursor: pointer; font-size: 14px; font-weight: 680; }
 .web-heading { max-width: 720px; margin-bottom: 28px; }
 .web-eyebrow { margin: 0 0 8px; color: var(--web-forest); font-size: 14px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
@@ -65,9 +68,9 @@ a { color: inherit; }
 @media (prefers-reduced-motion: reduce) { .web-loading-dot { animation: none; } }
 @media (max-width: 640px) {
   .web-shell { width: min(100% - 22px, 1120px); padding-top: 14px; }
-  .web-topbar { align-items: flex-start; flex-direction: column; gap: 12px; margin-bottom: 30px; }
+  .web-topbar { gap: 12px; margin-bottom: 30px; }
   .web-account { align-items: flex-end; flex-direction: column; gap: 2px; }
-  .web-topbar-actions { width: 100%; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .web-topbar-actions { min-width: 0; gap: 8px; }
   .web-user { max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .web-account-actions { gap: 0; }
   .web-account-action { min-height: 32px; padding: 5px 7px; }
@@ -168,7 +171,7 @@ export function WebButton({ children, className = "", tone = "secondary", ...pro
   );
 }
 
-export function WebPageFrame({ children, csrfToken = "", user, className = "" }) {
+export function WebPageFrame({ children, csrfToken = "", topbarAction = null, user, className = "" }) {
   const { language, locale, selectLocale } = useUiLocale();
   const copy = FRAME_COPY[language] || FRAME_COPY.es;
   return (
@@ -181,11 +184,14 @@ export function WebPageFrame({ children, csrfToken = "", user, className = "" })
             <span>Sendero</span>
           </a>
           <div className="web-topbar-actions">
-            <LanguageSelector className="web-language-selector" locale={locale} onChange={selectLocale} />
+            {topbarAction}
             {user && csrfToken ? <WebAccount copy={copy} csrfToken={csrfToken} user={user} /> : null}
           </div>
         </header>
         {children}
+        <footer className="web-footer">
+          <LanguageSelector className="web-language-selector" locale={locale} onChange={selectLocale} showFlags />
+        </footer>
       </main>
     </>
   );
