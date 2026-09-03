@@ -88,10 +88,8 @@ export function reservationPresentation(entry, locale = "en") {
       ? t(locale, isTicket ? "viewer.ticketCancelled" : "viewer.reservationCancelled")
       : t(locale, isTicket ? "viewer.ticketPending" : "viewer.reservationPending");
   const nextAction = status === "confirmed"
-    ? { label: t(locale, isTicket ? "viewer.ticketCancelAction" : "viewer.reservationCancelAction"), status: "cancelled" }
-    : status === "cancelled"
-      ? { label: t(locale, isTicket ? "viewer.ticketPendingAction" : "viewer.reservationPendingAction"), status: "pending" }
-      : { label: t(locale, isTicket ? "viewer.ticketPurchasedAction" : "viewer.reservationBookedAction"), status: "confirmed" };
+    ? { label: t(locale, isTicket ? "viewer.ticketPendingAction" : "viewer.reservationPendingAction"), status: "pending" }
+    : { label: t(locale, isTicket ? "viewer.ticketPurchasedAction" : "viewer.reservationBookedAction"), status: "confirmed" };
 
   return {
     deadlineLabel: t(locale, isTicket ? "viewer.ticketDeadline" : "viewer.reservationDeadline"),

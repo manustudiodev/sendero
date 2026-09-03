@@ -12,12 +12,15 @@ function facade() {
     async getProtocol() { return { protocol: { version: "1.0.0" } }; },
     async stage() { return { draftId: "draft_1234567890123456", status: "valid" }; },
     async getDraft() { return { draftId: "draft_1234567890123456", status: "valid" }; },
+    async updateReservationStatuses() { return { status: "updated" }; },
     async save() { return { status: "saved", trip: { webId: "trip_123" } }; },
+    async shareByLink() { return { shareUrl: "https://sendero.example/share#token" }; },
+    async inviteMember() { return { invitationId: "invitation_123", status: "pending" }; },
     async discard() { return { status: "discarded" }; },
   };
 }
 
-test("registers the five anonymous-first generation tools on the top-level page", async () => {
+test("registers the generation, reservation, and sharing tools on the top-level page", async () => {
   const registered = [];
   const reports = [];
   const controller = new AbortController();
@@ -36,7 +39,19 @@ test("registers the five anonymous-first generation tools on the top-level page"
   assert.match(registered[0].tool.description, /without requiring form entry or prompt copying/i);
   assert.match(registered[1].tool.description, /authoritative review handoff/i);
   assert.match(registered[1].tool.description, /without a Sendero account/i);
-  assert.match(registered[3].tool.description, /requires a Sendero account/i);
+  const byName = Object.fromEntries(registered.map(({ tool }) => [tool.name, tool]));
+  assert.match(byName.save_staged_itinerary.description, /requires a Sendero account/i);
+  assert.match(byName.update_itinerary_reservation_statuses.description, /one specific reservation.*or for a list/i);
+  assert.match(byName.update_itinerary_reservation_statuses.description, /requires an authenticated Sendero account/i);
+  assert.deepEqual(
+    byName.update_itinerary_reservation_statuses.inputSchema.properties.updates.items.properties.status.enum,
+    ["pending", "confirmed"],
+  );
+  assert.equal(byName.update_itinerary_reservation_statuses.inputSchema.properties.updates.items.additionalProperties, false);
+  assert.match(byName.share_saved_itinerary_by_link.description, /public read-only access/i);
+  assert.match(byName.share_saved_itinerary_by_link.description, /explicit user request/i);
+  assert.match(byName.invite_saved_itinerary_member.description, /viewer grants read-only.*editor grants collaboration/i);
+  assert.match(byName.invite_saved_itinerary_member.description, /explicitly asks/i);
 });
 
 test("returns the prepared conversational brief to the open page", async () => {
@@ -158,4 +173,125 @@ test("keeps anonymous validation in the browser cache and requires authenticatio
   assert.equal(calls[3].csrfToken, "csrf");
   assert.equal(cached.view.status, "saved");
   assert.equal(cached.saveInput, null);
+});
+
+test("updates one or several reservation trackers in the validated browser draft", async () => {
+  const updates = [
+    { activityId: "alcazar", dayDate: "2027-04-10", status: "confirmed" },
+    { activityId: "flamenco", dayDate: "2027-04-11", status: "pending" },
+  ];
+  const cached = {
+    view: {
+      draftId: "browser_12345678901234567890123456789012",
+      status: "valid",
+      itinerary: { title: "Sevilla" },
+    },
+    saveInput: { itinerary: { title: "Sevilla" } },
+  };
+  const received = [];
+  const generated = createItineraryGenerationFacade({
+    getCachedDraft: () => cached,
+    getCurrentDraftId: () => cached.view.draftId,
+    getSession: () => ({ authenticated: true, csrfToken: "csrf" }),
+    updateCachedReservationStatuses(value) {
+      received.push(value);
+      return cached;
+    },
+  });
+
+  const result = await generated.updateReservationStatuses({ updates });
+  assert.deepEqual(received, [updates]);
+  assert.deepEqual(result, {
+    draftId: cached.view.draftId,
+    status: "updated",
+    updatedReservations: updates,
+  });
+});
+
+test("shares a saved itinerary publicly or invites one identified member through authoritative APIs", async () => {
+  const calls = [];
+  const cached = {
+    view: {
+      draftId: "draft_1234567890123456",
+      status: "saved",
+      trip: { webId: "trip_123", version: 4, itinerary: { title: "Sevilla" } },
+    },
+    saveInput: null,
+  };
+  const generated = createItineraryGenerationFacade({
+    getCachedDraft: () => cached,
+    getCurrentDraftId: () => cached.view.draftId,
+    getSession: () => ({ authenticated: true, csrfToken: "csrf" }),
+    request: async (path, options) => {
+      calls.push({ path, ...options });
+      if (path.endsWith("/access")) {
+        return {
+          generalAccess: { mode: "public_link" },
+          shareUrl: "https://sendero.example/share#public-token",
+        };
+      }
+      if (path.endsWith("/invitations")) {
+        return { invitationId: "invitation_123", status: "pending", delivery: "scheduled" };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    },
+  });
+
+  const firstShare = await generated.shareByLink({});
+  const secondShare = await generated.shareByLink({});
+  assert.equal(firstShare.shareUrl, "https://sendero.example/share#public-token");
+  assert.equal(secondShare.shareUrl, firstShare.shareUrl);
+  assert.equal(calls[0].path, "/api/trips/trip_123/access");
+  assert.equal(calls[0].method, "PATCH");
+  assert.equal(calls[0].csrfToken, "csrf");
+  assert.equal(calls[0].body.generalAccess, "public_link");
+  assert.equal(calls[0].body.operationId, calls[1].body.operationId);
+
+  const firstInvite = await generated.inviteMember({ email: " Friend@Example.com ", role: "editor" });
+  const secondInvite = await generated.inviteMember({ email: "friend@example.com", role: "editor" });
+  assert.deepEqual(firstInvite, {
+    invitationId: "invitation_123",
+    status: "pending",
+    delivery: "scheduled",
+  });
+  assert.deepEqual(secondInvite, firstInvite);
+  assert.equal(calls[2].path, "/api/trips/trip_123/invitations");
+  assert.equal(calls[2].method, "POST");
+  assert.equal(calls[2].csrfToken, "csrf");
+  assert.equal(calls[2].body.email, "friend@example.com");
+  assert.equal(calls[2].body.role, "editor");
+  assert.equal(calls[2].body.operationId, calls[3].body.operationId);
+});
+
+test("does not share an unsaved itinerary or bypass account authentication", async () => {
+  const validDraft = {
+    view: {
+      draftId: "browser_12345678901234567890123456789012",
+      status: "valid",
+      itinerary: { title: "Sevilla" },
+    },
+    saveInput: { itinerary: { title: "Sevilla" } },
+  };
+  let session = { authenticated: true, csrfToken: "csrf" };
+  const generated = createItineraryGenerationFacade({
+    getCachedDraft: () => validDraft,
+    getCurrentDraftId: () => validDraft.view.draftId,
+    getSession: () => session,
+  });
+
+  await assert.rejects(
+    generated.shareByLink({}),
+    (error) => error.code === "itinerary_must_be_saved" && error.status === 409,
+  );
+  session = { authenticated: false, loginUrl: "/auth/login" };
+  await assert.rejects(
+    generated.updateReservationStatuses({
+      updates: [{ activityId: "alcazar", dayDate: "2027-04-10", status: "confirmed" }],
+    }),
+    (error) => error.code === "authentication_required" && error.status === 401,
+  );
+  await assert.rejects(
+    generated.inviteMember({ email: "friend@example.com", role: "viewer" }),
+    (error) => error.code === "authentication_required" && error.status === 401,
+  );
 });

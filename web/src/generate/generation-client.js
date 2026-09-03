@@ -13,6 +13,7 @@ export function createItineraryGenerationFacade({
   onBriefPrepared,
   onDraft,
   request = requestJson,
+  updateCachedReservationStatuses,
 } = {}) {
   const operations = createStableOperationRegistry();
 
@@ -51,6 +52,44 @@ export function createItineraryGenerationFacade({
       retryable: false,
       status: 401,
     });
+  }
+
+  function operationFailure({ code, details, message, status = 400 }) {
+    throw new WebApiError({ code, details, message, retryable: false, status });
+  }
+
+  function editableLocalDraft(draftId) {
+    const cached = cachedDraft(draftId);
+    if (!cached) {
+      operationFailure({
+        code: "draft_not_found",
+        message: "The selected Sendero itinerary draft is not available in this browser.",
+        status: 404,
+      });
+    }
+    if (cached.view.status !== "valid" || !cached.view.itinerary) {
+      operationFailure({
+        code: "draft_not_editable",
+        message: "Reservation status can be changed here only while the local itinerary draft is awaiting review.",
+        status: 409,
+      });
+    }
+    return cached;
+  }
+
+  function savedTrip(draftId) {
+    const cached = cachedDraft(draftId);
+    const trip = cached?.view?.status === "saved"
+      ? cached.view.trip
+      : null;
+    if (!trip?.webId) {
+      operationFailure({
+        code: "itinerary_must_be_saved",
+        message: "Save the itinerary to a Sendero account before sharing it.",
+        status: 409,
+      });
+    }
+    return trip;
   }
 
   return {
@@ -121,6 +160,69 @@ export function createItineraryGenerationFacade({
       );
       onDraft?.(result, { persist: false, saveInput: null });
       return result;
+    },
+
+    async updateReservationStatuses({ draftId, updates } = {}) {
+      const resolvedDraftId = draftIdOrCurrent(draftId);
+      const session = currentSession();
+      if (!session.authenticated || !session.csrfToken) authenticationRequired(session);
+      editableLocalDraft(resolvedDraftId);
+      if (typeof updateCachedReservationStatuses !== "function") {
+        operationFailure({
+          code: "reservation_status_unavailable",
+          message: "This Sendero page cannot update reservation status right now.",
+          status: 503,
+        });
+      }
+      const entry = updateCachedReservationStatuses(updates);
+      return {
+        draftId: entry?.view?.draftId || resolvedDraftId,
+        status: "updated",
+        updatedReservations: updates,
+      };
+    },
+
+    async shareByLink({ draftId } = {}) {
+      const resolvedDraftId = draftIdOrCurrent(draftId);
+      const session = currentSession();
+      if (!session.authenticated || !session.csrfToken) authenticationRequired(session);
+      const trip = savedTrip(resolvedDraftId);
+      const { operationId } = operations.begin(
+        `share:${trip.webId}:public_link`,
+        undefined,
+        "webmcp-share",
+      );
+      const result = await request(`/api/trips/${encodeURIComponent(trip.webId)}/access`, {
+        body: { generalAccess: "public_link", operationId },
+        csrfToken: session.csrfToken,
+        method: "PATCH",
+      });
+      if (!result?.shareUrl) {
+        operationFailure({
+          code: "share_link_unavailable",
+          message: "Sendero enabled public access but could not return a shareable link.",
+          status: 503,
+        });
+      }
+      return result;
+    },
+
+    async inviteMember({ draftId, email, role } = {}) {
+      const resolvedDraftId = draftIdOrCurrent(draftId);
+      const session = currentSession();
+      if (!session.authenticated || !session.csrfToken) authenticationRequired(session);
+      const trip = savedTrip(resolvedDraftId);
+      const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+      const { operationId } = operations.begin(
+        `invite:${trip.webId}:${normalizedEmail}:${role}`,
+        undefined,
+        "webmcp-invite",
+      );
+      return request(`/api/trips/${encodeURIComponent(trip.webId)}/invitations`, {
+        body: { email: normalizedEmail, operationId, role },
+        csrfToken: session.csrfToken,
+        method: "POST",
+      });
     },
 
     async discard({ draftId } = {}) {

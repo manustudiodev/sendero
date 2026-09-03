@@ -2,7 +2,10 @@ export const ITINERARY_GENERATION_TOOL_NAMES = Object.freeze([
   "get_itinerary_planning_protocol",
   "validate_and_stage_itinerary",
   "get_staged_itinerary",
+  "update_itinerary_reservation_statuses",
   "save_staged_itinerary",
+  "share_saved_itinerary_by_link",
+  "invite_saved_itinerary_member",
   "discard_staged_itinerary",
 ]);
 
@@ -17,6 +20,36 @@ const DRAFT_ID = Object.freeze({
   minLength: 16,
   maxLength: 128,
   description: "A draftId returned by validate_and_stage_itinerary. Omit it to use the draft currently open on the page.",
+});
+
+const RESERVATION_STATUS_UPDATES = Object.freeze({
+  type: "array",
+  minItems: 1,
+  maxItems: 100,
+  description: "One or more exact reservation or ticket entries to update. Use confirmed for 'already booked/bought' and pending for 'not booked/bought yet'.",
+  items: {
+    type: "object",
+    properties: {
+      activityId: {
+        type: "string",
+        minLength: 1,
+        maxLength: 160,
+        description: "The exact activity ID in the staged itinerary.",
+      },
+      dayDate: {
+        type: "string",
+        pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+        description: "The activity date in YYYY-MM-DD format.",
+      },
+      status: {
+        type: "string",
+        enum: ["pending", "confirmed"],
+        description: "confirmed means the user says it is already booked or bought; pending means it is not booked or bought yet.",
+      },
+    },
+    required: ["activityId", "dayDate", "status"],
+    additionalProperties: false,
+  },
 });
 
 function safeToolFailure(error) {
@@ -103,6 +136,21 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
       execute: (input) => facade.getDraft(input),
     }),
     definition({
+      name: "update_itinerary_reservation_statuses",
+      description: "Update the purchase or booking tracker for one specific reservation/ticket or for a list of specific entries in the validated local Sendero draft. This requires an authenticated Sendero account; when signed out, preserve the draft and let the page offer sign-in instead of changing status. Use confirmed only when the user says they already booked or bought it; use pending when they say they have not. All requested entries are validated before the browser draft changes. This tracker never books, buys, contacts, or cancels with a provider. Use this page tool before saving; saved trips are edited from their private Sendero page.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          draftId: DRAFT_ID,
+          updates: RESERVATION_STATUS_UPDATES,
+        },
+        required: ["updates"],
+        additionalProperties: false,
+      },
+      annotations: { idempotentHint: true, openWorldHint: false },
+      execute: (input) => facade.updateReservationStatuses(input),
+    }),
+    definition({
       name: "save_staged_itinerary",
       description: "Explicitly save one validated local draft from the open creation page as an authoritative Sendero trip. This requires a Sendero account; when signed out, preserve the browser draft and let the page offer sign-in or account creation. Call only when the user asked to save. Report success only from the returned trip, webId, and version.",
       inputSchema: {
@@ -112,6 +160,42 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
       },
       annotations: { idempotentHint: true, openWorldHint: false },
       execute: (input) => facade.save(input),
+    }),
+    definition({
+      name: "share_saved_itinerary_by_link",
+      description: "Enable public read-only access for the saved Sendero itinerary currently selected on this page and return its shareable URL. Anyone with the link can view it but cannot collaborate or modify it. This requires an authenticated Sendero account, an already saved itinerary, owner permission, and an explicit user request to make it public. Report success only from the returned shareUrl.",
+      inputSchema: {
+        type: "object",
+        properties: { draftId: DRAFT_ID },
+        additionalProperties: false,
+      },
+      annotations: { idempotentHint: true, openWorldHint: false },
+      execute: (input) => facade.shareByLink(input),
+    }),
+    definition({
+      name: "invite_saved_itinerary_member",
+      description: "Invite one person by email to the saved Sendero itinerary currently selected on this page. viewer grants read-only private access; editor grants collaboration access. Sendero sends the invitation, so call this only after the user explicitly asks to invite that exact email with that role. This requires an authenticated account, an already saved itinerary, and owner permission. Report success only from the returned invitation status and delivery receipt.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          draftId: DRAFT_ID,
+          email: {
+            type: "string",
+            format: "email",
+            maxLength: 254,
+            description: "Email address of the person to invite.",
+          },
+          role: {
+            type: "string",
+            enum: ["viewer", "editor"],
+            description: "viewer can only view; editor can collaborate on the itinerary.",
+          },
+        },
+        required: ["email", "role"],
+        additionalProperties: false,
+      },
+      annotations: { idempotentHint: true, openWorldHint: true },
+      execute: (input) => facade.inviteMember(input),
     }),
     definition({
       name: "discard_staged_itinerary",

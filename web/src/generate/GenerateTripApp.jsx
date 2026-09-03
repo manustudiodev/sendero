@@ -17,6 +17,7 @@ import {
   cacheActiveDraft,
   clearActiveDraft,
   updateActiveDraftReservationStatus,
+  updateActiveDraftReservationStatuses,
 } from "./draft-cache.js";
 import { DestinationCombobox } from "./DestinationCombobox.jsx";
 import { isLodgingAreaSuggestion } from "./destination-client.js";
@@ -149,6 +150,9 @@ button.generate-step-content:hover { background: color-mix(in srgb, var(--web-gr
 .generate-webmcp-modal-close:hover { border-color: var(--web-forest); color: var(--web-ink); }
 .generate-webmcp-modal-detail { margin: 10px 0 20px; color: var(--web-muted); }
 .generate-webmcp-modal h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 0; }
+.generate-reservation-auth-modal { width: min(500px, calc(100% - 28px)); }
+.generate-reservation-auth-modal .generate-webmcp-modal-detail { margin-bottom: 22px; }
+.generate-reservation-auth-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .generate-webmcp-tools { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .generate-webmcp-tools li { display: grid; gap: 4px; border-radius: 10px; padding: 11px 12px; background: var(--web-soft); }
 .generate-webmcp-tools code { overflow-wrap: anywhere; color: var(--web-forest); font-size: 12px; font-weight: 720; }
@@ -321,7 +325,8 @@ const COPY = {
     back: "Back to your trips", unavailableDetail: "This capability is not enabled in this environment yet. Open Sendero in the ChatGPT desktop app's integrated browser to use the WebMCP flow.", unavailableTitle: "Web generation unavailable",
     retry: "Try again", errorDetail: "No trip was changed or saved.", errorTitle: "We couldn't open the planner", eyebrow: "Conversational planning", title: "Create a trip",
     description: "Sendero provides the rules, validates the result, and saves it. ChatGPT researches and builds the itinerary in the active conversation.",
-    draftReady: "Local draft ready", draftExpired: "This draft is no longer available.", save: "Save in Sendero", createAccountToSave: "Create an account to save and share", discard: "Discard draft", open: "Open saved trip",
+    draftReady: "Local draft ready", draftExpired: "This draft is no longer available.", save: "Save in Sendero", signInToSave: "Sign in to save and share", discard: "Discard draft", open: "Open saved trip",
+    reservationAuthTitle: "Sign in to track your bookings", reservationAuthDetail: "Sign in to save this itinerary and keep a record of the tickets and reservations you have completed.", notNow: "Not now",
     conversation: "Conversation + Sendero", emptyTitle: "Your itinerary will appear here", emptyDetail: "Complete the brief and ask ChatGPT to generate it. Sendero validates the result before it can be saved.",
     steps: ["Complete the trip essentials.", "Continue the research and generation in ChatGPT.", "Review and save the validated draft in Sendero."],
     webmcpConnected: "WebMCP connected.", webmcpBrowser: "Integrated browser mode.", webmcpAvailable: "ChatGPT can use the generation tools while this page remains open in its integrated browser.", webmcpUnavailable: "Open Sendero in the ChatGPT desktop app's integrated browser to enable the WebMCP generation flow.",
@@ -351,7 +356,8 @@ const COPY = {
     back: "Volver a tus viajes", unavailableDetail: "Esta capacidad todavía no está activada en este ambiente. Abre Sendero en el navegador integrado de la app de escritorio de ChatGPT para usar el flujo WebMCP.", unavailableTitle: "Generación web no disponible",
     retry: "Intentar de nuevo", errorDetail: "No se modificó ni guardó ningún viaje.", errorTitle: "No pudimos abrir el planificador", eyebrow: "Planificación conversacional", title: "Crear un viaje",
     description: "Sendero aporta las reglas, valida el resultado y lo guarda. ChatGPT investiga y construye el itinerario en la conversación activa.",
-    draftReady: "Borrador local listo", draftExpired: "Este borrador ya no está disponible.", save: "Guardar en Sendero", createAccountToSave: "Crear cuenta para guardar y compartir", discard: "Descartar borrador", open: "Abrir viaje guardado",
+    draftReady: "Borrador local listo", draftExpired: "Este borrador ya no está disponible.", save: "Guardar en Sendero", signInToSave: "Ingresa para guardar y compartir", discard: "Descartar borrador", open: "Abrir viaje guardado",
+    reservationAuthTitle: "Ingresa para registrar tus reservas", reservationAuthDetail: "Ingresa para guardar este itinerario y llevar un registro de las entradas y reservas que ya completaste.", notNow: "Ahora no",
     conversation: "Conversación + Sendero", emptyTitle: "Tu itinerario aparecerá aquí", emptyDetail: "Completa el brief y pídele a ChatGPT que lo genere. Sendero valida el resultado antes de permitir guardarlo.",
     steps: ["Completa lo esencial del viaje.", "Continúa la investigación y generación en ChatGPT.", "Revisa y guarda el borrador validado en Sendero."],
     webmcpConnected: "WebMCP conectado.", webmcpBrowser: "Modo navegador integrado.", webmcpAvailable: "ChatGPT tiene disponibles las herramientas de generación mientras esta página permanezca abierta en su navegador integrado.", webmcpUnavailable: "Abre Sendero en el navegador integrado de la app de escritorio de ChatGPT para habilitar el flujo de generación WebMCP.",
@@ -381,7 +387,8 @@ const COPY = {
     back: "Voltar às suas viagens", unavailableDetail: "Esta capacidade ainda não está ativa neste ambiente. Abra o Sendero no navegador integrado do app ChatGPT para desktop para usar o fluxo WebMCP.", unavailableTitle: "Geração web indisponível",
     retry: "Tentar novamente", errorDetail: "Nenhuma viagem foi alterada ou salva.", errorTitle: "Não foi possível abrir o planejador", eyebrow: "Planejamento conversacional", title: "Criar uma viagem",
     description: "O Sendero fornece as regras, valida o resultado e o salva. O ChatGPT pesquisa e constrói o roteiro na conversa ativa.",
-    draftReady: "Rascunho local pronto", draftExpired: "Este rascunho não está mais disponível.", save: "Salvar no Sendero", createAccountToSave: "Criar conta para salvar e compartilhar", discard: "Descartar rascunho", open: "Abrir viagem salva",
+    draftReady: "Rascunho local pronto", draftExpired: "Este rascunho não está mais disponível.", save: "Salvar no Sendero", signInToSave: "Entre para salvar e compartilhar", discard: "Descartar rascunho", open: "Abrir viagem salva",
+    reservationAuthTitle: "Entre para acompanhar suas reservas", reservationAuthDetail: "Entre para salvar este roteiro e manter um registro dos ingressos e reservas que você já concluiu.", notNow: "Agora não",
     conversation: "Conversa + Sendero", emptyTitle: "Seu roteiro aparecerá aqui", emptyDetail: "Complete o brief e peça ao ChatGPT para gerá-lo. O Sendero valida o resultado antes de permitir salvá-lo.",
     steps: ["Complete o essencial da viagem.", "Continue a pesquisa e geração no ChatGPT.", "Revise e salve o rascunho validado no Sendero."],
     webmcpConnected: "WebMCP conectado.", webmcpBrowser: "Modo de navegador integrado.", webmcpAvailable: "O ChatGPT pode usar as ferramentas de geração enquanto esta página permanecer aberta no navegador integrado.", webmcpUnavailable: "Abra o Sendero no navegador integrado do app ChatGPT para desktop para ativar o fluxo de geração WebMCP.",
@@ -411,7 +418,8 @@ const COPY = {
     back: "Retour à vos voyages", unavailableDetail: "Cette fonctionnalité n’est pas encore activée dans cet environnement. Ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT pour utiliser le parcours WebMCP.", unavailableTitle: "Génération web indisponible",
     retry: "Réessayer", errorDetail: "Aucun voyage n’a été modifié ni enregistré.", errorTitle: "Impossible d’ouvrir le planificateur", eyebrow: "Planification conversationnelle", title: "Créer un voyage",
     description: "Sendero fournit les règles, valide le résultat et l’enregistre. ChatGPT effectue les recherches et construit l’itinéraire dans la conversation active.",
-    draftReady: "Brouillon local prêt", draftExpired: "Ce brouillon n’est plus disponible.", save: "Enregistrer dans Sendero", createAccountToSave: "Créer un compte pour enregistrer et partager", discard: "Supprimer le brouillon", open: "Ouvrir le voyage enregistré",
+    draftReady: "Brouillon local prêt", draftExpired: "Ce brouillon n’est plus disponible.", save: "Enregistrer dans Sendero", signInToSave: "Connectez-vous pour enregistrer et partager", discard: "Supprimer le brouillon", open: "Ouvrir le voyage enregistré",
+    reservationAuthTitle: "Connectez-vous pour suivre vos réservations", reservationAuthDetail: "Connectez-vous pour enregistrer cet itinéraire et suivre les billets et réservations déjà effectués.", notNow: "Pas maintenant",
     conversation: "Conversation + Sendero", emptyTitle: "Votre itinéraire apparaîtra ici", emptyDetail: "Complétez le brief et demandez à ChatGPT de le générer. Sendero valide le résultat avant qu’il puisse être enregistré.",
     steps: ["Complétez l’essentiel du voyage.", "Poursuivez la recherche et la génération dans ChatGPT.", "Vérifiez et enregistrez le brouillon validé dans Sendero."],
     webmcpConnected: "WebMCP connecté.", webmcpBrowser: "Mode navigateur intégré.", webmcpAvailable: "ChatGPT peut utiliser les outils de génération tant que cette page reste ouverte dans son navigateur intégré.", webmcpUnavailable: "Ouvrez Sendero dans le navigateur intégré de l’application de bureau ChatGPT pour activer le parcours de génération WebMCP.",
@@ -441,7 +449,8 @@ const COPY = {
     back: "Zurück zu deinen Reisen", unavailableDetail: "Diese Funktion ist in dieser Umgebung noch nicht aktiviert. Öffne Sendero im integrierten Browser der ChatGPT-Desktop-App, um den WebMCP-Ablauf zu verwenden.", unavailableTitle: "Web-Generierung nicht verfügbar",
     retry: "Erneut versuchen", errorDetail: "Es wurde keine Reise geändert oder gespeichert.", errorTitle: "Der Planer konnte nicht geöffnet werden", eyebrow: "Reiseplanung im Gespräch", title: "Reise erstellen",
     description: "Sendero stellt die Regeln bereit, prüft das Ergebnis und speichert es. ChatGPT recherchiert und erstellt den Reiseplan in der aktiven Unterhaltung.",
-    draftReady: "Lokaler Entwurf bereit", draftExpired: "Dieser Entwurf ist nicht mehr verfügbar.", save: "In Sendero speichern", createAccountToSave: "Konto erstellen, um zu speichern und zu teilen", discard: "Entwurf verwerfen", open: "Gespeicherte Reise öffnen",
+    draftReady: "Lokaler Entwurf bereit", draftExpired: "Dieser Entwurf ist nicht mehr verfügbar.", save: "In Sendero speichern", signInToSave: "Anmelden, um zu speichern und zu teilen", discard: "Entwurf verwerfen", open: "Gespeicherte Reise öffnen",
+    reservationAuthTitle: "Anmelden, um Buchungen zu verwalten", reservationAuthDetail: "Melde dich an, um diesen Reiseplan zu speichern und bereits erledigte Tickets und Reservierungen festzuhalten.", notNow: "Jetzt nicht",
     conversation: "Unterhaltung + Sendero", emptyTitle: "Dein Reiseplan erscheint hier", emptyDetail: "Vervollständige die Angaben und bitte ChatGPT, ihn zu erstellen. Sendero prüft das Ergebnis, bevor es gespeichert werden kann.",
     steps: ["Vervollständige das Wichtigste zur Reise.", "Setze Recherche und Erstellung in ChatGPT fort.", "Prüfe den validierten Entwurf und speichere ihn in Sendero."],
     webmcpConnected: "WebMCP verbunden.", webmcpBrowser: "Integrierter Browsermodus.", webmcpAvailable: "ChatGPT kann die Generierungswerkzeuge verwenden, solange diese Seite im integrierten Browser geöffnet bleibt.", webmcpUnavailable: "Öffne Sendero im integrierten Browser der ChatGPT-Desktop-App, um den WebMCP-Generierungsablauf zu aktivieren.",
@@ -1031,6 +1040,54 @@ function WebMcpIndicator({ language, status }) {
   );
 }
 
+function ReservationAuthenticationDialog({ copy, loginHref, onClose, open }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    } else if (!open && dialog.open) {
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
+    }
+  }, [open]);
+
+  function closeDialog() {
+    const dialog = dialogRef.current;
+    if (typeof dialog?.close === "function") dialog.close();
+    else {
+      dialog?.removeAttribute("open");
+      onClose();
+    }
+  }
+
+  return (
+    <dialog
+      aria-describedby="generate-reservation-auth-detail"
+      aria-labelledby="generate-reservation-auth-title"
+      className="generate-webmcp-modal generate-reservation-auth-modal"
+      onClick={(event) => { if (event.target === event.currentTarget) closeDialog(); }}
+      onClose={onClose}
+      ref={dialogRef}
+    >
+      <div className="generate-webmcp-modal-inner">
+        <div className="generate-webmcp-modal-header">
+          <h2 id="generate-reservation-auth-title">{copy.reservationAuthTitle}</h2>
+          <button aria-label={copy.notNow} className="generate-webmcp-modal-close" onClick={closeDialog} type="button">×</button>
+        </div>
+        <p className="generate-webmcp-modal-detail" id="generate-reservation-auth-detail">{copy.reservationAuthDetail}</p>
+        <div className="generate-reservation-auth-actions">
+          <a className="web-button web-button-primary" href={loginHref}>{copy.signIn}</a>
+          <WebButton onClick={closeDialog}>{copy.notNow}</WebButton>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 function HandoffPanel({
   brief,
   copy,
@@ -1117,6 +1174,7 @@ export function GenerateTripApp() {
   const [generationStatus, setGenerationStatus] = useState(initialGenerationStatus);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [reservationAuthOpen, setReservationAuthOpen] = useState(false);
   const [previewView, setPreviewView] = useState("list");
   const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
   const [selectedCalendarMonth, setSelectedCalendarMonth] = useState("");
@@ -1241,6 +1299,9 @@ export function GenerateTripApp() {
         }
       },
       onDraft: applyDraft,
+      updateCachedReservationStatuses: (updates) => (
+        updateActiveDraftReservationStatuses(queryClient, updates)
+      ),
     });
     facadeRef.current = facade;
     const register = async () => {
@@ -1364,6 +1425,12 @@ export function GenerateTripApp() {
   return (
     <WebPageFrame csrfToken={page.session.csrfToken} topbarAction={topbarAction} user={page.session.user}>
       <style>{generateStyles}</style>
+      <ReservationAuthenticationDialog
+        copy={copy}
+        loginHref={loginUrl(page.session, currentGenerateReturnTo(locale))}
+        onClose={() => setReservationAuthOpen(false)}
+        open={reservationAuthOpen}
+      />
       <header className="web-heading">
         <p className="web-eyebrow">{copy.eyebrow}</p>
         <h1>{copy.title}</h1>
@@ -1403,7 +1470,7 @@ export function GenerateTripApp() {
               headerActions={(
                 <div className="generate-draft-actions">
                   {draft.status === "valid" && page.session.authenticated ? <WebButton disabled={busy} onClick={saveDraft} tone="primary">{copy.save}</WebButton> : null}
-                  {draft.status === "valid" && !page.session.authenticated ? <a className="web-button web-button-primary" href={loginUrl(page.session, currentGenerateReturnTo(locale))}>{copy.createAccountToSave}</a> : null}
+                  {draft.status === "valid" && !page.session.authenticated ? <a className="web-button web-button-primary" href={loginUrl(page.session, currentGenerateReturnTo(locale))}>{copy.signInToSave}</a> : null}
                   {draft.status === "valid" ? <WebButton disabled={busy} onClick={discardDraft}>{copy.discard}</WebButton> : null}
                   {savedTrip?.webId ? <a className="web-button web-button-primary" href={hrefForLocale(`/app/trips/${encodeURIComponent(savedTrip.webId)}`, locale)}>{copy.open}</a> : null}
                 </div>
@@ -1416,8 +1483,13 @@ export function GenerateTripApp() {
               itinerary={itinerary}
               onCalendarDayChange={setSelectedCalendarDate}
               onCalendarMonthChange={setSelectedCalendarMonth}
+              onReservationAuthenticationRequired={draft.status === "valid" && !page.session.authenticated
+                ? () => setReservationAuthOpen(true)
+                : undefined}
               onReservationOpen={openPreviewReservation}
-              onReservationStatusChange={draft.status === "valid" ? updatePreviewReservation : undefined}
+              onReservationStatusChange={draft.status === "valid" && page.session.authenticated
+                ? updatePreviewReservation
+                : undefined}
               onRouteDayChange={setSelectedRouteDate}
               onViewChange={(view) => {
                 setPreviewView(view);
@@ -1429,7 +1501,7 @@ export function GenerateTripApp() {
               selectedRouteDate={selectedRouteDate}
               uiLocale={locale}
               variant="web"
-              reservationWritable={draft.status === "valid"}
+              reservationWritable={draft.status === "valid" && page.session.authenticated}
             />
           </section>
         ) : null}

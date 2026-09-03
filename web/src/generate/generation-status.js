@@ -5,8 +5,12 @@ const ACTIVE_TOOL_STATES = Object.freeze({
 });
 
 const COMPLETED_TOOL_STATES = Object.freeze({
+  get_staged_itinerary: "draft_ready",
+  update_itinerary_reservation_statuses: "draft_ready",
   validate_and_stage_itinerary: "draft_ready",
   save_staged_itinerary: "saved",
+  share_saved_itinerary_by_link: "saved",
+  invite_saved_itinerary_member: "saved",
   discard_staged_itinerary: "ready",
 });
 

@@ -33,17 +33,22 @@ test("reservation navigation persists the exact target and focuses its authorita
   assert.match(viewer, /className=\{`reservation-card \$\{isTargeted \? "is-targeted" : ""\}`\}/);
 });
 
-test("reservation provider and status actions share one responsive row", async () => {
+test("reservation provider and the authenticated or sign-in status action use separate rows", async () => {
   const [viewer, styles] = await Promise.all([
     readFile(viewerUrl, "utf8"),
     readFile(stylesUrl, "utf8"),
   ]);
 
-  assert.match(styles, /\.reservation-actions \{[^}]*display: flex;[^}]*flex-wrap: nowrap;[^}]*align-items: center;/);
-  assert.match(styles, /\.reservation-provider-row, \.reservation-status-row \{[^}]*display: inline-flex;[^}]*flex: 0 1 auto;/);
+  assert.match(styles, /\.reservation-actions \{[^}]*display: grid;[^}]*justify-items: start;[^}]*align-items: start;/);
+  assert.match(styles, /\.reservation-provider-row, \.reservation-status-row \{[^}]*display: flex;[^}]*min-width: 0;/);
   assert.match(styles, /\.reservation-controls \{[^}]*display: inline-flex;[^}]*width: auto;/);
   assert.match(styles, /\.external-text-link \{[^}]*text-decoration: underline;/);
   assert.match(viewer, /variant="text"/);
-  assert.match(viewer, /aria-pressed=\{presentation\.status === action\.status\}/);
-  assert.doesNotMatch(styles, /\.reservation-provider-row, \.reservation-status-row \{[^}]*width: 100%;/);
+  assert.match(viewer, /const action = presentation\.nextAction;/);
+  assert.match(viewer, /const canUpdate = writable && typeof onStatusChange === "function"/);
+  assert.match(viewer, /if \(canUpdate\) update\(action\.status\);/);
+  assert.match(viewer, /else onAuthenticationRequired\(\{ activityId: entry\.activity\.id, dayDate: entry\.day\.date \}\)/);
+  assert.match(viewer, /onAuthenticationRequired=\{onReservationAuthenticationRequired\}/);
+  assert.doesNotMatch(viewer, /actions\.map/);
+  assert.doesNotMatch(viewer, /aria-pressed=/);
 });

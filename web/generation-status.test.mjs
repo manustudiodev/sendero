@@ -40,6 +40,23 @@ test("maps authoritative page-tool events to visible itinerary progress", () => 
     toolName: "save_staged_itinerary",
   });
   assert.equal(status.kind, "saved");
+
+  status = generationStatusFromEvent(status, {
+    type: "webmcp_tool_started",
+    toolName: "share_saved_itinerary_by_link",
+  });
+  assert.equal(status.kind, "working");
+  status = generationStatusFromEvent(status, {
+    type: "webmcp_tool_succeeded",
+    toolName: "share_saved_itinerary_by_link",
+  });
+  assert.equal(status.kind, "saved");
+
+  status = generationStatusFromEvent(status, {
+    type: "webmcp_tool_succeeded",
+    toolName: "update_itinerary_reservation_statuses",
+  });
+  assert.equal(status.kind, "draft_ready");
 });
 
 test("does not imply success when page tools are absent or fail", () => {

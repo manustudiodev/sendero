@@ -8,6 +8,7 @@ import {
   hydrateActiveDraft,
   readActiveDraftCache,
   updateActiveDraftReservationStatus,
+  updateActiveDraftReservationStatuses,
 } from "./src/generate/draft-cache.js";
 
 function fixture() {
@@ -113,4 +114,61 @@ test("updates reservation status in both the local preview and its eventual save
   assert.equal(cached.view.itinerary.days[0].activities[0].reservation.status, "confirmed");
   assert.equal(cached.saveInput.itinerary.days[0].activities[0].reservation.status, "confirmed");
   assert.equal(readActiveDraftCache({ storage }).view.itinerary.days[0].activities[0].reservation.status, "confirmed");
+});
+
+test("updates a reservation list atomically and leaves the draft unchanged when any target is missing", () => {
+  const { queryClient, storage } = fixture();
+  const original = {
+    view: {
+      draftId: "browser_12345678901234567890123456789012",
+      status: "valid",
+      itinerary: {
+        days: [
+          {
+            date: "2027-04-10",
+            activities: [{ id: "alcazar", reservation: { status: "pending" } }],
+          },
+          {
+            date: "2027-04-11",
+            activities: [{ id: "flamenco", reservation: { status: "confirmed" } }],
+          },
+        ],
+      },
+    },
+    saveInput: {
+      itinerary: {
+        days: [
+          {
+            date: "2027-04-10",
+            activities: [{ id: "alcazar", reservation: { status: "pending" } }],
+          },
+          {
+            date: "2027-04-11",
+            activities: [{ id: "flamenco", reservation: { status: "confirmed" } }],
+          },
+        ],
+      },
+    },
+  };
+  cacheActiveDraft(queryClient, original, { storage });
+
+  updateActiveDraftReservationStatuses(queryClient, [
+    { activityId: "alcazar", dayDate: "2027-04-10", status: "confirmed" },
+    { activityId: "flamenco", dayDate: "2027-04-11", status: "pending" },
+  ], { storage });
+  const updated = queryClient.getQueryData(ACTIVE_DRAFT_QUERY_KEY);
+  assert.equal(updated.view.itinerary.days[0].activities[0].reservation.status, "confirmed");
+  assert.equal(updated.view.itinerary.days[1].activities[0].reservation.status, "pending");
+  assert.equal(updated.saveInput.itinerary.days[0].activities[0].reservation.status, "confirmed");
+  assert.equal(updated.saveInput.itinerary.days[1].activities[0].reservation.status, "pending");
+
+  assert.throws(
+    () => updateActiveDraftReservationStatuses(queryClient, [
+      { activityId: "alcazar", dayDate: "2027-04-10", status: "pending" },
+      { activityId: "missing", dayDate: "2027-04-11", status: "confirmed" },
+    ], { storage }),
+    (error) => error.code === "reservation_not_found"
+      && error.details.missing[0].activityId === "missing",
+  );
+  assert.deepEqual(queryClient.getQueryData(ACTIVE_DRAFT_QUERY_KEY), updated);
 });

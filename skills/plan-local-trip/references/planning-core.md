@@ -1,5 +1,5 @@
 ---
-protocolVersion: 1.5.0
+protocolVersion: 1.7.0
 ---
 
 # Sendero itinerary planning protocol
@@ -138,6 +138,13 @@ research places or call a language model on your behalf.
 - Use `confirmed` only for a booking or ticket the user says already exists.
 - Pending items need an official URL, an actionable note, or a deadline. Sendero
   only tracks status; it never books, buys, contacts, or cancels with a provider.
+- While the validated browser draft is still awaiting review, use
+  `update_itinerary_reservation_statuses` only when the user explicitly reports
+  that one or more exact reservations or tickets were already bought/booked or
+  are still pending and Sendero reports an authenticated account. When signed out,
+  preserve the draft and let the page offer sign-in instead of changing status.
+  Match entries by their day date and activity ID. A successful status update is
+  only a Sendero tracking receipt, never evidence of a provider transaction.
 
 ## 5. Validate, revise, and save explicitly
 
@@ -152,6 +159,13 @@ research places or call a language model on your behalf.
 - Call `save_staged_itinerary` only when the user explicitly asks to save or when
   their original request explicitly included saving. Report success only from the
   save tool's authoritative `trip`, `version`, and `webId` result.
+- After an authoritative save, share only on explicit user request. Use
+  `share_saved_itinerary_by_link` for a public read-only URL; anyone with that URL
+  may view the itinerary, but the link never grants collaboration. Use
+  `invite_saved_itinerary_member` for private access tied to one email address,
+  with `viewer` for read-only access or `editor` for collaboration. Report a public
+  share only from its returned URL and an invitation only from its returned status
+  and delivery receipt.
 
 The page may also let the user preview, discard, or save a draft. Page state is
 authoritative for those UI actions; never claim a mutation that the tool result did

@@ -74,32 +74,69 @@ export function activeDraftView(entry) {
   return validEntry(entry)?.view || null;
 }
 
-function itineraryWithReservationStatus(itinerary, { activityId, dayDate, status }) {
-  let matched = false;
+const RESERVATION_STATUSES = new Set(["pending", "confirmed"]);
+
+function draftCacheError(code, details) {
+  const error = new Error(code);
+  error.code = code;
+  if (details) error.details = details;
+  return error;
+}
+
+function reservationUpdateKey({ activityId, dayDate }) {
+  return `${dayDate}\u0000${activityId}`;
+}
+
+function normalizedReservationUpdates(updates) {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    throw draftCacheError("reservation_updates_required");
+  }
+  const byTarget = new Map();
+  for (const update of updates) {
+    const activityId = typeof update?.activityId === "string" ? update.activityId.trim() : "";
+    const dayDate = typeof update?.dayDate === "string" ? update.dayDate.trim() : "";
+    const status = update?.status;
+    if (!activityId || !/^\d{4}-\d{2}-\d{2}$/.test(dayDate) || !RESERVATION_STATUSES.has(status)) {
+      throw draftCacheError("reservation_update_invalid");
+    }
+    const normalized = { activityId, dayDate, status };
+    const key = reservationUpdateKey(normalized);
+    if (byTarget.has(key)) throw draftCacheError("duplicate_reservation_update");
+    byTarget.set(key, normalized);
+  }
+  return byTarget;
+}
+
+function itineraryWithReservationStatuses(itinerary, updates) {
+  const remaining = normalizedReservationUpdates(updates);
   const days = (itinerary?.days || []).map((day) => {
-    if (day.date !== dayDate) return day;
     const activities = (day.activities || []).map((activity) => {
-      if (activity.id !== activityId || !activity.reservation) return activity;
-      matched = true;
+      const key = reservationUpdateKey({ activityId: activity.id, dayDate: day.date });
+      const update = remaining.get(key);
+      if (!update || !activity.reservation) return activity;
+      remaining.delete(key);
       return {
         ...activity,
-        reservation: { ...activity.reservation, status },
+        reservation: { ...activity.reservation, status: update.status },
       };
     });
     return { ...day, activities };
   });
-  if (!matched) throw new Error("reservation_not_found");
+  if (remaining.size) {
+    const missing = [...remaining.values()].map(({ activityId, dayDate }) => ({ activityId, dayDate }));
+    throw draftCacheError("reservation_not_found", { missing });
+  }
   return { ...itinerary, days };
 }
 
-export function updateActiveDraftReservationStatus(queryClient, update, {
+export function updateActiveDraftReservationStatuses(queryClient, updates, {
   storage = browserStorage(),
 } = {}) {
   const entry = validEntry(queryClient.getQueryData(ACTIVE_DRAFT_QUERY_KEY));
-  if (!entry) throw new Error("draft_not_found");
+  if (!entry) throw draftCacheError("draft_not_found");
   const itinerary = entry.view.itinerary || entry.view.trip?.itinerary;
-  if (!itinerary) throw new Error("itinerary_not_found");
-  const nextItinerary = itineraryWithReservationStatus(itinerary, update);
+  if (!itinerary) throw draftCacheError("itinerary_not_found");
+  const nextItinerary = itineraryWithReservationStatuses(itinerary, updates);
   const view = entry.view.itinerary
     ? { ...entry.view, itinerary: nextItinerary }
     : { ...entry.view, trip: { ...entry.view.trip, itinerary: nextItinerary } };
@@ -110,4 +147,8 @@ export function updateActiveDraftReservationStatus(queryClient, update, {
     persist: Boolean(saveInput),
     storage,
   });
+}
+
+export function updateActiveDraftReservationStatus(queryClient, update, options) {
+  return updateActiveDraftReservationStatuses(queryClient, [update], options);
 }

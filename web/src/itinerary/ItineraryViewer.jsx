@@ -931,22 +931,13 @@ function reservationUrl(entry) {
   return entry.reservation.url || entry.reservation.officialUrl || entry.reservation.bookingUrl || entry.activity.sourceUrl || "";
 }
 
-function ReservationActions({ entry, locale, onStatusChange, writable }) {
+function ReservationActions({ entry, locale, onAuthenticationRequired, onStatusChange, writable }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  if (!writable || !onStatusChange) return null;
+  const canUpdate = writable && typeof onStatusChange === "function";
+  if (!canUpdate && typeof onAuthenticationRequired !== "function") return null;
   const presentation = reservationPresentation(entry, locale);
-  const isTicket = presentation.kind === "ticket";
-  const actions = [
-    {
-      label: t(locale, isTicket ? "viewer.ticketPurchasedAction" : "viewer.reservationBookedAction"),
-      status: "confirmed",
-    },
-    {
-      label: t(locale, isTicket ? "viewer.ticketPendingAction" : "viewer.reservationPendingAction"),
-      status: "pending",
-    },
-  ];
+  const action = presentation.nextAction;
 
   async function update(nextStatus) {
     setBusy(true);
@@ -962,24 +953,23 @@ function ReservationActions({ entry, locale, onStatusChange, writable }) {
 
   return (
     <div className="reservation-controls">
-      {actions.map((action) => (
-        <button
-          aria-pressed={presentation.status === action.status}
-          className="button button-secondary"
-          disabled={busy || presentation.status === action.status}
-          key={action.status}
-          onClick={() => update(action.status)}
-          type="button"
-        >
-          {busy ? t(locale, "viewer.updating") : action.label}
-        </button>
-      ))}
+      <button
+        className="button button-secondary"
+        disabled={canUpdate && busy}
+        onClick={() => {
+          if (canUpdate) update(action.status);
+          else onAuthenticationRequired({ activityId: entry.activity.id, dayDate: entry.day.date });
+        }}
+        type="button"
+      >
+        {canUpdate && busy ? t(locale, "viewer.updating") : action.label}
+      </button>
       {error ? <p className="reservation-error" role="alert">{error}</p> : null}
     </div>
   );
 }
 
-function ReservationsView({ itinerary, locale, onOpenExternal, onStatusChange, selectedReservationKey, writable }) {
+function ReservationsView({ itinerary, locale, onAuthenticationRequired, onOpenExternal, onStatusChange, selectedReservationKey, writable }) {
   const entries = reservationEntries(itinerary);
   const targetReservationRef = useRef(null);
 
@@ -1050,9 +1040,15 @@ function ReservationsView({ itinerary, locale, onOpenExternal, onStatusChange, s
                   <div className="reservation-provider-row">
                     {href ? <RouteLink href={href} label={presentation.externalActionLabel} locale={locale} onOpenExternal={onOpenExternal} variant="text" /> : <span className="reservation-missing-link">{t(locale, "viewer.noVerifiedLink")}</span>}
                   </div>
-                  {writable && onStatusChange ? (
+                  {(writable && onStatusChange) || onAuthenticationRequired ? (
                     <div className="reservation-status-row">
-                      <ReservationActions entry={entry} locale={locale} onStatusChange={onStatusChange} writable={writable} />
+                      <ReservationActions
+                        entry={entry}
+                        locale={locale}
+                        onAuthenticationRequired={onAuthenticationRequired}
+                        onStatusChange={onStatusChange}
+                        writable={writable}
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -1102,6 +1098,7 @@ export function ItineraryViewer({
   onCalendarDayChange,
   onCalendarMonthChange,
   onOpenExternal,
+  onReservationAuthenticationRequired,
   onReservationOpen,
   onReservationStatusChange,
   onRouteDayChange,
@@ -1214,6 +1211,7 @@ export function ItineraryViewer({
               idPrefix={viewerId}
               itinerary={itinerary}
               locale={locale}
+              onAuthenticationRequired={onReservationAuthenticationRequired}
               onOpenExternal={onOpenExternal}
               onReservationOpen={onReservationOpen}
               onSelectedDateChange={onCalendarDayChange}
@@ -1228,6 +1226,7 @@ export function ItineraryViewer({
             <ReservationsView
               itinerary={itinerary}
               locale={locale}
+              onAuthenticationRequired={onReservationAuthenticationRequired}
               onOpenExternal={onOpenExternal}
               onStatusChange={onReservationStatusChange}
               selectedReservationKey={selectedReservationKey}

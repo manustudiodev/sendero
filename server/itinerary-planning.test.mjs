@@ -68,7 +68,7 @@ test("returns one versioned protocol with the canonical schema and a prepared br
     },
   });
   assert.equal(result.brief.ready, true);
-  assert.equal(result.protocol.version, "1.5.0");
+  assert.equal(result.protocol.version, "1.7.0");
   assert.match(result.protocol.hash, /^[a-f0-9]{64}$/);
   assert.match(result.protocol.instructions, /validate_and_stage_itinerary/);
   assert.match(result.protocol.instructions, /first-time visitor/);

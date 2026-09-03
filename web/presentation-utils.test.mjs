@@ -30,7 +30,7 @@ test("separates booking requirement from lifecycle status", () => {
   });
   assert.equal(view.requirementLabel, "Optional reservation");
   assert.equal(view.statusLabel, "Booked");
-  assert.deepEqual(view.nextAction, { label: "Reservation cancelled", status: "cancelled" });
+  assert.deepEqual(view.nextAction, { label: "I haven't reserved yet", status: "pending" });
 });
 
 test("uses ticket language for museums and concerts", () => {
@@ -43,11 +43,17 @@ test("uses ticket language for museums and concerts", () => {
   assert.equal(pending.statusLabel, "To purchase");
   assert.deepEqual(pending.nextAction, { label: "I've purchased", status: "confirmed" });
 
+  const purchased = reservationPresentation({
+    activity: { category: "museum", title: "Museo Nacional" },
+    reservation: { status: "confirmed" },
+  });
+  assert.deepEqual(purchased.nextAction, { label: "I haven't purchased yet", status: "pending" });
+
   const cancelled = reservationPresentation({
     activity: { category: "music", title: "Concierto en vivo" },
     reservation: { kind: "ticket", status: "cancelled" },
   });
-  assert.deepEqual(cancelled.nextAction, { label: "I haven't purchased yet", status: "pending" });
+  assert.deepEqual(cancelled.nextAction, { label: "I've purchased", status: "confirmed" });
 });
 
 test("uses the same reservation eligibility for itinerary links and the reservations view", () => {

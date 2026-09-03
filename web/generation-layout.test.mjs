@@ -42,6 +42,15 @@ test("uses a concise localized label for the prompt generation action", async ()
   assert.doesNotMatch(source, /prepare: "Crear prompt para ChatGPT"/);
 });
 
+test("uses neutral sign-in copy for saving without assuming the visitor needs a new account", async () => {
+  const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
+
+  assert.match(source, /signInToSave: "Ingresa para guardar y compartir"/);
+  assert.match(source, />\{copy\.signInToSave\}<\/a>/);
+  assert.doesNotMatch(source, /Crear cuenta para guardar y compartir/);
+  assert.doesNotMatch(source, /createAccountToSave/);
+});
+
 test("uses an interactive back step and separates automatic WebMCP generation from the manual prompt fallback", async () => {
   const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
   const comboboxSource = await readFile(new URL("./src/generate/DestinationCombobox.jsx", import.meta.url), "utf8");
@@ -85,8 +94,12 @@ test("keeps every itinerary preview view interactive and preserves its local sel
   assert.match(source, /onRouteDayChange=\{setSelectedRouteDate\}/);
   assert.match(source, /onViewChange=\{\(view\) => \{/);
   assert.match(source, /selectedReservationKey=\{selectedReservationKey\}/);
-  assert.match(source, /onReservationStatusChange=\{draft\.status === "valid" \? updatePreviewReservation : undefined\}/);
-  assert.match(source, /reservationWritable=\{draft\.status === "valid"\}/);
+  assert.match(source, /onReservationAuthenticationRequired=\{draft\.status === "valid" && !page\.session\.authenticated/);
+  assert.match(source, /onReservationStatusChange=\{draft\.status === "valid" && page\.session\.authenticated/);
+  assert.match(source, /reservationWritable=\{draft\.status === "valid" && page\.session\.authenticated\}/);
+  assert.match(source, /reservationAuthTitle: "Ingresa para registrar tus reservas"/);
+  assert.match(source, /<ReservationAuthenticationDialog/);
+  assert.match(source, /loginHref=\{loginUrl\(page\.session, currentGenerateReturnTo\(locale\)\)\}/);
 });
 
 test("hides budget summaries that do not contain a useful monetary total", async () => {
