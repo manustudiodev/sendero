@@ -35,6 +35,11 @@ const itinerary = {
       endTime: "11:30",
       title: "Paseo por el centro",
       category: "free_time",
+      description: "Recorre a tu ritmo la plaza del Ayuntamiento y las calles peatonales cercanas antes de continuar el día.",
+      location: {
+        name: "Plaça de l'Ajuntament",
+        address: "Plaça de l'Ajuntament, Ciutat Vella, Valencia",
+      },
     }],
   }],
 };
@@ -63,9 +68,12 @@ test("returns one versioned protocol with the canonical schema and a prepared br
     },
   });
   assert.equal(result.brief.ready, true);
-  assert.equal(result.protocol.version, "1.2.0");
+  assert.equal(result.protocol.version, "1.4.0");
   assert.match(result.protocol.hash, /^[a-f0-9]{64}$/);
   assert.match(result.protocol.instructions, /validate_and_stage_itinerary/);
+  assert.match(result.protocol.instructions, /first-time visitor/);
+  assert.match(result.protocol.instructions, /never a research,\s+decision, or preparation task/);
+  assert.match(result.protocol.instructions, /future procession, festival, fair/);
   assert.equal(result.protocol.itinerarySchema.type, "object");
   assert.ok(result.protocol.itinerarySchema.required.includes("days"));
   assert.equal(result.brief.brief.lodging.areaPlaceId, "area-place-1");
@@ -165,9 +173,27 @@ test("carries every supplied optional traveller and schedule constraint into the
     },
     accessibilityNeeds: ["Asientos durante esperas largas"],
   };
+  const accessibleItinerary = {
+    ...itinerary,
+    ...profile,
+    days: itinerary.days.map((day) => ({
+      ...day,
+      activities: day.activities.map((activity) => ({
+        ...activity,
+        accessibility: {
+          status: "verified",
+          wheelchairAccessible: true,
+          stepFree: true,
+          seatingAvailable: true,
+          sourceUrl: "https://www.visitvalencia.com/",
+          checkedAt: "2026-09-03",
+        },
+      })),
+    })),
+  };
   const matching = validatedDraft(stageInput({
     brief: { ...brief, ...profile },
-    itinerary: { ...itinerary, ...profile },
+    itinerary: accessibleItinerary,
   }));
   assert.deepEqual(matching.itinerary.mobility, profile.mobility);
 

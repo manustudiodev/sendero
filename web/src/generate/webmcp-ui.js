@@ -14,7 +14,7 @@ const COPY = Object.freeze({
       error: "Connection could not be completed",
     },
     tools: {
-      get_itinerary_planning_protocol: "Loads the current planning rules, completed brief, and itinerary schema.",
+      get_itinerary_planning_protocol: "Loads the current rules and schema, transfers the conversational trip details to the page, and starts the visual generation step.",
       validate_and_stage_itinerary: "Validates the complete itinerary and places a review draft in this browser.",
       get_staged_itinerary: "Reads the validated local draft and its warnings without changing it.",
       save_staged_itinerary: "Saves the approved draft to your Sendero account.",
@@ -34,7 +34,7 @@ const COPY = Object.freeze({
       error: "No se pudo completar la conexión",
     },
     tools: {
-      get_itinerary_planning_protocol: "Carga las reglas actuales, los datos del viaje y el esquema del itinerario.",
+      get_itinerary_planning_protocol: "Carga las reglas y el esquema, transfiere a la página los datos conversados del viaje e inicia el paso visual de generación.",
       validate_and_stage_itinerary: "Valida el itinerario completo y deja un borrador para revisar en este navegador.",
       get_staged_itinerary: "Consulta el borrador local validado y sus advertencias sin modificarlo.",
       save_staged_itinerary: "Guarda el borrador aprobado en tu cuenta de Sendero.",
@@ -54,7 +54,7 @@ const COPY = Object.freeze({
       error: "Não foi possível concluir a conexão",
     },
     tools: {
-      get_itinerary_planning_protocol: "Carrega as regras atuais, os dados da viagem e o esquema do roteiro.",
+      get_itinerary_planning_protocol: "Carrega as regras e o esquema, transfere para a página os dados conversados da viagem e inicia a etapa visual de geração.",
       validate_and_stage_itinerary: "Valida o roteiro completo e cria um rascunho para revisão neste navegador.",
       get_staged_itinerary: "Consulta o rascunho local validado e seus avisos sem alterá-lo.",
       save_staged_itinerary: "Salva o rascunho aprovado na sua conta do Sendero.",
@@ -74,7 +74,7 @@ const COPY = Object.freeze({
       error: "La connexion n’a pas pu aboutir",
     },
     tools: {
-      get_itinerary_planning_protocol: "Charge les règles actuelles, les données du voyage et le schéma de l’itinéraire.",
+      get_itinerary_planning_protocol: "Charge les règles et le schéma, transfère à la page les détails du voyage issus de la conversation et lance l’étape visuelle de génération.",
       validate_and_stage_itinerary: "Valide l’itinéraire complet et crée un brouillon à vérifier dans ce navigateur.",
       get_staged_itinerary: "Consulte le brouillon local validé et ses avertissements sans le modifier.",
       save_staged_itinerary: "Enregistre le brouillon approuvé dans votre compte Sendero.",
@@ -94,7 +94,7 @@ const COPY = Object.freeze({
       error: "Verbindung konnte nicht hergestellt werden",
     },
     tools: {
-      get_itinerary_planning_protocol: "Lädt die aktuellen Regeln, Reisedaten und das Schema des Reiseplans.",
+      get_itinerary_planning_protocol: "Lädt Regeln und Schema, überträgt die besprochenen Reisedaten auf die Seite und startet den sichtbaren Erstellungsschritt.",
       validate_and_stage_itinerary: "Prüft den vollständigen Reiseplan und legt in diesem Browser einen Entwurf zur Kontrolle an.",
       get_staged_itinerary: "Liest den geprüften lokalen Entwurf und seine Hinweise, ohne ihn zu verändern.",
       save_staged_itinerary: "Speichert den bestätigten Entwurf in deinem Sendero-Konto.",

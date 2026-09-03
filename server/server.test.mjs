@@ -122,6 +122,7 @@ const itinerary = {
           endTime: "13:00",
           title: "Actividad ya reservada",
           category: "activity",
+          description: "Entrar por el acceso principal de la Praça do Império y presentar la reserva quince minutos antes.",
           locked: true,
           location: { name: "Mosteiro dos Jerónimos", address: "Praca do Imperio, Lisboa" },
           guide: {
@@ -144,7 +145,19 @@ const itinerary = {
           endTime: "22:00",
           title: "Concierto en LX Factory",
           category: "music",
+          description: "Llegar a la entrada principal de LX Factory treinta minutos antes y confirmar la sala indicada en la entrada.",
           location: { name: "LX Factory", address: "Rua Rodrigues de Faria 103, Lisboa" },
+          guide: {
+            overview: "LX Factory ocupa un antiguo complejo industrial de Alcântara convertido en un espacio de cultura, comercios y gastronomía. La programación musical aprovecha ese entorno fabril y permite combinar el concierto con un recorrido breve por el recinto.",
+            highlights: ["Observa la reutilización de las naves industriales antes de entrar a la sala."],
+            sources: [
+              {
+                label: "LX Factory",
+                url: "https://www.lxfactory.com/",
+                checkedAt: "2026-08-20",
+              },
+            ],
+          },
           reservation: {
             status: "pending",
             url: "https://www.lxfactory.com/",
@@ -348,17 +361,105 @@ test("requires traceability for verified costs", () => {
 test("keeps operational descriptions separate from source-backed place guides", () => {
   const candidate = structuredClone(itinerary);
   candidate.days[0].activities[0].description = "Llegar quince minutos antes y presentar la entrada.";
-  assert.equal(validateItinerary(candidate).valid, true);
+  assert.equal(validateItinerary(candidate, { contentCompleteness: "error" }).valid, true);
 
   const legacy = structuredClone(candidate);
   delete legacy.days[0].activities[0].guide;
   assert.equal(validateItinerary(legacy).valid, true);
+  const incompleteValidation = validateItinerary(legacy, { contentCompleteness: "error" });
+  assert.equal(incompleteValidation.valid, false);
+  assert.ok(incompleteValidation.errors.some((message) => message.includes("source-backed visitor guide")));
+
+  const vagueOperationalCopy = structuredClone(candidate);
+  vagueOperationalCopy.days[0].activities[0].description = "Confirmar recorridos 2027 y acordar un punto de salida accesible.";
+  const vagueValidation = validateItinerary(vagueOperationalCopy, { contentCompleteness: "error" });
+  assert.equal(vagueValidation.valid, false);
+  assert.ok(vagueValidation.errors.some((message) => message.includes("vague or administrative instruction")));
 
   const unsafeGuide = structuredClone(candidate);
   unsafeGuide.days[0].activities[0].guide.sources[0].url = "javascript:alert(1)";
   const unsafeValidation = validateItinerary(unsafeGuide);
   assert.equal(unsafeValidation.valid, false);
   assert.ok(unsafeValidation.errors.some((message) => message.includes("HTTP(S)")));
+});
+
+test("rejects itinerary placeholders and planning chores while allowing specific future-event caveats", () => {
+  const dayPlaceholder = structuredClone(itinerary);
+  dayPlaceholder.days[0].title = "Transición hacia la feria";
+  assert.ok(
+    validateItinerary(dayPlaceholder, { contentCompleteness: "error" }).errors
+      .some((message) => message.includes("administrative day title")),
+  );
+
+  const vagueVisit = structuredClone(itinerary);
+  vagueVisit.days[0].activities[0].title = "Ambiente diurno en el Real";
+  assert.ok(
+    validateItinerary(vagueVisit, { contentCompleteness: "error" }).errors
+      .some((message) => message.includes("vague or administrative instruction")),
+  );
+
+  const planningChore = structuredClone(itinerary);
+  planningChore.days[0].activities[0].title = "Tarde libre y preparación logística";
+  planningChore.days[0].activities[0].description = "Preparación logística: revisar transporte, accesos y programación oficial.";
+  assert.ok(
+    validateItinerary(planningChore, { contentCompleteness: "error" }).errors
+      .some((message) => message.includes("vague or administrative instruction")),
+  );
+
+  const undecidedDinner = structuredClone(itinerary);
+  undecidedDinner.days[0].activities[1] = {
+    ...undecidedDinner.days[0].activities[1],
+    title: "Cena de despedida en barrio por decidir",
+    description: "Elegir con el anfitrión; todavía no se considera reservada.",
+    category: "food",
+    location: { name: "Restaurante por decidir", address: "Barrio por definir, Lisboa" },
+  };
+  assert.ok(
+    validateItinerary(undecidedDinner, { contentCompleteness: "error" }).errors
+      .some((message) => message.includes("concrete recommendation")),
+  );
+
+  const unanchoredFreeTime = structuredClone(itinerary);
+  unanchoredFreeTime.days[0].activities[0] = {
+    id: "free-afternoon",
+    startTime: "15:00",
+    endTime: "18:00",
+    title: "Tarde libre",
+    category: "free_time",
+  };
+  const freeTimeValidation = validateItinerary(unanchoredFreeTime, { contentCompleteness: "error" });
+  assert.ok(freeTimeValidation.errors.some((message) => message.includes("precise named location")));
+  assert.ok(freeTimeValidation.errors.some((message) => message.includes("specific operational description")));
+
+  const usefulFuturePlan = structuredClone(itinerary);
+  usefulFuturePlan.destination = "Sevilla, España";
+  usefulFuturePlan.lodging = {
+    name: "Casa de un amigo",
+    area: "Sevilla",
+    status: "area_only",
+  };
+  usefulFuturePlan.days[0].title = "Feria de Abril de Sevilla: paseo provisional por Los Remedios";
+  usefulFuturePlan.days[0].activities[0] = {
+    ...usefulFuturePlan.days[0].activities[0],
+    title: "Paseo por el Real de la Feria y el Parque de los Príncipes",
+    category: "event",
+    description: "Recorre la portada y las calles exteriores del Real desde la avenida Flota de Indias y continúa por el Parque de los Príncipes. Confirma las fechas oficiales de la Feria de Abril de Sevilla 2027 en la web municipal cuando se publique el calendario; el paseo por el parque sigue siendo la alternativa si el recinto no está abierto.",
+    location: {
+      name: "Real de la Feria de Abril",
+      address: "Calle Antonio Bienvenida, Los Remedios, Sevilla",
+    },
+    guide: {
+      overview: "El Real de la Feria es el recinto de Los Remedios donde se celebra la Feria de Abril de Sevilla, con calles de casetas y una portada monumental distinta cada año. Antes de la apertura oficial, el entorno permite reconocer la escala del recinto y enlazar el paseo con el cercano Parque de los Príncipes.",
+      highlights: ["Portada del Real", "Calles de casetas", "Parque de los Príncipes"],
+      sources: [{
+        label: "Ayuntamiento de Sevilla",
+        url: "https://www.sevilla.org/fiestas-de-la-ciudad/feria-de-sevilla",
+        checkedAt: "2026-09-03",
+      }],
+    },
+  };
+  usefulFuturePlan.days[0].activities = [usefulFuturePlan.days[0].activities[0]];
+  assert.equal(validateItinerary(usefulFuturePlan, { contentCompleteness: "error" }).valid, true);
 });
 
 test("rebuilds daily links from ordered public activities and excludes provisional bases", () => {

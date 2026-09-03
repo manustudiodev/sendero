@@ -252,8 +252,13 @@ const plannedItinerary = {
       id: "paseo-centro",
       startTime: "10:00",
       endTime: "11:30",
-      title: "Paseo por el centro",
+      title: "Paseo por la Plaza de la Virgen y la Plaza de la Reina",
       category: "free_time",
+      description: "Recorre la Plaza de la Virgen, cruza hacia la Catedral por la calle del Micalet y termina el paseo en la Plaza de la Reina.",
+      location: {
+        name: "Plaza de la Virgen",
+        address: "Plaça de la Verge, Ciutat Vella, València",
+      },
     }],
   }],
 };

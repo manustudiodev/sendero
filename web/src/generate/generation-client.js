@@ -10,6 +10,7 @@ export function createItineraryGenerationFacade({
   getCachedDraft,
   getCurrentDraftId,
   getSession,
+  onBriefPrepared,
   onDraft,
   request = requestJson,
 } = {}) {
@@ -54,10 +55,13 @@ export function createItineraryGenerationFacade({
 
   return {
     async getProtocol({ brief } = {}) {
-      return request("/api/itinerary-planning/protocol", {
-        body: { brief: currentBrief(brief) },
+      const requestedBrief = currentBrief(brief);
+      const result = await request("/api/itinerary-planning/protocol", {
+        body: { brief: requestedBrief },
         method: "POST",
       });
+      if (result?.brief?.brief) onBriefPrepared?.(result.brief);
+      return result;
     },
 
     async stage({ brief, itinerary, protocolHash, protocolVersion }) {

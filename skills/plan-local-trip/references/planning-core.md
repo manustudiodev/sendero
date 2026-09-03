@@ -1,5 +1,5 @@
 ---
-protocolVersion: 1.2.0
+protocolVersion: 1.4.0
 ---
 
 # Sendero itinerary planning protocol
@@ -65,9 +65,45 @@ research places or call a language model on your behalf.
   supplied daily time window, or beyond a supplied maximum walking-leg duration.
   Use preferred meal times as scheduling guidance and insert realistic rest when
   the traveller profile requests it.
-- Use `activity.description` for concise operational guidance. Put historical,
-  cultural, architectural, or popular context only in `activity.guide`, backed by
-  one to four directly relevant sources. Omit a guide rather than inventing it.
+- Make every scheduled public stop immediately actionable for a first-time visitor.
+  Use a precise, recognizable activity title and a real named place, entrance,
+  meeting point, or viewing area. Do not use vague placeholders or instructions as
+  activities, such as “from one sector”, “choose a location”, “verify later”, or
+  “area to be decided”.
+- An itinerary item is an experience the traveller can carry out, never a research,
+  decision, or preparation task. Do not schedule “confirm the calendar”, “review
+  transport”, “choose with the host”, “prepare logistics”, “see whether entry is
+  possible”, or similar administrative work. A later confirmation may appear only
+  after the description has already given a concrete recommendation and action.
+- Use the full recognizable name of a festival, fair, procession, venue, or other
+  named event on first mention. Do not replace it with generic copy such as “the
+  fair” or “the event”. For meals, recommend at least one named restaurant, market,
+  or food venue with a real address; never leave the meal in an undecided district.
+- Deliberately flexible time must still be useful: anchor it to a named area or
+  place and offer concrete things the traveller can do there. A whole day may be
+  left as rest only when it is intentionally planned as recovery, not because
+  research or event information is missing.
+- Use `activity.description` for concise but complete operational guidance: what
+  happens, exactly where the traveller should go or meet, how to carry out the
+  stop, and which fact remains provisional. Explain local terminology the first
+  time it appears; never assume the traveller already understands event-specific
+  language or customs.
+- Every substantive sightseeing, cultural, food, or event stop must include a real
+  `activity.location` with a recognizable name and address, plus an
+  `activity.guide` with two to four useful source-backed sentences and one to four
+  directly relevant sources. The guide should explain the place or event, why it
+  matters for this trip, and what the visitor should notice. Omit the guide only
+  for transit, rest, deliberately free time, or an unnamed placeholder that is not
+  presented as a public stop; never invent unsupported guide copy.
+- When a future procession, festival, fair, performance, or other event has not
+  published its final route or schedule, do not turn the uncertainty into a vague
+  instruction. Label the activity as provisional, choose a specific known base or
+  viewing area that is useful under the current information, explain what the
+  traveller will do there, state exactly what is still unpublished, and identify
+  when and where to recheck it. The title and first part of the description must
+  remain actionable even if the event does not happen. Include a practical,
+  specific alternative if the eventual route, capacity, or schedule makes that
+  base unsuitable.
 - Build routes only from real activity locations. A provisional base is context,
   not a route stop. Include a return to lodging only for a confirmed exact address.
 - Include source-backed weather only when appropriate for the dates; otherwise use

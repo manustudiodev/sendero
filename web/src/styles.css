@@ -202,6 +202,7 @@ a { color: inherit; }
 .eyebrow { margin: 0 0 7px; color: var(--muted); font-size: 14px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(27px, 5vw, 42px); font-weight: 650; letter-spacing: -.045em; line-height: 1.02; }
 h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
+.itinerary-header-detail { max-width: 74ch; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .meta { margin: 9px 0 0; color: var(--muted); font-size: 14px; }
 .brand-mark { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 750; }
 

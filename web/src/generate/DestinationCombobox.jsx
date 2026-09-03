@@ -17,6 +17,7 @@ function newSessionToken() {
 }
 
 export function DestinationCombobox({
+  accepted = false,
   copy,
   csrfToken,
   destinationPlaceId,
@@ -39,7 +40,7 @@ export function DestinationCombobox({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const sessionTokenRef = useRef(newSessionToken());
-  const selected = Boolean(value.placeId && value.label === query);
+  const selected = Boolean((value.placeId || accepted) && value.label === query);
 
   useEffect(() => {
     setQuery((current) => current === (value.label || "") ? current : (value.label || ""));
@@ -133,19 +134,19 @@ export function DestinationCombobox({
   }
 
   const remaining = Math.max(0, DESTINATION_QUERY_MIN_LENGTH - query.trim().length);
-  const status = disabled
-    ? copy.disabled
-    : selected
+  const status = selected
     ? copy.selected
-    : state === "loading"
-      ? copy.loading
-      : state === "empty"
-        ? copy.empty
-        : state === "error"
-          ? copy.error
-          : remaining > 0
-            ? copy.remaining(remaining)
-            : copy.choose;
+    : disabled
+      ? copy.disabled
+      : state === "loading"
+        ? copy.loading
+        : state === "empty"
+          ? copy.empty
+          : state === "error"
+            ? copy.error
+            : remaining > 0
+              ? copy.remaining(remaining)
+              : copy.choose;
   const showPanel = !disabled && open && destinationQueryReady(query) && state !== "idle";
 
   return (

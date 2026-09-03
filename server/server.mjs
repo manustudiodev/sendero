@@ -1070,12 +1070,15 @@ function normalizeTripSummary(summary) {
   };
 }
 
-function validatedPresentation(itinerary, { reservationCompleteness } = {}) {
+function validatedPresentation(
+  itinerary,
+  { contentCompleteness = "error", reservationCompleteness } = {},
+) {
   const normalized = itinerarySchema.parse(normalizeItinerary(itinerary));
-  const validation = validateItinerary(
-    normalized,
-    reservationCompleteness ? { reservationCompleteness } : undefined,
-  );
+  const validation = validateItinerary(normalized, {
+    contentCompleteness,
+    ...(reservationCompleteness ? { reservationCompleteness } : {}),
+  });
   if (!validation.valid) {
     const prefix = localizedToolCopy(normalized.locale, {
       en: "Itinerary cannot be presented",
@@ -1249,7 +1252,7 @@ export function normalizeItinerary(itinerary) {
 
 export function validateItinerary(
   itinerary,
-  { reservationCompleteness = "error" } = {},
+  { contentCompleteness = "warning", reservationCompleteness = "error" } = {},
 ) {
   const errors = [];
   const warnings = [];
@@ -1271,6 +1274,37 @@ export function validateItinerary(
     const clearText = (value) => typeof value === "string" && value.trim().length >= 8;
     return Boolean(reservation.url) || clearText(reservation.note) || clearText(reservation.deadline);
   };
+  const vagueTitlePatterns = [
+    /\b(?:desde|from)\s+(?:un|one)\s+(?:solo\s+|single\s+)?(?:sector|area)\b/i,
+    /\b(?:escoger|elegir|choose|pick|select)\s+(?:una?|the|a)\s+(?:ubicaci[oó]n|location|sector|area)\b/i,
+    /^(?:transici[oó]n\s+hacia|transition\s+to)\b/i,
+    /^(?:ambiente\s+(?:diurno|nocturno)|daytime\s+atmosphere|evening\s+atmosphere)\b/i,
+    /^(?:reconocimiento\s+exterior|exterior\s+reconnaissance)\b/i,
+    /\b(?:preparaci[oó]n\s+log[ií]stica|logistics?\s+preparation)\b/i,
+  ];
+  const planningTaskAtStartPatterns = [
+    /^(?:confirmar|verificar|revisar|consultar|averiguar|investigar|decidir|elegir|escoger|buscar)\b/i,
+    /^(?:check|verify|review|research|decide|choose|select|find\s+out)\b/i,
+    /^(?:preparaci[oó]n\s+log[ií]stica|logistics?\s+preparation)\b/i,
+    /^(?:fecha|calendario|programaci[oó]n)\s+provisional\b[\s\S]*\b(?:confirmar|verificar|revisar|consultar)\b/i,
+    /^solo\s+si\b[\s\S]*\b(?:confirmar|verificar|revisar|consultar)\b/i,
+  ];
+  const unresolvedPlaceholderPatterns = [
+    /\b(?:barrio|zona|lugar|restaurante|sector|area|neighbou?rhood|venue|restaurant)\s+(?:por\s+(?:decidir|definir)|a\s+(?:decidir|definir)|to\s+be\s+decided|tbd)\b/i,
+    /\b(?:por\s+(?:decidir|definir)|to\s+be\s+decided|tbd)\b/i,
+  ];
+  const containsVagueTitle = (value) => vagueTitlePatterns.some((pattern) => pattern.test((value || "").trim()));
+  const startsAsPlanningTask = (value) => planningTaskAtStartPatterns.some((pattern) => pattern.test((value || "").trim()));
+  const containsUnresolvedPlaceholder = (activity) => {
+    const copy = [
+      activity.title,
+      activity.description,
+      activity.location?.name,
+      activity.location?.address,
+    ].filter(Boolean).join(" ");
+    return unresolvedPlaceholderPatterns.some((pattern) => pattern.test(copy));
+  };
+  const contentIssues = contentCompleteness === "error" ? errors : warnings;
 
   if (itinerary.startDate > itinerary.endDate) {
     errors.push("The trip start date is after the end date.");
@@ -1309,11 +1343,22 @@ export function validateItinerary(
       warnings.push("Itinerary days are not in chronological order.");
     }
     previousDate = day.date;
+    if (containsVagueTitle(day.title) || startsAsPlanningTask(day.title)) {
+      contentIssues.push(
+        `${day.date}: replace the vague or administrative day title with the specific experience being planned.`,
+      );
+    }
 
     const intervals = [];
     const seenActivityIds = new Set();
     let routedLocationsWithoutCoordinates = 0;
     for (const activity of day.activities) {
+      const normalizedCategory = (activity.category || "").trim().toLowerCase();
+      const isPassiveStop = ["rest", "transit", "transport"].includes(normalizedCategory);
+      const isFlexibleTime = normalizedCategory === "free_time";
+      const needsActionableLocation = !isPassiveStop;
+      const needsOperationalDescription = !isPassiveStop;
+      const needsVisitorGuide = !isPassiveStop && !isFlexibleTime;
       if (seenActivityIds.has(activity.id)) {
         errors.push(`${day.date}: duplicate activity ID ${activity.id}.`);
       }
@@ -1341,12 +1386,36 @@ export function validateItinerary(
       if (itinerary.dailySchedule?.latestEndTime && activityEndTime > itinerary.dailySchedule.latestEndTime) {
         errors.push(`${day.date} · ${activity.title}: ends after the preferred daily window.`);
       }
-      if (!activity.location && !["rest", "free_time"].includes(activity.category || "")) {
-        warnings.push(`${day.date} · ${activity.title}: add a location for route planning.`);
+      if (!activity.location && needsActionableLocation) {
+        contentIssues.push(`${day.date} · ${activity.title}: add a precise named location and recognizable address.`);
+      }
+      if (needsOperationalDescription && (!activity.description || activity.description.trim().length < 24)) {
+        contentIssues.push(
+          `${day.date} · ${activity.title}: add a specific operational description that explains what happens, exactly where to go, and how to carry out the stop.`,
+        );
+      }
+      if (
+        containsVagueTitle(activity.title)
+        || startsAsPlanningTask(activity.title)
+        || startsAsPlanningTask(activity.description)
+      ) {
+        contentIssues.push(
+          `${day.date} · ${activity.title}: replace the vague or administrative instruction with a specific experience at a named place.`,
+        );
+      }
+      if (containsUnresolvedPlaceholder(activity)) {
+        contentIssues.push(
+          `${day.date} · ${activity.title}: replace undecided placeholders with at least one concrete recommendation.`,
+        );
+      }
+      if (needsVisitorGuide && !activity.guide) {
+        contentIssues.push(
+          `${day.date} · ${activity.title}: add a source-backed visitor guide with useful context and directly relevant sources.`,
+        );
       }
       if (
         activity.location
-        && !["rest", "free_time"].includes(activity.category || "")
+        && needsActionableLocation
         && !(
           (activity.location.latitude !== undefined && activity.location.longitude !== undefined)
           || (activity.location.lat !== undefined && activity.location.lng !== undefined)
@@ -1675,7 +1744,7 @@ const SERVER_INSTRUCTIONS = [
   "For trip creation, extract every supplied fact into prepare_trip_brief. If critical fields are missing, render_trip_requirements once with all current gaps together and stop; otherwise research and build the plan before calling the appropriate final facade.",
   "Treat a rendered Sendero component as the complete answer. Do not restate its visible contents, tool names, stable IDs, JSON, or mechanics in prose.",
   "Use contextual non-redundant titles, preserve locked activities and confirmed reservations, distinguish reservation versus ticket and requirement versus lifecycle status, and never claim current facts without a source.",
-  "Keep activity.description concise and operational for Recorrido: what happens, practical context, and logistics. For every real public place, add activity.guide with a source-backed overview explaining its history, cultural relevance, interesting facts, and what a visitor should notice; include up to four useful highlights and one to four reliable sources. Do not invent guide facts, do not recycle logistics as guide copy, and omit guide for transit, rest, free time, or an unnamed placeholder.",
+  "Make every public stop actionable for a first-time visitor: use a precise title and a real named place, entrance, meeting point, or viewing area; never use vague placeholders such as from one sector, choose a location, verify later, or area to be decided. An itinerary item is an experience, never a research, decision, or preparation task: do not schedule confirm the calendar, review transport, choose with the host, prepare logistics, or see whether entry is possible. A later confirmation may appear only after a concrete recommendation and action. Use the full recognizable event name on first mention. For meals, recommend at least one named venue with a real address. Anchor deliberately free time to a named area with concrete options. Keep activity.description concise but complete for Recorrido: say what happens, exactly where to go or meet, how to carry out the stop, what is provisional, and explain unfamiliar local terminology. For every substantive sightseeing, cultural, food, or event stop, add activity.location with a recognizable name and address plus activity.guide with a two-to-four-sentence source-backed overview, up to four useful highlights, and one to four reliable sources. Omit guide only for transit, rest, or deliberately free time. When a future event has no final route or schedule, label it provisional, choose a specific useful base under the available information, explain what the traveller will do there, state what remains unpublished and when and where to recheck it, and include a practical fallback that remains useful if the event is unavailable.",
   "Reservation controls and conversational reservation-status updates only change Sendero's tracker; they never book, buy, or cancel with a provider. Public sharing uses a preview only when the owner asks to inspect it; an explicit publish, share, or update request goes directly through share_trip_publicly. Rotating or revoking remains explicit.",
 ].join(" ");
 
@@ -1709,6 +1778,7 @@ export function createTripPlannerServer({
 
   function tripPresentation(result) {
     const presented = validatedPresentation(result.itinerary, {
+      contentCompleteness: "warning",
       reservationCompleteness: "warning",
     });
     return {
@@ -2044,7 +2114,7 @@ export function createTripPlannerServer({
     },
     async ({ itinerary }) => {
       const normalized = normalizeItinerary(itinerary);
-      const validation = validateItinerary(normalized);
+      const validation = validateItinerary(normalized, { contentCompleteness: "error" });
       const locale = normalized.locale;
       return {
         structuredContent: { itinerary: normalized, validation },
@@ -3611,6 +3681,7 @@ export function createTripPlannerServer({
       if (denied) return denied;
       const candidate = await storage().getRevision({ tripId, version });
       validatedPresentation(candidate.itinerary, {
+        contentCompleteness: "warning",
         reservationCompleteness: "warning",
       });
       const result = await storage().restore({
@@ -3620,6 +3691,7 @@ export function createTripPlannerServer({
         operationId,
       });
       const authoritative = validatedPresentation(result.itinerary, {
+        contentCompleteness: "warning",
         reservationCompleteness: "warning",
       });
       return {

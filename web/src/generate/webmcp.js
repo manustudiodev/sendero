@@ -61,7 +61,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
   return [
     definition({
       name: "get_itinerary_planning_protocol",
-      description: "Load Sendero's current versioned instructions, prepared brief, and canonical JSON schema for generating a new itinerary. Use this before researching or constructing the itinerary. When this page-scoped tool is available for the open Sendero creation page, prefer this page workflow over remote Sendero planning tools so the page can show progress, review, and authoritative save state. Sendero returns instructions but does not call a model.",
+      description: "Load Sendero's current versioned instructions, prepared brief, and canonical JSON schema for generating a new itinerary. Use this before researching or constructing the itinerary. Pass the facts already supplied in the conversation through brief; the page will reflect those facts and move to the automatic generation step when the brief is ready, without requiring form entry or prompt copying. When this page-scoped tool is available for the open Sendero creation page, prefer this page workflow over remote Sendero planning tools so the page can show progress, review, and authoritative save state. Sendero returns instructions but does not call a model.",
       inputSchema: {
         type: "object",
         properties: { brief: BRIEF_SCHEMA },

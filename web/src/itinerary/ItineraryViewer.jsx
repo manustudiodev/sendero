@@ -1074,6 +1074,8 @@ export function ItineraryViewer({
   activeView = "list",
   dimmedItemIds = [],
   focusedItemId = null,
+  headerActions = null,
+  headerDetail = "",
   headingLevel = 1,
   highlightedItemIds = [],
   itinerary,
@@ -1136,7 +1138,9 @@ export function ItineraryViewer({
         <div className="header-copy">
           <p className="eyebrow">{itinerary.destination}</p>
           <HeadingTag className="itinerary-title">{contextualTitle}</HeadingTag>
+          {headerDetail ? <p className="itinerary-header-detail">{headerDetail}</p> : null}
           <p className="meta">{meta}</p>
+          {headerActions}
         </div>
         <div className="view-navigation">
           <nav aria-label={t(locale, "viewer.viewsAria")} className="tabs">

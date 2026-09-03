@@ -196,7 +196,7 @@ export function validatedDraft(input) {
 
   const normalized = normalizeItinerary(parsed.itinerary);
   assertBriefMatchesItinerary(prepared.brief, normalized);
-  const validation = validateItinerary(normalized);
+  const validation = validateItinerary(normalized, { contentCompleteness: "error" });
   if (!validation.valid) {
     throw new ItineraryPlanningError(
       "itinerary_invalid",

@@ -33,9 +33,42 @@ test("registers the five anonymous-first generation tools on the top-level page"
     "webmcp_tools_registered",
   ]);
   assert.match(registered[0].tool.description, /prefer this page workflow over remote Sendero planning tools/i);
+  assert.match(registered[0].tool.description, /without requiring form entry or prompt copying/i);
   assert.match(registered[1].tool.description, /authoritative review handoff/i);
   assert.match(registered[1].tool.description, /without a Sendero account/i);
   assert.match(registered[3].tool.description, /requires a Sendero account/i);
+});
+
+test("returns the prepared conversational brief to the open page", async () => {
+  const prepared = [];
+  const generated = createItineraryGenerationFacade({
+    getBrief: () => ({ destination: "Fallback" }),
+    onBriefPrepared: (value) => prepared.push(value),
+    request: async (path, options) => {
+      assert.equal(path, "/api/itinerary-planning/protocol");
+      assert.equal(options.body.brief.destination, "Sevilla, España");
+      return {
+        brief: {
+          ready: true,
+          missing: [],
+          brief: {
+            destination: "Sevilla, España",
+            startDate: "2027-03-21",
+            endDate: "2027-04-18",
+            travellers: { adults: 2, children: 0 },
+            transport: { modes: ["walk", "public_transit"], hasLicense: false, wantsCar: false },
+          },
+        },
+        protocol: { version: "1.4.0" },
+      };
+    },
+  });
+
+  const result = await generated.getProtocol({ brief: { destination: "Sevilla, España" } });
+  assert.equal(result.protocol.version, "1.4.0");
+  assert.equal(prepared.length, 1);
+  assert.equal(prepared[0].ready, true);
+  assert.equal(prepared[0].brief.travellers.adults, 2);
 });
 
 test("leaves the page usable without WebMCP and keeps failures compact", async () => {

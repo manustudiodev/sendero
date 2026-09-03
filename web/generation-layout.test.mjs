@@ -41,3 +41,34 @@ test("uses a concise localized label for the prompt generation action", async ()
   assert.match(source, /prepare: "Prompt generieren"/);
   assert.doesNotMatch(source, /prepare: "Crear prompt para ChatGPT"/);
 });
+
+test("uses an interactive back step and separates automatic WebMCP generation from the manual prompt fallback", async () => {
+  const source = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
+  const comboboxSource = await readFile(new URL("./src/generate/DestinationCombobox.jsx", import.meta.url), "utf8");
+
+  assert.match(source, /progress: \["Datos del viaje", "Generación del itinerario", "Revisar y guardar"\]/);
+  assert.doesNotMatch(source, /progress: \[[^\n]*"Continuar en ChatGPT"/);
+  assert.match(source, /step === 1 && activeStep > 1/);
+  assert.match(source, /<button className="generate-step-content" onClick=\{onReturnToBrief\}/);
+  assert.match(source, /const automatic = mode === "automatic"/);
+  assert.match(source, /automatic \? <p className="generate-automatic-note"/);
+  assert.match(source, /No necesitas copiar ningún prompt/);
+  assert.match(source, /onBriefPrepared: \(prepared\) =>/);
+  assert.match(source, /setGenerationMode\("automatic"\)/);
+  assert.match(source, /setActiveStep\(2\)/);
+  assert.match(source, /destinationAccepted: Boolean\(value\.destination && !value\.destinationPlaceId\)/);
+  assert.match(source, /accepted=\{brief\.destinationAccepted\}/);
+  assert.match(comboboxSource, /\(value\.placeId \|\| accepted\) && value\.label === query/);
+});
+
+test("keeps step three concise and places draft persistence context below the itinerary title", async () => {
+  const generationSource = await readFile(new URL("./src/generate/GenerateTripApp.jsx", import.meta.url), "utf8");
+  const viewerSource = await readFile(new URL("./src/itinerary/ItineraryViewer.jsx", import.meta.url), "utf8");
+
+  assert.match(generationSource, /id="generate-preview-title" tabIndex=\{-1\}>\{copy\.previewEyebrow\}/);
+  assert.doesNotMatch(generationSource, /<h2 id="generate-preview-title"/);
+  assert.doesNotMatch(generationSource, /draft\.warnings\?\.length/);
+  assert.doesNotMatch(generationSource, /className="generate-steps"/);
+  assert.match(generationSource, /<ItineraryViewer[\s\S]{0,1800}?headerDetail=\{draft\.status === "saved"/);
+  assert.match(viewerSource, /<HeadingTag className="itinerary-title">\{contextualTitle\}<\/HeadingTag>[\s\S]{0,140}?itinerary-header-detail/);
+});
