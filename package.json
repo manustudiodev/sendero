@@ -2,6 +2,7 @@
   "name": "sendero",
   "version": "0.9.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Local-first travel planner with personalized itineraries, weather, events, reservations, and daily routes.",
   "engines": {

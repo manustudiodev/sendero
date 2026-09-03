@@ -1,173 +1,168 @@
-# Sendero — WebMCP Challenge Extension
+# Sendero — WebMCP Challenge
 
-## Submission status
+## Submission snapshot
 
-**Project:** Sendero Shared Trip Companion
-**Challenge implementation baseline:** `a8ebc826c5814d3dfc7a88e658ffade748eb039f`
-**Last pre-challenge-opening reference:** `123bd07bf91ef69e3182646a6f550a4c614c7465`
-**Implementation commit:** `48dcf1ca652b435ed087db1778cb0240749650ad`
-**Production application:** https://sendero-alpha.vercel.app
-**Live challenge walkthrough:** pending a durable active public-share URL and demo video
-**Public repository and license:** pending owner decision
+- **Project:** Sendero
+- **Elevator pitch:** Turn a conversation into a live itinerary that people and AI agents can plan, validate, review, save, and share together.
+- **Live URL:** https://sendero-alpha.vercel.app/app/new?lang=en
+- **Repository:** https://github.com/manustudiodev/sendero
+- **Submission branch:** `main`
+- **Last commit before the challenge opened:** `5d370a506167690d3f87537934c7e1604d058cb1` (`2026-08-25T14:08:54-03:00`)
+- **Production application verified at:** `454e26b717232aa86b826488338f44199367cde0`
+- **Final repository state:** the public `main` branch linked from Devpost
+- **Demo video:** add the public YouTube URL before submission
 
-This file describes the implementation deployed from the commit above. The final active share URL, video, public-repository status, license, and submission SHA must be added before the Devpost submission.
+Once the repository is public, the complete challenge-period comparison will be available at:
 
-## What Sendero was before the challenge
+https://github.com/manustudiodev/sendero/compare/5d370a506167690d3f87537934c7e1604d058cb1...main
 
-Sendero was an existing conversational travel planner. Before this WebMCP extension it already provided:
+## Why this is a WebMCP use case
 
-- a remote MCP server and ChatGPT components for planning and managing trips;
-- saved trips, immutable revisions, collaboration, invitations, and role-based permissions;
-- frozen public itinerary publications with opaque fragment tokens and a strict privacy allowlist;
-- a standalone read-only `/share` page with list, calendar, route, and map views;
-- responsive public pages, localization, route fallbacks, and a broad automated test suite.
+Travel planning often breaks into two disconnected experiences: a conversation that produces recommendations and a web app that stores structured data. The traveler copies prompts, waits without page feedback, and cannot tell whether the result was merely written in chat, validated in the product, or actually saved.
 
-The existing deployment and the implementation baseline did not contain `document.modelContext`, browser `registerTool` calls, a guest-arrival preview, or page-scoped agent actions.
+Sendero uses WebMCP to make the open planning page part of the conversation. ChatGPT can pass the facts already supplied by the traveler to that exact page, follow Sendero's versioned planning contract, and stage a validated itinerary into the browser's visible review experience. The person and the agent then share one state instead of exchanging opaque text.
 
-## What was added during the challenge
+This page-scoped interaction matters because the useful context is local and immediate: the brief currently being prepared, the browser draft being reviewed, the visible day and route, the signed-in state, and the exact itinerary eligible to be saved or shared. A remote service alone cannot prove those UI transitions or operate on the browser-local anonymous draft.
 
-The public shared-trip page now has a page-scoped companion built on WebMCP:
+## What people and agents can now do
 
-- an agent-ready projection with IANA timezone, public item IDs, safe booking booleans, and publication version metadata;
-- a `SharedTripFacade` shared by tool callbacks and the visible page state;
-- WebMCP feature detection, registration lifecycle, and `AbortController` cleanup;
-- exactly six site tools:
-  - `get_shared_trip_context`;
-  - `get_day_itinerary`;
-  - `preview_guest_arrival`;
-  - `show_day_on_map`;
-  - `focus_itinerary_item`;
-  - `clear_guest_preview`;
-- a deterministic guest-arrival preview that identifies earlier items and a first future meeting point from the published schedule;
-- synchronized day and item focus in the route/map view;
-- an explicit temporary-view receipt and a clear action;
-- privacy, contract, fallback, timezone, map-focus, responsive, and browser-flow verification.
+- Start from a natural-language request without manually re-entering the same trip facts in a form.
+- See generation progress on the Sendero page while ChatGPT researches and constructs the itinerary.
+- Validate the generated object against a versioned protocol and canonical schema before presenting it.
+- Review a single authoritative draft in list, calendar, route, map, reservation, and warning views.
+- Keep an anonymous draft in the browser, discard it, or sign in later without losing it.
+- Save only after explicit approval and receive the authoritative trip ID and version.
+- Track exact reservations as booked or pending without claiming to buy from a provider.
+- Publish a saved itinerary through a read-only link or invite an exact email as a private viewer or editor.
+- Open a published trip and ask an agent to inspect a day, focus a map item, or preview a guest's late arrival without changing the owner's trip.
 
-The new tools never call a mutation endpoint and never modify the owner's canonical itinerary.
+## WebMCP implementation
 
-## Before and after
+The creation page registers eight site tools:
 
-### Before
+1. `get_itinerary_planning_protocol`
+2. `validate_and_stage_itinerary`
+3. `get_staged_itinerary`
+4. `update_itinerary_reservation_statuses`
+5. `save_staged_itinerary`
+6. `share_saved_itinerary_by_link`
+7. `invite_saved_itinerary_member`
+8. `discard_staged_itinerary`
 
-```text
-Open shared link
-  → read the common itinerary
-  → interpret arrival impact manually
-  → open routes and calculate a meeting point
-```
+The public shared-trip page registers six additional tools:
 
-### After
+1. `get_shared_trip_context`
+2. `get_day_itinerary`
+3. `preview_guest_arrival`
+4. `show_day_on_map`
+5. `focus_itinerary_item`
+6. `clear_guest_preview`
 
-```text
-Open shared link
-  → ask the page-aware agent about a late arrival
-  → agent reads the exact published trip through site tools
-  → page shows missed items and focuses a published meeting point
-  → guest clears the temporary view; the owner's trip is unchanged
-```
+Both surfaces feature-detect `document.modelContext.registerTool`, register closed-schema definitions with an abortable lifecycle, and share a facade with their visible React UI. The page remains usable when WebMCP is absent.
 
-## Why WebMCP is essential
+The creation workflow keeps three states deliberately distinct:
 
-The useful context exists on the page: the exact shared publication currently open, its public version, the active day, and the live route/map view. A remote MCP server can manage Sendero independently, but it cannot by itself provide this page-scoped human-agent interaction. WebMCP lets the guest's agent use narrow capabilities from the open page without requiring the Sendero plugin or granting canonical write access.
+- **Prepared:** the page has the user's brief and the planning protocol, but no itinerary yet.
+- **Staged:** the itinerary passed validation and is cached in the browser for review, but is not a saved Sendero trip.
+- **Saved:** an authenticated, explicitly approved operation returned an authoritative trip, web ID, and version.
 
-## Architecture
+Sharing, invitations, and reservation tracking apply separate authentication, ownership, role, and explicit-intent checks. A public link is always read-only; collaboration requires an email-bound invitation.
 
-```text
-Public /share page
-    ├── Itinerary UI and route/map feedback
-    ├── SharedTripFacade and temporary view state
-    ├── six WebMCP site tools
-    └── safe public projection response
-             └── frozen Sendero publication in Convex
-```
+## What existed before the challenge
 
-## Main tools
+Before the challenge opened, Sendero already had a remote MCP travel-planning foundation, React components, saved trips, itinerary versions, invitation and publishing concepts, and a public web surface. The immutable pre-opening reference is `5d370a506167690d3f87537934c7e1604d058cb1`, committed at 10:08:54 Pacific time on August 25, 2026, before the 11:00 Pacific opening.
 
-| Tool | Type | Purpose | Canonical write |
-|---|---|---|---:|
-| `get_shared_trip_context` | Read | Public trip metadata, version, days, and permissions | No |
-| `get_day_itinerary` | Read | Ordered public items for one trip date | No |
-| `preview_guest_arrival` | Local UI | Missed items and first future meeting point | No |
-| `show_day_on_map` | Local UI | Select and frame one published day | No |
-| `focus_itinerary_item` | Local UI | Focus one public item and its map location | No |
-| `clear_guest_preview` | Local UI | Restore the normal shared view | No |
+It did not yet provide the current WebMCP experience that lets the active page receive a conversational brief, expose the versioned planning protocol, stage an anonymous browser draft, synchronize visible progress and review, gate persistence behind authentication, manage reservation state through site tools, or control the published itinerary's route and map views.
+
+## What was built during the challenge
+
+The challenge-period work includes:
+
+- WebMCP registration and lifecycle for the creation and public shared-trip pages;
+- an eight-tool itinerary-generation, staging, persistence, reservation, and sharing surface;
+- a six-tool public Shared Trip Companion;
+- anonymous planning with an infinite-lifetime TanStack Query cache persisted in the browser until the traveler discards or replaces the draft;
+- sign-in continuity that promotes the reviewed browser draft into the user's account;
+- visible generation status, a three-step planning flow, and automatic page handoff from ChatGPT;
+- strict itinerary schemas, versioned protocol hashes, warnings, and source-aware uncertainty;
+- specific multi-activity daily itineraries instead of vague research tasks;
+- list, calendar, route, Google Maps, reservation, and description views;
+- booking-status tracking, public links, and private email invitations exposed through permission-aware site tools;
+- five-language product chrome, responsive layouts, light/dark themes, and accessible modal and notice behavior;
+- production Auth0, Convex, Vercel, and Google Maps integration;
+- automated tests and local/remote smoke coverage for the new boundaries.
+
+The commit history and comparison link above provide dated evidence of the extension.
 
 ## Key implementation paths
 
 ```text
-shared/public-snapshot.mjs                 safe public projection
-web/src/share/shared-trip-companion.js    page facade and arrival algorithm
-web/src/share/webmcp.js                    site-tool contracts and lifecycle
-web/src/share/PublicShareApp.jsx           WebMCP registration and visible receipt
-web/src/itinerary/ItineraryViewer.jsx      controlled day/item/map feedback
-web/src/itinerary/route-utils.js           public item map focus
-web/shared-trip-companion.test.mjs         facade and privacy contracts
-web/webmcp.test.mjs                        site-tool registration contracts
+web/src/generate/webmcp.js                  creation site-tool definitions
+web/src/generate/generation-client.js      creation facade and draft lifecycle
+web/src/generate/GenerateTripApp.jsx        visible creation and review experience
+web/src/generate/draft-cache.js             browser persistence via TanStack Query
+web/src/share/webmcp.js                     shared-page site-tool definitions
+web/src/share/shared-trip-companion.js      safe public facade and arrival preview
+web/src/share/PublicShareApp.jsx            shared-trip UI feedback
+web/src/itinerary/ItineraryViewer.jsx       list, calendar, route, map, and reservations
+server/itinerary-planning.mjs               versioned generation and validation protocol
+server/app.mjs                              HTTP, auth, capability, and API boundaries
+convex/                                     authoritative persistence and permissions
 ```
 
-## Run locally
+## Safety and privacy
 
-Use Node.js 22 from the repository root:
+- Tool inputs use closed JSON schemas and are validated again by page facades.
+- The agent receives concise errors rather than stack traces or source payloads.
+- Itinerary copy is untrusted content and is never evaluated as instructions.
+- An anonymous staged draft is not represented as a saved trip.
+- Saving requires authentication and an explicit user request.
+- Reservation status only records what the traveler says; Sendero never books, purchases, contacts, or cancels with a provider.
+- Public snapshots use an allowlist and omit exact lodging, private notes and URLs, collaborators, internal IDs, and revision history.
+- Public links grant read-only access. Editor access requires an identity-bound invitation.
+- Public-page tools never receive the share token and never call a canonical mutation path.
+
+## Verification boundary
+
+Verified for production commit `454e26b717232aa86b826488338f44199367cde0`:
+
+- 335 automated tests passed.
+- Local smoke and remote production smoke passed.
+- Generated UI matched its source files.
+- Vercel reported the production deployment ready at `https://sendero-alpha.vercel.app`.
+- The ChatGPT desktop in-app browser exposed all eight creation-page tools and completed end-to-end anonymous itinerary staging.
+- The production Convex deployment was healthy and the production Auth0 flow was exercised.
+- List, calendar, routes, Google Maps, reservations, draft discard, sign-in continuity, and responsive light/dark UI were manually reviewed.
+
+Documentation changes made after that runtime commit do not change the deployed application. Run the complete repository gate before the final push:
 
 ```bash
-npm install
-npm test
-npm run preview:ui
-```
-
-Open the public sample at:
-
-```text
-http://127.0.0.1:4173/share#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-```
-
-The page remains fully usable in an ordinary browser. To exercise the site tools, use a browser or ChatGPT in-app browser version that supports the imperative WebMCP API.
-
-## Verification completed
-
-```bash
-npm test
-npm run smoke:local
+npm run check
 SENDERO_SMOKE_BASE_URL=https://sendero-alpha.vercel.app npm run smoke:remote
-npm run check:generated
-npm run check:diff
 ```
 
-- 254 automated tests pass.
-- The local smoke test passes.
-- The GitHub `verify` workflow passed for the implementation commit.
-- Vercel completed the production deployment and the remote smoke passed against `https://sendero-alpha.vercel.app`.
-- The deployed `/share` bundle exposes the WebMCP registration path and challenge tool names.
-- Generated UI matches its sources.
-- A real-browser check registered exactly six tools and executed `preview_guest_arrival` against the public sample.
-- Desktop and 390 px mobile checks showed the temporary receipt and focused route without horizontal overflow.
-- Clearing the preview restored normal state, and manual route navigation still worked afterward.
+## Demo outline
 
-## Privacy and safety
+The public video must remain under three minutes and use the English UI.
 
-- The public snapshot is created with an allowlist.
-- Public item IDs never reuse private database IDs.
-- Reservation URLs, codes, notes, deadlines, participant data, auth claims, and the share token are absent from tool outputs.
-- Tool inputs use closed JSON schemas and are validated again by the facade.
-- Expected failures return compact error objects without stack traces or source payloads.
-- Telemetry events contain tool names, result codes, counts, and durations only.
-- Itinerary text is returned as untrusted data; it is never evaluated as instructions.
-- The public page has no canonical trip mutation path and continues to work without WebMCP.
+1. Open the production itinerary-creation URL in ChatGPT's desktop in-app browser.
+2. Show the WebMCP indicator and its eight commands.
+3. Describe a trip in natural language, including one meaningful constraint.
+4. Show Sendero receive the brief automatically and display generation progress.
+5. Let ChatGPT stage the itinerary and show the page transition to review.
+6. Quickly switch between list, calendar, routes/map, and reservations.
+7. Sign in, save the draft, and show the trip in the account.
+8. If time permits, request a read-only share link or show an invited collaboration boundary.
 
-## Known limitations
+Do not include private credentials, secrets, unlicensed music, or another person's copyrighted material in the recording.
 
-- The arrival preview is schedule-only. It adds the guest's supplied readiness estimate and does not claim to calculate live traffic or an unverified transfer.
-- Publications created before timezone support must be republished before arrival preview is available; read tools continue to work.
-- The current implementation focuses a public place or a schematic marker; it does not draw a guest-origin route.
-- The production application is live, but the final challenge walkthrough still needs a durable active public-share URL and a demo video.
-- The repository is currently private and has no selected open-source license, so it is not submission-ready yet.
+## Known limits
 
-## Repository comparison
-
-The immutable implementation delta is:
-
-https://github.com/manustudiodev/sendero/compare/a8ebc826c5814d3dfc7a88e658ffade748eb039f...48dcf1ca652b435ed087db1778cb0240749650ad
+- Generated itinerary content is stored in the language in which it was created. Changing the UI language translates product chrome but does not machine-translate the saved itinerary.
+- Future schedules, prices, closures, events, and reservation requirements remain explicitly marked for reconfirmation when official information is unavailable.
+- WebMCP capability depends on a compatible host. The verified production path is ChatGPT's desktop in-app browser.
+- Google Maps requires the deployment's restricted Maps Embed key; normal list and route links remain usable if the embed is unavailable.
 
 ## License
 
-Pending owner decision. A recognized open-source license and a public repository are required before submission.
+Sendero's original source is licensed under the [MIT License](LICENSE). Dependencies remain under their own licenses. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) documents the direct dependency licenses and GSAP's separate Standard No Charge terms.
