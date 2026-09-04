@@ -163,7 +163,26 @@ button.generate-step-content:hover { background: color-mix(in srgb, var(--web-gr
 @keyframes webmcp-modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .generate-draft-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
 .generate-preview { min-width: 0; overflow: hidden; }
-.generate-preview .itinerary-viewer { border-radius: 18px; }
+.generate-preview .itinerary-viewer {
+  --ink: var(--web-ink);
+  --muted: var(--web-muted);
+  --subtle: var(--web-muted);
+  --line: var(--web-line);
+  --line-strong: var(--web-line);
+  --soft: var(--web-soft);
+  --surface: var(--web-surface);
+  --surface-hover: var(--web-soft);
+  --on-strong: var(--web-surface);
+  --strong-hover: var(--web-muted);
+  --blue: var(--web-forest);
+  --danger: var(--web-danger);
+  --focus-border: var(--web-forest);
+  --field-ring: color-mix(in srgb, var(--web-forest) 18%, transparent);
+  --shadow: color-mix(in srgb, var(--web-ink) 14%, transparent);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--ink);
+}
 @media (max-width: 860px) { .generate-handoff-grid { grid-template-columns: 1fr; } }
 @media (max-width: 680px) {
   .generate-progress { grid-template-columns: 1fr; }
