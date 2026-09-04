@@ -17,10 +17,57 @@ export function createItineraryGenerationFacade({
 } = {}) {
   const operations = createStableOperationRegistry();
 
+  function destinationEntry(value) {
+    if (typeof value === "string") {
+      const name = value.trim();
+      return name ? { name } : null;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const name = [value.name, value.label, value.city, value.destination]
+      .find((candidate) => typeof candidate === "string" && candidate.trim())
+      ?.trim();
+    if (!name) return null;
+    const country = typeof value.country === "string" ? value.country.trim() : "";
+    const label = country && !name.toLocaleLowerCase().includes(country.toLocaleLowerCase())
+      ? `${name}, ${country}`
+      : name;
+    return {
+      name: label,
+      ...(typeof value.city === "string" && value.city.trim() ? { city: value.city.trim() } : {}),
+      ...(country ? { country } : {}),
+      ...(typeof value.startDate === "string" && value.startDate.trim() ? { startDate: value.startDate.trim() } : {}),
+      ...(typeof value.endDate === "string" && value.endDate.trim() ? { endDate: value.endDate.trim() } : {}),
+      ...(typeof value.notes === "string" && value.notes.trim() ? { notes: value.notes.trim() } : {}),
+    };
+  }
+
+  function normalizeConversationalBrief(inputBrief) {
+    if (!inputBrief || typeof inputBrief !== "object" || Array.isArray(inputBrief)) return null;
+    const brief = { ...inputBrief };
+    const hasOrderedDestinations = Array.isArray(brief.destination)
+      || Array.isArray(brief.destinations)
+      || Array.isArray(brief.cities);
+    const rawDestinations = Array.isArray(brief.destination)
+      ? brief.destination
+      : Array.isArray(brief.destinations)
+        ? brief.destinations
+        : Array.isArray(brief.cities)
+          ? brief.cities
+          : [brief.destination];
+    const destinations = rawDestinations
+      .map(destinationEntry)
+      .filter(Boolean)
+      .filter((entry, index, entries) => entries.findIndex(({ name }) => name === entry.name) === index);
+    if (destinations.length) brief.destination = destinations.map(({ name }) => name).join(" → ");
+    else if (brief.destination && typeof brief.destination !== "string") delete brief.destination;
+    if (hasOrderedDestinations && destinations.length) brief.destinations = destinations;
+    else delete brief.destinations;
+    delete brief.cities;
+    return brief;
+  }
+
   function currentBrief(inputBrief) {
-    return inputBrief && typeof inputBrief === "object" && !Array.isArray(inputBrief)
-      ? inputBrief
-      : getBrief?.() || {};
+    return normalizeConversationalBrief(inputBrief) || getBrief?.() || {};
   }
 
   function draftIdOrCurrent(value) {

@@ -608,6 +608,15 @@ export const publicItinerarySchema = z.object({
     .optional(),
 });
 
+const tripDestinationSchema = z.object({
+  name: z.string().min(1).describe("Human-readable stop name, ideally city and country."),
+  city: z.string().min(1).optional(),
+  country: z.string().min(1).optional(),
+  startDate: isoDate.describe("First date at this stop when known.").optional(),
+  endDate: isoDate.describe("Final date at this stop when known.").optional(),
+  notes: z.string().describe("User-supplied purpose or timing for this stop.").optional(),
+});
+
 export const tripBriefSchema = z.object({
   locale: localeSchema
     .describe(
@@ -623,6 +632,11 @@ export const tripBriefSchema = z.object({
     .min(1)
     .max(255)
     .describe("Canonical Google Maps place ID selected by the user for the destination.")
+    .optional(),
+  destinations: z
+    .array(tripDestinationSchema)
+    .min(1)
+    .describe("Every destination in travel order for a multi-stop trip. There is no fixed number of stops.")
     .optional(),
   startDate: isoDate.describe("Arrival or first itinerary date in YYYY-MM-DD format when known.").optional(),
   endDate: isoDate.describe("Departure or final itinerary date in YYYY-MM-DD format when known.").optional(),
@@ -1545,6 +1559,12 @@ export function validateItinerary(
 }
 
 export function prepareTripBrief(brief) {
+  if (!brief.destination && brief.destinations?.length) {
+    brief = {
+      ...brief,
+      destination: brief.destinations.map(({ name }) => name).join(" → "),
+    };
+  }
   const missing = [];
   const criticalFields = [];
   const warnings = [];

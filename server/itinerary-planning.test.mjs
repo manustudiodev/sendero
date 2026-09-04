@@ -68,7 +68,7 @@ test("returns one versioned protocol with the canonical schema and a prepared br
     },
   });
   assert.equal(result.brief.ready, true);
-  assert.equal(result.protocol.version, "1.7.0");
+  assert.equal(result.protocol.version, "1.8.0");
   assert.match(result.protocol.hash, /^[a-f0-9]{64}$/);
   assert.match(result.protocol.instructions, /validate_and_stage_itinerary/);
   assert.match(result.protocol.instructions, /first-time visitor/);
@@ -80,6 +80,31 @@ test("returns one versioned protocol with the canonical schema and a prepared br
   assert.ok(result.protocol.itinerarySchema.required.includes("days"));
   assert.equal(result.brief.brief.lodging.areaPlaceId, "area-place-1");
   assert.equal(result.brief.brief.lodging.addressPlaceId, "address-place-1");
+});
+
+test("preserves an arbitrary ordered list of destinations from a conversational brief", () => {
+  const destinations = [
+    { name: "Seville, Spain", endDate: "2026-12-27", notes: "Spend Christmas here." },
+    { name: "Córdoba, Spain", startDate: "2026-12-27", endDate: "2026-12-28" },
+    { name: "Toledo, Spain", startDate: "2026-12-28", endDate: "2026-12-29" },
+    { name: "Madrid, Spain", startDate: "2026-12-29", notes: "Spend New Year's Eve here." },
+  ];
+  const result = planningProtocol({
+    locale: "en",
+    destinations,
+    startDate: "2026-12-23",
+    endDate: "2027-01-02",
+    travellers: { adults: 2, children: 0 },
+    transport: { modes: ["train", "public_transit"], wantsCar: false },
+  });
+
+  assert.equal(result.brief.ready, true);
+  assert.equal(
+    result.brief.brief.destination,
+    "Seville, Spain → Córdoba, Spain → Toledo, Spain → Madrid, Spain",
+  );
+  assert.deepEqual(result.brief.brief.destinations, destinations);
+  assert.match(result.protocol.instructions, /preserve every destination in travel order/i);
 });
 
 test("normalizes and accepts a complete itinerary while retaining warnings", () => {

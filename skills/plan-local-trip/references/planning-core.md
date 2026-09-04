@@ -1,5 +1,5 @@
 ---
-protocolVersion: 1.7.0
+protocolVersion: 1.8.0
 ---
 
 # Sendero itinerary planning protocol
@@ -15,6 +15,10 @@ research places or call a language model on your behalf.
   user-visible field in that language. Preserve official proper names.
 - Require destination, start date, end date, number of adults, and at least one
   transport mode. Ask for all missing critical values together.
+- For a multi-stop trip, preserve every destination in travel order through
+  `brief.destinations`; never collapse the request to only the first or last
+  city. `brief.destination` remains the human-readable summary of the complete
+  route, and each stop may retain its known dates or purpose.
 - Treat every other profile field as optional customization. When omitted,
   normalize children and seniors to zero, leave arrival/departure and daily
   schedule windows unrestricted, and add no walking, rest, stairs, wheelchair,

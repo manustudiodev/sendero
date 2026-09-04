@@ -37,6 +37,8 @@ test("registers the generation, reservation, and sharing tools on the top-level 
   ]);
   assert.match(registered[0].tool.description, /prefer this page workflow over remote Sendero planning tools/i);
   assert.match(registered[0].tool.description, /without requiring form entry or prompt copying/i);
+  assert.match(registered[0].tool.description, /never ask the user to write field syntax/i);
+  assert.equal(registered[0].tool.inputSchema.properties.brief.properties.destinations.type, "array");
   assert.match(registered[1].tool.description, /authoritative review handoff/i);
   assert.match(registered[1].tool.description, /without a Sendero account/i);
   const byName = Object.fromEntries(registered.map(({ tool }) => [tool.name, tool]));
@@ -52,6 +54,39 @@ test("registers the generation, reservation, and sharing tools on the top-level 
   assert.match(byName.share_saved_itinerary_by_link.description, /explicit user request/i);
   assert.match(byName.invite_saved_itinerary_member.description, /viewer grants read-only.*editor grants collaboration/i);
   assert.match(byName.invite_saved_itinerary_member.description, /explicitly asks/i);
+});
+
+test("normalizes multi-city facts extracted from natural language before requesting the protocol", async () => {
+  const generated = createItineraryGenerationFacade({
+    request: async (path, options) => {
+      assert.equal(path, "/api/itinerary-planning/protocol");
+      assert.deepEqual(options.body.brief, {
+        destination: "Seville, Spain → Madrid, Spain",
+        destinations: [
+          { city: "Seville", country: "Spain", name: "Seville, Spain" },
+          { city: "Madrid", country: "Spain", name: "Madrid, Spain" },
+        ],
+        startDate: "2026-12-23",
+        endDate: "2027-01-02",
+        travellers: { adults: 2, children: 0 },
+        transport: { modes: ["train", "public_transit"], wantsCar: false },
+      });
+      return { brief: { ready: true, brief: options.body.brief }, protocol: { version: "1.4.0" } };
+    },
+  });
+
+  await generated.getProtocol({
+    brief: {
+      destinations: [
+        { city: "Seville", country: "Spain" },
+        { city: "Madrid", country: "Spain" },
+      ],
+      startDate: "2026-12-23",
+      endDate: "2027-01-02",
+      travellers: { adults: 2, children: 0 },
+      transport: { modes: ["train", "public_transit"], wantsCar: false },
+    },
+  });
 });
 
 test("returns the prepared conversational brief to the open page", async () => {

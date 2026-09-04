@@ -9,9 +9,76 @@ export const ITINERARY_GENERATION_TOOL_NAMES = Object.freeze([
   "discard_staged_itinerary",
 ]);
 
+const DESTINATION_ENTRY_SCHEMA = Object.freeze({
+  oneOf: [
+    {
+      type: "string",
+      minLength: 1,
+      description: "A city, region, or country in the traveller's own words.",
+    },
+    {
+      type: "object",
+      properties: {
+        name: { type: "string", minLength: 1 },
+        city: { type: "string", minLength: 1 },
+        country: { type: "string", minLength: 1 },
+        startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        notes: { type: "string" },
+      },
+      additionalProperties: true,
+    },
+  ],
+});
+
 const BRIEF_SCHEMA = Object.freeze({
   type: "object",
-  description: "Known trip brief. Omit it to use the fields currently entered on the Sendero page.",
+  description: "Trip facts extracted from the user's natural-language request. The user never needs to know or write these field names. Omit the brief only to use fields already entered on the Sendero page.",
+  properties: {
+    locale: { type: "string", description: "Language inferred from the user's request." },
+    destination: {
+      oneOf: [
+        ...DESTINATION_ENTRY_SCHEMA.oneOf,
+        {
+          type: "array",
+          minItems: 1,
+          items: DESTINATION_ENTRY_SCHEMA,
+        },
+      ],
+      description: "One destination, or an ordered list when the request contains multiple cities.",
+    },
+    destinations: {
+      type: "array",
+      minItems: 1,
+      items: DESTINATION_ENTRY_SCHEMA,
+      description: "Ordered destinations for a multi-city trip. Sendero normalizes them into its canonical destination label.",
+    },
+    startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    travellers: {
+      type: "object",
+      properties: {
+        adults: { type: "integer", minimum: 1 },
+        children: { type: "integer", minimum: 0 },
+        seniors: { type: "integer", minimum: 0 },
+      },
+      additionalProperties: true,
+    },
+    transport: {
+      type: "object",
+      properties: {
+        modes: {
+          type: "array",
+          items: { type: "string" },
+        },
+        hasLicense: { type: "boolean" },
+        wantsCar: { type: "boolean" },
+      },
+      additionalProperties: true,
+    },
+    mustDo: { type: "array", items: { type: "string" } },
+    notes: { type: "string" },
+  },
   additionalProperties: true,
 });
 
@@ -94,7 +161,7 @@ export function itineraryGenerationToolDefinitions(facade, { report } = {}) {
   return [
     definition({
       name: "get_itinerary_planning_protocol",
-      description: "Load Sendero's current versioned instructions, prepared brief, and canonical JSON schema for generating a new itinerary. Use this before researching or constructing the itinerary. Pass the facts already supplied in the conversation through brief; the page will reflect those facts and move to the automatic generation step when the brief is ready, without requiring form entry or prompt copying. When this page-scoped tool is available for the open Sendero creation page, prefer this page workflow over remote Sendero planning tools so the page can show progress, review, and authoritative save state. Sendero returns instructions but does not call a model.",
+      description: "Load Sendero's current versioned instructions, prepared brief, and canonical JSON schema for generating a new itinerary. Use this before researching or constructing the itinerary. Extract the facts already supplied in the user's natural language into brief; never ask the user to write field syntax. Multi-city requests may use destination as an ordered list or destinations as an ordered array, and Sendero will normalize them. The page will reflect those facts and move to the automatic generation step when the brief is ready, without requiring form entry or prompt copying. When this page-scoped tool is available for the open Sendero creation page, prefer this page workflow over remote Sendero planning tools so the page can show progress, review, and authoritative save state. Sendero returns instructions but does not call a model.",
       inputSchema: {
         type: "object",
         properties: { brief: BRIEF_SCHEMA },
