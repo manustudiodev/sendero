@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   itinerarySchema,
   normalizeItinerary,
+  normalizeItineraryCostInputs,
   prepareTripBrief,
   tripBriefSchema,
   validateItinerary,
@@ -182,7 +183,10 @@ function assertBriefMatchesItinerary(brief, itinerary) {
 }
 
 export function validatedDraft(input) {
-  const parsed = stageItineraryRequestSchema.parse(input);
+  const normalizedInput = input && typeof input === "object" && !Array.isArray(input)
+    ? { ...input, itinerary: normalizeItineraryCostInputs(input.itinerary) }
+    : input;
+  const parsed = stageItineraryRequestSchema.parse(normalizedInput);
   assertProtocol(parsed);
   const prepared = prepareTripBrief(parsed.brief);
   if (!prepared.ready) {

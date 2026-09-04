@@ -130,6 +130,9 @@ const checkedAt = z
   .refine((value) => !Number.isNaN(Date.parse(value)), "Use a valid date");
 const url = z.string().url();
 const httpUrl = url.refine((value) => /^https?:\/\//i.test(value), "Use an HTTP(S) URL");
+const verifiedCostSourceUrl = z
+  .url({ error: "A verified cost requires an HTTP(S) source URL." })
+  .refine((value) => /^https?:\/\//i.test(value), "Use an HTTP(S) URL");
 const localeSchema = z
   .string()
   .trim()
@@ -295,36 +298,48 @@ const activityAccessibilitySchema = z
     }
   });
 
-const costEstimateSchema = z
-  .object({
-    category: budgetCategory,
-    status: z.enum(["free", "estimated", "verified", "unknown"]),
-    currency: currencyCode.optional(),
-    min: z.number().nonnegative().optional(),
-    max: z.number().nonnegative().optional(),
-    basis: z.enum(["party", "person"]).default("party"),
-    sourceUrl: httpUrl.optional(),
-    checkedAt: checkedAt.optional(),
-    note: z.string().min(1).optional(),
-  })
-  .superRefine((cost, context) => {
-    const priced = cost.status === "estimated" || cost.status === "verified";
-    if (priced && (!cost.currency || cost.min === undefined || cost.max === undefined)) {
-      context.addIssue({
-        code: "custom",
-        message: "Estimated or verified costs require currency, min, and max.",
-      });
-    }
+const costCommonFields = {
+  category: budgetCategory,
+  basis: z.enum(["party", "person"]).default("party"),
+  checkedAt: checkedAt.optional(),
+  note: z.string().min(1).optional(),
+};
+
+const unpricedCostFields = {
+  ...costCommonFields,
+  currency: currencyCode.optional(),
+  sourceUrl: httpUrl.optional(),
+};
+
+const pricedCostFields = {
+  ...costCommonFields,
+  currency: currencyCode,
+  min: z.number().nonnegative(),
+  max: z.number().nonnegative(),
+};
+
+function pricedCostSchema(fields) {
+  return z.object(fields).superRefine((cost, context) => {
     if (cost.min !== undefined && cost.max !== undefined && cost.max < cost.min) {
       context.addIssue({ code: "custom", path: ["max"], message: "Cost max must be greater than or equal to min." });
     }
-    if (cost.status === "verified" && !cost.sourceUrl) {
-      context.addIssue({ code: "custom", path: ["sourceUrl"], message: "A verified cost requires an HTTP(S) source URL." });
-    }
-    if ((cost.status === "free" || cost.status === "unknown") && (cost.min !== undefined || cost.max !== undefined)) {
-      context.addIssue({ code: "custom", message: "Free or unknown costs must not include a monetary range." });
-    }
   });
+}
+
+const costEstimateSchema = z.discriminatedUnion("status", [
+  z.object({ ...unpricedCostFields, status: z.literal("free") }),
+  z.object({ ...unpricedCostFields, status: z.literal("unknown") }),
+  pricedCostSchema({
+    ...pricedCostFields,
+    status: z.literal("estimated"),
+    sourceUrl: httpUrl.optional(),
+  }),
+  pricedCostSchema({
+    ...pricedCostFields,
+    status: z.literal("verified"),
+    sourceUrl: verifiedCostSourceUrl,
+  }),
+]);
 
 const additionalCostSchema = costEstimateSchema.and(z.object({
   id: z.string().min(1),
@@ -1216,7 +1231,50 @@ export function buildDailyRouteUrl(itinerary, day) {
   return buildDailyRouteUrls(itinerary, day)[0];
 }
 
+function normalizeUnpricedCost(cost) {
+  if (
+    !cost
+    || typeof cost !== "object"
+    || Array.isArray(cost)
+    || (cost.status !== "free" && cost.status !== "unknown")
+  ) {
+    return cost;
+  }
+  const { min: _min, max: _max, ...normalized } = cost;
+  return normalized;
+}
+
+export function normalizeItineraryCostInputs(itinerary) {
+  if (!itinerary || typeof itinerary !== "object" || Array.isArray(itinerary)) {
+    return itinerary;
+  }
+  if (!Array.isArray(itinerary.days)) return itinerary;
+  return {
+    ...itinerary,
+    days: itinerary.days.map((day) => {
+      if (!day || typeof day !== "object" || Array.isArray(day)) return day;
+      return {
+        ...day,
+        ...(Array.isArray(day.activities) ? {
+          activities: day.activities.map((activity) => {
+            if (!activity || typeof activity !== "object" || Array.isArray(activity)) {
+              return activity;
+            }
+            return activity.cost
+              ? { ...activity, cost: normalizeUnpricedCost(activity.cost) }
+              : activity;
+          }),
+        } : {}),
+        ...(Array.isArray(day.additionalCosts) ? {
+          additionalCosts: day.additionalCosts.map(normalizeUnpricedCost),
+        } : {}),
+      };
+    }),
+  };
+}
+
 export function normalizeItinerary(itinerary) {
+  itinerary = normalizeItineraryCostInputs(itinerary);
   return {
     ...itinerary,
     locale: canonicalLocale(itinerary.locale),

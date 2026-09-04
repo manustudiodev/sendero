@@ -78,6 +78,17 @@ test("returns one versioned protocol with the canonical schema and a prepared br
   assert.match(result.protocol.instructions, /composition targets, not filler quotas/);
   assert.equal(result.protocol.itinerarySchema.type, "object");
   assert.ok(result.protocol.itinerarySchema.required.includes("days"));
+  const costVariants = result.protocol.itinerarySchema
+    .properties.days.items.properties.activities.items.properties.cost.oneOf;
+  const freeCost = costVariants.find((variant) => variant.properties.status.const === "free");
+  const unknownCost = costVariants.find((variant) => variant.properties.status.const === "unknown");
+  const estimatedCost = costVariants.find((variant) => variant.properties.status.const === "estimated");
+  const verifiedCost = costVariants.find((variant) => variant.properties.status.const === "verified");
+  assert.equal("min" in freeCost.properties, false);
+  assert.equal("max" in unknownCost.properties, false);
+  assert.ok(estimatedCost.required.includes("min"));
+  assert.ok(estimatedCost.required.includes("max"));
+  assert.ok(verifiedCost.required.includes("sourceUrl"));
   assert.equal(result.brief.brief.lodging.areaPlaceId, "area-place-1");
   assert.equal(result.brief.brief.lodging.addressPlaceId, "address-place-1");
 });
@@ -113,6 +124,49 @@ test("normalizes and accepts a complete itinerary while retaining warnings", () 
   assert.match(result.briefHash, /^[a-f0-9]{64}$/);
   assert.match(result.itineraryHash, /^[a-f0-9]{64}$/);
   assert.ok(result.warnings.some((warning) => warning.includes("provisional base")));
+});
+
+test("normalizes monetary ranges away from free and unknown costs before validation", () => {
+  const candidate = structuredClone(itinerary);
+  candidate.days[0].activities[0].cost = {
+    category: "activities",
+    status: "free",
+    currency: "EUR",
+    min: 0,
+    max: 0,
+    basis: "person",
+    sourceUrl: "https://example.com/free-entry",
+  };
+  candidate.days[0].additionalCosts = [{
+    id: "transit-price-pending",
+    label: "Local transport",
+    category: "local_transport",
+    status: "unknown",
+    currency: "EUR",
+    min: 0,
+    max: 25,
+    basis: "party",
+    note: "The final fare has not been published.",
+  }];
+
+  const result = validatedDraft(stageInput({ itinerary: candidate }));
+
+  assert.deepEqual(result.itinerary.days[0].activities[0].cost, {
+    category: "activities",
+    status: "free",
+    currency: "EUR",
+    basis: "person",
+    sourceUrl: "https://example.com/free-entry",
+  });
+  assert.deepEqual(result.itinerary.days[0].additionalCosts[0], {
+    id: "transit-price-pending",
+    label: "Local transport",
+    category: "local_transport",
+    status: "unknown",
+    currency: "EUR",
+    basis: "party",
+    note: "The final fare has not been published.",
+  });
 });
 
 test("allows a destination to be made more specific without weakening operational constraints", () => {
